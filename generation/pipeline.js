@@ -147,6 +147,22 @@ function extractParameters(steps) {
 }
 
 /**
+ * Builds a UiSelector string from a resource-id and/or text/content-desc.
+ * List adapters commonly reuse one resource-id across every row (e.g.
+ * Android's "android:id/text1"), so resource-id alone is often *not*
+ * unique on screen — combining it with the row's own text/content-desc
+ * (when known) is what actually pins one specific element. Falls back
+ * to whichever of the two is available on its own.
+ */
+function buildResourceIdSelector(resourceId, label) {
+  const clauses = [];
+  if (resourceId) clauses.push(`.resourceId("${resourceId}")`);
+  if (label) clauses.push(`.text("${label}")`);
+  if (clauses.length === 0) return null;
+  return `android=new UiSelector()${clauses.join("")}`;
+}
+
+/**
  * Maps a resolved element to a WebdriverIO selector string, per the
  * same locator priority used to resolve it in the first place.
  */
@@ -154,7 +170,10 @@ function buildSelector(resolvedElement) {
   if (!resolvedElement) return null;
   switch (resolvedElement.strategy) {
     case "resource-id":
-      return `android=new UiSelector().resourceId("${resolvedElement.value}")`;
+      // Combine with text/content-desc when available — see
+      // buildResourceIdSelector's note on why resource-id alone can be
+      // ambiguous inside a list.
+      return buildResourceIdSelector(resolvedElement.value, resolvedElement.text || resolvedElement.contentDesc);
     case "accessibility-id":
       return `~${resolvedElement.value}`;
     case "text":
@@ -229,9 +248,11 @@ function synthesizeCode(steps, meta) {
 
     const stepAssertions = assertionsByStep.get(index) || [];
     for (const assertion of stepAssertions) {
-      const assertSelector = assertion.resourceId
-        ? `android=new UiSelector().resourceId("${assertion.resourceId}")`
-        : `android=new UiSelector().text("${assertion.label}")`;
+      // Combine resource-id with the label itself — see
+      // buildResourceIdSelector's note: a shared list-row resource-id
+      // (e.g. "android:id/text1") isn't unique on its own, so asserting
+      // by resource-id alone can't tell "Custom View" from any other row.
+      const assertSelector = buildResourceIdSelector(assertion.resourceId, assertion.label);
       lines.push(`    await expect($(${JSON.stringify(assertSelector)})).toBeDisplayed(); // "${assertion.label}" appeared`);
     }
 
@@ -252,5 +273,6 @@ module.exports = {
   extractParameters,
   synthesizeCode,
   buildSelector,
+  buildResourceIdSelector,
   extractLabels,
 };

@@ -14,6 +14,7 @@ const {
   inferAssertions,
   extractParameters,
   buildSelector,
+  buildResourceIdSelector,
 } = require("../pipeline");
 
 const LOGIN_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
@@ -107,13 +108,37 @@ test("extractParameters names parameters from the field's resource-id, stripped 
 });
 
 test("buildSelector maps each locator strategy to a WebdriverIO selector", () => {
-  assert.strictEqual(
-    buildSelector({ strategy: "resource-id", value: "android:id/text1" }),
-    'android=new UiSelector().resourceId("android:id/text1")'
-  );
   assert.strictEqual(buildSelector({ strategy: "accessibility-id", value: "Login" }), "~Login");
   assert.strictEqual(buildSelector({ strategy: "xpath", value: "/hierarchy[1]/a[1]" }), "/hierarchy[1]/a[1]");
   assert.strictEqual(buildSelector({ strategy: "coordinate", value: "1,2" }), null);
+});
+
+test("buildSelector combines resource-id with text for a resource-id match that also has text", () => {
+  // Regression test: a real device run against ApiDemos hit this exact
+  // case — every row in a ListView shares "android:id/text1" as its
+  // resource-id, so resource-id alone can't tell "Custom View" from any
+  // other row. Combining it with the row's own text is what disambiguates.
+  const selector = buildSelector({
+    strategy: "resource-id",
+    value: "android:id/text1",
+    text: "Custom View",
+  });
+  assert.strictEqual(selector, 'android=new UiSelector().resourceId("android:id/text1").text("Custom View")');
+});
+
+test("buildSelector falls back to resource-id alone when no text is available", () => {
+  const selector = buildSelector({ strategy: "resource-id", value: "com.phoenix.demo:id/login_button" });
+  assert.strictEqual(selector, 'android=new UiSelector().resourceId("com.phoenix.demo:id/login_button")');
+});
+
+test("buildResourceIdSelector combines resource-id and label, and falls back gracefully", () => {
+  assert.strictEqual(
+    buildResourceIdSelector("android:id/text1", "Graphics"),
+    'android=new UiSelector().resourceId("android:id/text1").text("Graphics")'
+  );
+  assert.strictEqual(buildResourceIdSelector("android:id/text1", undefined), 'android=new UiSelector().resourceId("android:id/text1")');
+  assert.strictEqual(buildResourceIdSelector(undefined, "Graphics"), 'android=new UiSelector().text("Graphics")');
+  assert.strictEqual(buildResourceIdSelector(undefined, undefined), null);
 });
 
 testAsync("generateScript produces a runnable script with parameters, selectors, and the inferred assertion", async () => {

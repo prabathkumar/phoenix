@@ -28,12 +28,21 @@ function startLiveView(driver, recorder, port = 8090) {
   const wss = new WebSocketServer({ port });
 
   wss.on("connection", (socket) => {
+    // Guards against a screenshot request that was already in flight when
+    // "stop" arrived: clearInterval() stops *future* ticks, but a promise
+    // from a tick that already fired can still resolve afterwards, hit an
+    // already-torn-down session, and log a scary (harmless) 404. This flag
+    // makes that in-flight response a silent no-op instead.
+    let stopped = false;
+
     const pollTimer = setInterval(async () => {
+      if (stopped) return;
       try {
         const screenshotBase64 = await driver.takeScreenshot();
+        if (stopped) return;
         socket.send(JSON.stringify({ type: "frame", screenshotBase64 }));
       } catch (err) {
-        console.error("[live-view] screenshot poll failed:", err.message);
+        if (!stopped) console.error("[live-view] screenshot poll failed:", err.message);
       }
     }, SCREENSHOT_POLL_INTERVAL_MS);
 
@@ -70,13 +79,17 @@ function startLiveView(driver, recorder, port = 8090) {
       }
 
       if (message.type === "stop") {
+        stopped = true;
         clearInterval(pollTimer);
         const steps = recorder.finish();
         socket.send(JSON.stringify({ type: "session-finished", stepCount: steps.length }));
       }
     });
 
-    socket.on("close", () => clearInterval(pollTimer));
+    socket.on("close", () => {
+      stopped = true;
+      clearInterval(pollTimer);
+    });
   });
 
   console.log(`[live-view] listening on ws://localhost:${port}`);

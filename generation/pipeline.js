@@ -11,23 +11,46 @@
  *
  * v1 (this stage) is entirely deterministic/rule-based: it needs no LLM
  * call to produce a working, readable WebdriverIO script from the
- * resolved locators capture/recorder.js already hands it. The TODOs
- * below mark where an LLM call replaces a heuristic with something
- * smarter (better names, richer assertions) — the pipeline's shape and
- * output contract don't change when that happens, only how each
- * function's body is implemented.
+ * resolved locators capture/recorder.js already hands it. generation/llm.js
+ * adds an OPTIONAL refinement pass on top (better flow names, filtered
+ * assertions) backed by a local Ollama instance — the rule-based logic
+ * below remains the guaranteed output on its own, and stays the fallback
+ * whenever refinement is unavailable or fails. The pipeline's shape and
+ * output contract don't change when refinement is used, only the values
+ * of `testName`/`assertions` before synthesizeCode() renders them.
  */
 
 const { DOMParser } = require("@xmldom/xmldom");
 
 /**
  * @param {import('../capture/recorder').CapturedStep[]} steps
+ * @param {object} [options]
+ * @param {boolean} [options.useLlm] Refine testName/assertions via the
+ *   local Ollama-backed layer in generation/llm.js. Defaults to false —
+ *   v1's rule-based output is a complete, working result on its own;
+ *   this is an opt-in improvement, not a requirement. When true, any
+ *   refinement failure (Ollama not running, timeout, bad response)
+ *   silently falls back to the rule-based value it would otherwise have
+ *   used — generateScript() itself never throws because of this option.
  * @returns {Promise<{ scriptSource: string, testName: string, assertions: string[] }>}
  */
-async function generateScript(steps) {
-  const testName = inferTestName(steps);
-  const assertions = inferAssertions(steps);
+async function generateScript(steps, options = {}) {
+  const { useLlm = false } = options;
+
+  let testName = inferTestName(steps);
+  let assertions = inferAssertions(steps);
   const parameters = extractParameters(steps);
+
+  if (useLlm) {
+    // Lazily required so that generation/ has no hard dependency on
+    // llm.js (or its fetch/Ollama usage) for callers who never opt in.
+    const { refineTestName, filterAssertions } = require("./llm");
+    [testName, assertions] = await Promise.all([
+      refineTestName(steps, testName),
+      filterAssertions(assertions),
+    ]);
+  }
+
   const scriptSource = synthesizeCode(steps, { testName, assertions, parameters });
 
   return { scriptSource, testName, assertions, parameters };

@@ -73,7 +73,12 @@ async function main() {
 async function onSessionFinished(steps, driver, wss, socket) {
   console.log(`[run-session] session finished: ${steps.length} step(s) recorded`);
 
-  const result = await generateScript(steps);
+  // PHOENIX_USE_LLM=1 opts into the Ollama-backed refinement layer
+  // (generation/llm.js) for a better flow name and filtered assertions.
+  // Unset/0 (the default) uses v1's rule-based output only — a complete
+  // result on its own, see pipeline.js's generateScript() doc comment.
+  const useLlm = process.env.PHOENIX_USE_LLM === "1";
+  const result = await generateScript(steps, { useLlm });
   console.log(`[run-session] generated script: "${result.testName}" (${result.assertions.length} assertion(s), ${result.parameters.length} parameter(s))`);
 
   fs.mkdirSync(OUTPUT_DIR, { recursive: true });

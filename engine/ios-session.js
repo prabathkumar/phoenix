@@ -21,14 +21,25 @@
 const { remote } = require("webdriverio");
 
 function buildCapabilities(overrides = {}) {
-  return {
+  const base = {
     platformName: "iOS",
     "appium:automationName": "XCUITest",
     "appium:deviceName": process.env.PHOENIX_IOS_DEVICE_NAME || "iPhone 15",
     "appium:platformVersion": process.env.PHOENIX_IOS_PLATFORM_VERSION,
-    "appium:app": process.env.PHOENIX_IOS_APP_PATH, // path to a .app (simulator) or .ipa (device)
-    ...overrides,
   };
+
+  // Either a path to a .app/.ipa to install and launch (the normal case
+  // — see PHOENIX_IOS_APP_PATH), or a bundle id of an app already on the
+  // simulator (e.g. "com.apple.mobilesafari") when you want to smoke-test
+  // the session/driver plumbing itself without building anything first.
+  // PHOENIX_IOS_BUNDLE_ID takes priority if both are set.
+  if (process.env.PHOENIX_IOS_BUNDLE_ID) {
+    base["appium:bundleId"] = process.env.PHOENIX_IOS_BUNDLE_ID;
+  } else {
+    base["appium:app"] = process.env.PHOENIX_IOS_APP_PATH;
+  }
+
+  return { ...base, ...overrides };
 }
 
 /**

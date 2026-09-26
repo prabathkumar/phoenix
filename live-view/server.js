@@ -43,10 +43,15 @@ function startLiveView(driver, recorder, port = 8090) {
       if (message.type === "tap") {
         // message.xRatio / yRatio are 0..1, relative to the rendered
         // image size on the tester's screen — not device pixels.
-        const deviceCoordinate = toDeviceCoordinate(message.xRatio, message.yRatio, driver);
+        const deviceCoordinate = await toDeviceCoordinate(message.xRatio, message.yRatio, driver);
 
         const partialStep = await recorder.beginStep(deviceCoordinate);
-        await driver.touchAction({ action: "tap", ...deviceCoordinate });
+        // NOTE: WebdriverIO's touchAction()/touchPerform() sends the legacy
+        // JSONWP touch-actions endpoint, which Appium 3 + uiautomator2-driver
+        // 3.x no longer implement (404 unknown command — see Stage 0 fix in
+        // engine/stage0-session.js). Use the execute-script extension the
+        // current driver actually supports.
+        await driver.execute("mobile: clickGesture", deviceCoordinate);
         const step = await recorder.completeStep(partialStep);
 
         socket.send(JSON.stringify({ type: "step-recorded", stepIndex: recorder.steps.length - 1 }));
@@ -66,9 +71,26 @@ function startLiveView(driver, recorder, port = 8090) {
   return wss;
 }
 
-/** TODO(stage 0): read actual device screen size from the session capabilities. */
-function toDeviceCoordinate(xRatio, yRatio, driver) {
-  throw new Error("toDeviceCoordinate: not yet implemented");
+// Cached per driver instance so we don't hit the WebDriver endpoint on
+// every single tap — device screen size doesn't change mid-session.
+const windowSizeCache = new WeakMap();
+
+/**
+ * Converts a tap expressed as a 0..1 ratio of the rendered image on the
+ * tester's screen into real device pixel coordinates, using the actual
+ * device window size (not the image's own dimensions, which may be
+ * scaled or letterboxed differently than the physical screen).
+ */
+async function toDeviceCoordinate(xRatio, yRatio, driver) {
+  let size = windowSizeCache.get(driver);
+  if (!size) {
+    size = await driver.getWindowSize();
+    windowSizeCache.set(driver, size);
+  }
+  return {
+    x: Math.round(xRatio * size.width),
+    y: Math.round(yRatio * size.height),
+  };
 }
 
 module.exports = { startLiveView };

@@ -99,7 +99,9 @@ This is the case *for* building Phoenix, not a claim that today's repo already b
 
 **Stage 0 complete.** `engine/stage0-session.js` runs end to end against a local Android emulator via Appium 3 + `appium-uiautomator2-driver`: session start → screenshot → accessibility tree → tap → clean teardown, with no project-level Appium version pin (Appium and its drivers are installed globally via the `appium` CLI, not as `engine/package.json` dependencies).
 
-Next: Stage 1 — implement `resolveElementAtCoordinate()` in `capture/recorder.js` so a tap's screen coordinate resolves to a stable locator (resource-id/accessibility-id first, then text/content-desc, then structural xpath, coordinates last) instead of the fixed test point Stage 0 uses. Then Stage 2 — the generation pipeline in `generation/pipeline.js`.
+**Stage 1 complete.** `capture/recorder.js` now resolves a tap coordinate to a real locator — resource-id, then accessibility-id (content-desc), then text, then a computed structural xpath, then raw coordinates as a last resort — by walking the accessibility tree and picking the smallest element whose bounds contain the tap point. Verified with a test suite (`capture/test/`) run against the actual tree captured during the Stage 0 run, not synthetic XML. `live-view/server.js`'s tap-forwarding path is wired to it, using the device's real window size (not the rendered image's) to convert a tester's on-screen tap ratio into device pixels, and the legacy `touchAction` call there is fixed the same way Stage 0's was — Appium 3 needs `mobile: clickGesture`, not JSONWP touch actions.
+
+Next: Stage 2 — the generation pipeline in `generation/pipeline.js` (naming the flow, inferring assertions from before/after diffs, extracting parameters, and the actual LLM code-synthesis call). All four functions there are currently stubs.
 
 ### Running Stage 0 locally
 

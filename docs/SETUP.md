@@ -48,6 +48,45 @@ Confirm the device is visible before going further:
 adb devices   # should list your emulator/device as "device", not "unauthorized"
 ```
 
+### iOS instead of (or alongside) Android
+
+Phoenix also supports iOS via `appium-xcuitest-driver`, using the same
+spawn-a-server model as Android — see `engine/ios-session.js` and
+`engine/ios-stage0-session.js`. Prerequisites:
+
+- macOS with Xcode installed, and at least one Simulator runtime
+  downloaded (Xcode → Settings → Platforms)
+- `xcrun simctl list devices` shows an available Simulator (boot one
+  with `xcrun simctl boot "<device name>"` if none is booted)
+- A built `.app` bundle for the Simulator (from `xcodebuild` or your
+  CI), at a path this host can read
+
+```bash
+appium driver install xcuitest
+```
+
+Set in `.env`:
+```
+PHOENIX_PLATFORM=ios
+PHOENIX_IOS_APP_PATH=/absolute/path/to/YourApp.app
+PHOENIX_IOS_DEVICE_NAME=iPhone 15      # must match an installed Simulator
+PHOENIX_IOS_PLATFORM_VERSION=17.5      # optional if only one iOS version of that device is installed
+```
+
+Verify the iOS path in isolation first, the same way the Android
+embedded path was verified — this proves the driver/session plumbing
+works before layering the rest of the pipeline on top:
+
+```bash
+cd engine
+npm run ios-stage0   # needs appium running (step 2 below) + a booted Simulator
+```
+
+Everything from step 2 onward (running Appium, `run-session.js`, the
+frontend) works identically for iOS — `PHOENIX_PLATFORM=ios` in `.env`
+is what switches `run-session.js` to the iOS engine and selector syntax.
+No separate frontend or live-view server is needed for iOS.
+
 ## 2. Start Appium on the device host
 
 ```bash

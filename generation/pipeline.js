@@ -32,10 +32,18 @@ const { DOMParser } = require("@xmldom/xmldom");
  *   refinement failure (Ollama not running, timeout, bad response)
  *   silently falls back to the rule-based value it would otherwise have
  *   used — generateScript() itself never throws because of this option.
+ * @param {"android"|"ios"} [options.platform] Which platform these steps
+ *   were captured against — determines which selector syntax
+ *   synthesizeCode() emits for text-based locators/assertions (Android's
+ *   UiSelector vs. iOS's predicate strings; resource-id/accessibility-id
+ *   selectors are cross-platform in WebdriverIO and don't need this).
+ *   Defaults to "android" — Phoenix's only proven platform so far; pass
+ *   "ios" explicitly when calling this against a session started via
+ *   engine/ios-session.js.
  * @returns {Promise<{ scriptSource: string, testName: string, assertions: string[] }>}
  */
 async function generateScript(steps, options = {}) {
-  const { useLlm = false } = options;
+  const { useLlm = false, platform = "android" } = options;
 
   let testName = inferTestName(steps);
   let assertions = inferAssertions(steps);
@@ -51,7 +59,7 @@ async function generateScript(steps, options = {}) {
     ]);
   }
 
-  const scriptSource = synthesizeCode(steps, { testName, assertions, parameters });
+  const scriptSource = synthesizeCode(steps, { testName, assertions, parameters, platform });
 
   return { scriptSource, testName, assertions, parameters };
 }
@@ -59,6 +67,13 @@ async function generateScript(steps, options = {}) {
 /**
  * Collects every text/content-desc value in an accessibility tree, in
  * document order, alongside the element's resource-id (when present).
+ *
+ * Reads both Android's UiAutomator2 attribute names (text, content-desc,
+ * resource-id, a single "bounds" string) and iOS's XCUITest attribute
+ * names (label, name, x/y/width/height) — same dual-platform approach
+ * as capture/recorder.js's resolveElementAtCoordinate(), so assertion
+ * diffing works against a recorded iOS session's tree the same way it
+ * already does for Android.
  */
 function extractLabels(pageSourceXml) {
   if (!pageSourceXml) return [];
@@ -69,10 +84,15 @@ function extractLabels(pageSourceXml) {
   const labels = [];
   const walk = (node) => {
     if (node.nodeType === 1 && node.getAttribute) {
-      const text = node.getAttribute("text");
-      const contentDesc = node.getAttribute("content-desc");
-      const resourceId = node.getAttribute("resource-id");
-      const bounds = node.getAttribute("bounds");
+      const text = node.getAttribute("text") || node.getAttribute("label") || node.getAttribute("value");
+      const contentDesc = node.getAttribute("content-desc") || node.getAttribute("name");
+      const resourceId = node.getAttribute("resource-id"); // Android only, absent on iOS
+      const androidBounds = node.getAttribute("bounds");
+      const x = node.getAttribute("x");
+      const y = node.getAttribute("y");
+      const width = node.getAttribute("width");
+      const height = node.getAttribute("height");
+      const bounds = androidBounds || (x && y && width && height ? `${x},${y},${width},${height}` : undefined);
       const label = (text && text.trim()) || (contentDesc && contentDesc.trim());
       if (label) labels.push({ label, resourceId: resourceId || undefined, bounds: bounds || undefined });
     }
@@ -192,17 +212,39 @@ function extractParameters(steps) {
 }
 
 /**
- * Builds a UiSelector string from a resource-id and/or text/content-desc.
- * List adapters commonly reuse one resource-id across every row (e.g.
- * Android's "android:id/text1"), so resource-id alone is often *not*
- * unique on screen — combining it with the row's own text/content-desc
- * (when known) is what actually pins one specific element. Falls back
- * to whichever of the two is available on its own.
+ * Escapes a value for embedding inside a double-quoted string in a
+ * generated UiSelector/predicate expression (both use JS-style escaping
+ * for embedded quotes/backslashes).
  */
-function buildResourceIdSelector(resourceId, label) {
+function escapeForSelector(value) {
+  return String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+/**
+ * Builds a platform-specific text/resource-id selector.
+ *
+ * Android: a UiSelector combining resource-id and text — list adapters
+ * commonly reuse one resource-id across every row (e.g. Android's
+ * "android:id/text1"), so resource-id alone is often *not* unique on
+ * screen; combining it with the row's own text (when known) is what
+ * actually pins one specific element.
+ *
+ * iOS has no resource-id equivalent — XCUITest identifies elements by
+ * name (accessibility id, handled separately via `~value` — see
+ * buildSelector) or by label/value, matched here with an
+ * `-ios predicate string:` expression instead of a UiSelector.
+ *
+ * Falls back to whichever identifying piece is available.
+ */
+function buildResourceIdSelector(resourceId, label, platform = "android") {
+  if (platform === "ios") {
+    if (!label) return null;
+    return `-ios predicate string:label == "${escapeForSelector(label)}" OR value == "${escapeForSelector(label)}"`;
+  }
+
   const clauses = [];
-  if (resourceId) clauses.push(`.resourceId("${resourceId}")`);
-  if (label) clauses.push(`.text("${label}")`);
+  if (resourceId) clauses.push(`.resourceId("${escapeForSelector(resourceId)}")`);
+  if (label) clauses.push(`.text("${escapeForSelector(label)}")`);
   if (clauses.length === 0) return null;
   return `android=new UiSelector()${clauses.join("")}`;
 }
@@ -210,19 +252,25 @@ function buildResourceIdSelector(resourceId, label) {
 /**
  * Maps a resolved element to a WebdriverIO selector string, per the
  * same locator priority used to resolve it in the first place.
+ * `~value` (WebdriverIO's "accessibility id" strategy) works identically
+ * on both platforms, so only the "resource-id" (Android-only, always
+ * false on iOS since recorder.js never sets it there) and "text" cases
+ * need a platform branch.
  */
-function buildSelector(resolvedElement) {
+function buildSelector(resolvedElement, platform = "android") {
   if (!resolvedElement) return null;
   switch (resolvedElement.strategy) {
     case "resource-id":
       // Combine with text/content-desc when available — see
       // buildResourceIdSelector's note on why resource-id alone can be
       // ambiguous inside a list.
-      return buildResourceIdSelector(resolvedElement.value, resolvedElement.text || resolvedElement.contentDesc);
+      return buildResourceIdSelector(resolvedElement.value, resolvedElement.text || resolvedElement.contentDesc, platform);
     case "accessibility-id":
       return `~${resolvedElement.value}`;
     case "text":
-      return `android=new UiSelector().text("${resolvedElement.value}")`;
+      return platform === "ios"
+        ? `-ios predicate string:label == "${escapeForSelector(resolvedElement.value)}" OR value == "${escapeForSelector(resolvedElement.value)}"`
+        : `android=new UiSelector().text("${escapeForSelector(resolvedElement.value)}")`;
     case "xpath":
       return resolvedElement.value;
     default:
@@ -246,8 +294,11 @@ function toIdentifier(name) {
  * synthesis logic itself (selectors, structure) doesn't need to change.
  */
 function synthesizeCode(steps, meta) {
-  const { testName, assertions, parameters } = meta;
+  const { testName, assertions, parameters, platform = "android" } = meta;
   const fnName = toIdentifier(testName);
+  // XCUITest's tap extension is `mobile: tap`, not UiAutomator2's
+  // `mobile: clickGesture` — see engine/ios-stage0-session.js.
+  const tapExtension = platform === "ios" ? "mobile: tap" : "mobile: clickGesture";
 
   const paramsByStep = new Map(parameters.map((p) => [p.stepIndex, p]));
   const assertionsByStep = new Map();
@@ -274,7 +325,7 @@ function synthesizeCode(steps, meta) {
 
   steps.forEach((step, index) => {
     lines.push(`    // Step ${index + 1}`);
-    const selector = buildSelector(step.resolvedElement);
+    const selector = buildSelector(step.resolvedElement, platform);
     const param = paramsByStep.get(index);
 
     if (selector) {
@@ -288,7 +339,7 @@ function synthesizeCode(steps, meta) {
       const { x, y } = step.tapCoordinate || {};
       lines.push(`    // No stable locator resolved for this tap — falling back to a raw`);
       lines.push(`    // coordinate. Fragile: will break if this screen's layout changes.`);
-      lines.push(`    await driver.execute("mobile: clickGesture", { x: ${x}, y: ${y} });`);
+      lines.push(`    await driver.execute(${JSON.stringify(tapExtension)}, { x: ${x}, y: ${y} });`);
     }
 
     const stepAssertions = assertionsByStep.get(index) || [];
@@ -297,7 +348,7 @@ function synthesizeCode(steps, meta) {
       // buildResourceIdSelector's note: a shared list-row resource-id
       // (e.g. "android:id/text1") isn't unique on its own, so asserting
       // by resource-id alone can't tell "Custom View" from any other row.
-      const assertSelector = buildResourceIdSelector(assertion.resourceId, assertion.label);
+      const assertSelector = buildResourceIdSelector(assertion.resourceId, assertion.label, platform);
       lines.push(`    await expect($(${JSON.stringify(assertSelector)})).toBeDisplayed(); // "${assertion.label}" appeared`);
     }
 

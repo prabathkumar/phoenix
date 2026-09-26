@@ -23,9 +23,13 @@ const SCREENSHOT_POLL_INTERVAL_MS = 300;
  * @param {import('webdriverio').Browser} driver - the live Appium session
  * @param {import('../capture/recorder').SessionRecorder} recorder
  * @param {number} port
+ * @param {"android"|"ios"} [platform] - selects the tap-injection
+ *   extension: UiAutomator2's `mobile: clickGesture` (Android, default)
+ *   vs. XCUITest's `mobile: tap` (iOS) — see engine/ios-stage0-session.js.
  */
-function startLiveView(driver, recorder, port = 8090) {
+function startLiveView(driver, recorder, port = 8090, platform = "android") {
   const wss = new WebSocketServer({ port });
+  const tapExtension = platform === "ios" ? "mobile: tap" : "mobile: clickGesture";
 
   wss.on("connection", (socket) => {
     // Guards against a screenshot request that was already in flight when
@@ -56,11 +60,11 @@ function startLiveView(driver, recorder, port = 8090) {
 
         const partialStep = await recorder.beginStep(deviceCoordinate);
         // NOTE: WebdriverIO's touchAction()/touchPerform() sends the legacy
-        // JSONWP touch-actions endpoint, which Appium 3 + uiautomator2-driver
-        // 3.x no longer implement (404 unknown command — see Stage 0 fix in
-        // engine/stage0-session.js). Use the execute-script extension the
-        // current driver actually supports.
-        await driver.execute("mobile: clickGesture", deviceCoordinate);
+        // JSONWP touch-actions endpoint, which neither Appium 3 +
+        // uiautomator2-driver 3.x nor xcuitest-driver implement (404 unknown
+        // command — see Stage 0 fix in engine/stage0-session.js). Use each
+        // platform's own execute-script tap extension instead.
+        await driver.execute(tapExtension, deviceCoordinate);
         const step = await recorder.completeStep(partialStep);
 
         socket.send(JSON.stringify({ type: "step-recorded", stepIndex: recorder.steps.length - 1 }));

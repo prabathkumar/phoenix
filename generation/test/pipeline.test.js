@@ -177,6 +177,34 @@ test("buildResourceIdSelector combines resource-id and label, and falls back gra
   assert.strictEqual(buildResourceIdSelector(undefined, undefined), null);
 });
 
+test("buildSelector and buildResourceIdSelector emit iOS predicate strings, not Android UiSelectors, when platform is ios", () => {
+  const textSelector = buildSelector({ strategy: "text", value: "Log In" }, "ios");
+  assert.strictEqual(textSelector, '-ios predicate string:label == "Log In" OR value == "Log In"');
+
+  // iOS never sets resourceId (see capture/recorder.js) — resource-id
+  // strategy elements from an iOS session carry only a label/value, so
+  // this exercises the same iOS branch buildSelector's "text" case does.
+  const assertSelector = buildResourceIdSelector(undefined, "Welcome", "ios");
+  assert.strictEqual(assertSelector, '-ios predicate string:label == "Welcome" OR value == "Welcome"');
+
+  // accessibility-id (`~value`) is cross-platform and doesn't change.
+  assert.strictEqual(buildSelector({ strategy: "accessibility-id", value: "loginButton" }, "ios"), "~loginButton");
+});
+
+testAsync("generateScript emits mobile: tap (not mobile: clickGesture) and iOS-style selectors when platform is ios", async () => {
+  const iosSteps = [
+    {
+      pageSourceBefore: '<XCUIElementTypeApplication name="App"><XCUIElementTypeButton name="loginButton" label="Log In" x="10" y="10" width="50" height="20" /></XCUIElementTypeApplication>',
+      pageSourceAfter: '<XCUIElementTypeApplication name="App"><XCUIElementTypeStaticText label="Welcome" value="Welcome" x="10" y="10" width="50" height="20" /></XCUIElementTypeApplication>',
+      resolvedElement: { strategy: "accessibility-id", value: "loginButton" },
+      tapCoordinate: { x: 20, y: 15 },
+    },
+  ];
+  const result = await generateScript(iosSteps, { platform: "ios" });
+  assert.ok(result.scriptSource.includes("~loginButton"));
+  assert.ok(!result.scriptSource.includes("mobile: clickGesture"));
+});
+
 testAsync("generateScript produces a runnable script with parameters, selectors, and the inferred assertion", async () => {
   const result = await generateScript(STEPS);
   assert.strictEqual(result.testName, "login");

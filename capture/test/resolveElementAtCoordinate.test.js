@@ -8,7 +8,8 @@
  */
 
 const assert = require("assert");
-const { resolveElementAtCoordinate, parseBounds, buildXPath } = require("../recorder");
+const { resolveElementAtCoordinate, parseAndroidBounds, parseIOSBounds, buildXPath } = require("../recorder");
+const { DOMParser } = require("@xmldom/xmldom");
 
 // Trimmed version of the tree captured in the Stage 0 run against
 // io.appium.android.apis (ApiDemos-debug.apk).
@@ -64,9 +65,40 @@ test("falls back to raw coordinate when the tap lands outside every element's bo
   assert.strictEqual(result.value, "5000,5000");
 });
 
-test("parseBounds parses the UIAutomator2 bounds format", () => {
-  assert.deepStrictEqual(parseBounds("[0,275][1080,2337]"), { x1: 0, y1: 275, x2: 1080, y2: 2337 });
-  assert.strictEqual(parseBounds("not-bounds"), null);
+test("parseAndroidBounds parses the UIAutomator2 bounds format", () => {
+  assert.deepStrictEqual(parseAndroidBounds("[0,275][1080,2337]"), { x1: 0, y1: 275, x2: 1080, y2: 2337 });
+  assert.strictEqual(parseAndroidBounds("not-bounds"), null);
+});
+
+test("parseIOSBounds reads XCUITest's x/y/width/height attributes", () => {
+  const doc = new DOMParser({
+    errorHandler: { warning: () => {}, error: () => {}, fatalError: (e) => { throw e; } },
+  }).parseFromString('<XCUIElementTypeButton x="10" y="20" width="100" height="40" />', "text/xml");
+  assert.deepStrictEqual(parseIOSBounds(doc.documentElement), { x1: 10, y1: 20, x2: 110, y2: 60 });
+
+  const noBounds = new DOMParser({
+    errorHandler: { warning: () => {}, error: () => {}, fatalError: (e) => { throw e; } },
+  }).parseFromString('<XCUIElementTypeApplication name="MyApp" />', "text/xml");
+  assert.strictEqual(parseIOSBounds(noBounds.documentElement), null);
+});
+
+test("resolveElementAtCoordinate resolves an iOS/XCUITest-style tree via name/label and x/y/width/height", () => {
+  const IOS_TREE = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<AppiumAUT>
+  <XCUIElementTypeApplication name="MyApp" x="0" y="0" width="390" height="844">
+    <XCUIElementTypeButton name="loginButton" label="Log In" x="100" y="700" width="190" height="44" />
+    <XCUIElementTypeStaticText label="Welcome" value="Welcome" x="20" y="100" width="200" height="30" />
+  </XCUIElementTypeApplication>
+</AppiumAUT>`;
+
+  const button = resolveElementAtCoordinate({ x: 150, y: 720 }, IOS_TREE);
+  assert.strictEqual(button.strategy, "accessibility-id");
+  assert.strictEqual(button.value, "loginButton");
+  assert.strictEqual(button.text, "Log In");
+
+  const label = resolveElementAtCoordinate({ x: 30, y: 110 }, IOS_TREE);
+  assert.strictEqual(label.strategy, "text");
+  assert.strictEqual(label.value, "Welcome");
 });
 
 test("buildXPath returns a structural path usable as a last-resort locator", () => {

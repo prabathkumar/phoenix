@@ -11,6 +11,7 @@
   },
   "scripts": {
     "stage0": "node stage0-session.js",
-    "embedded-stage0": "node embedded-session-stage0.js"
+    "embedded-stage0": "node embedded-session-stage0.js",
+    "ios-stage0": "node ios-stage0-session.js"
   }
 }

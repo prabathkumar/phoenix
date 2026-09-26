@@ -23,7 +23,14 @@
 const fs = require("fs");
 const path = require("path");
 
-const { startSession } = require("./engine/session");
+// PHOENIX_PLATFORM selects which engine/ session starter and capability
+// set to use. "android" (default) uses engine/session.js (UiAutomator2,
+// the only platform proven end to end so far); "ios" uses
+// engine/ios-session.js (XCUITest, against a local Simulator — see
+// docs/SETUP.md's iOS section and engine/ios-stage0-session.js for how
+// this was verified in isolation before being wired in here).
+const PLATFORM = process.env.PHOENIX_PLATFORM === "ios" ? "ios" : "android";
+const { startSession } = require(PLATFORM === "ios" ? "./engine/ios-session" : "./engine/session");
 const { SessionRecorder } = require("./capture/recorder");
 const { startLiveView } = require("./live-view/server");
 const { generateScript } = require("./generation/pipeline");
@@ -32,12 +39,12 @@ const LIVE_VIEW_PORT = Number(process.env.PHOENIX_LIVE_VIEW_PORT) || 8090;
 const OUTPUT_DIR = path.join(__dirname, "generated");
 
 async function main() {
-  console.log("[run-session] starting Appium session...");
+  console.log(`[run-session] starting Appium session (platform: ${PLATFORM})...`);
   const driver = await startSession();
   console.log("[run-session] session started:", driver.sessionId);
 
   const recorder = new SessionRecorder(driver);
-  const wss = startLiveView(driver, recorder, LIVE_VIEW_PORT);
+  const wss = startLiveView(driver, recorder, LIVE_VIEW_PORT, PLATFORM);
 
   // startLiveView's own "stop" handling clears the screenshot poll timer
   // and calls recorder.finish(), but generation + file output is
@@ -78,7 +85,7 @@ async function onSessionFinished(steps, driver, wss, socket) {
   // Unset/0 (the default) uses v1's rule-based output only — a complete
   // result on its own, see pipeline.js's generateScript() doc comment.
   const useLlm = process.env.PHOENIX_USE_LLM === "1";
-  const result = await generateScript(steps, { useLlm });
+  const result = await generateScript(steps, { useLlm, platform: PLATFORM });
   console.log(`[run-session] generated script: "${result.testName}" (${result.assertions.length} assertion(s), ${result.parameters.length} parameter(s))`);
 
   fs.mkdirSync(OUTPUT_DIR, { recursive: true });

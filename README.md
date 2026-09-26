@@ -216,6 +216,14 @@ Next (open, not yet scheduled): decide whether `run-session.js`'s full pipeline 
 
 Next (product side): harden the live-view/generation edge cases further (typed-input flows, back-navigation, screens with no accessible labels).
 
+### iOS support (spawn path, unit-tested — real-Simulator run pending)
+
+`engine/ios-session.js` and `engine/ios-stage0-session.js` mirror the Android spawn path against `appium-xcuitest-driver` instead of `appium-uiautomator2-driver` — same architecture, different driver, different capability shape (`appium:app` is a `.app`/`.ipa`, not a `.apk`; `appium:deviceName`/`appium:platformVersion` select an installed Simulator rather than a fixed AVD name). `run-session.js` picks the platform via `PHOENIX_PLATFORM` (`android` default, or `ios`).
+
+The parts of the pipeline that assumed Android's UiAutomator2 tree shape now handle XCUITest's shape too: `capture/recorder.js`'s `resolveElementAtCoordinate` and `generation/pipeline.js`'s `extractLabels` read either attribute set (Android's `resource-id`/`content-desc`/`text`/single `bounds` string, or iOS's `name`/`label`/`value`/`x`,`y`,`width`,`height`), and `generation/pipeline.js`'s selector/tap-extension generation (`buildSelector`, `buildResourceIdSelector`, `synthesizeCode`) takes a `platform` option that switches between Android's `UiSelector`/`mobile: clickGesture` and iOS's `-ios predicate string:`/`mobile: tap`.
+
+**Verified so far:** unit tests against real XCUITest-shaped tree fixtures (`capture/test/`, `generation/test/`) — locator resolution, selector generation, and script synthesis all pass for iOS input. **Not yet verified:** an actual session against a real booted Simulator (`npm run ios-stage0` from `engine/`) — this needs to run once on hardware with Xcode/Simulators set up (see `docs/SETUP.md`'s iOS section) before iOS is considered proven the way Android is.
+
 ### Running Stage 0 locally
 
 ```bash

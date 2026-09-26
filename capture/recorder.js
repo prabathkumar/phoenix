@@ -69,14 +69,51 @@ class SessionRecorder {
 }
 
 /**
- * Parses a UIAutomator2/XCUITest style bounds string, e.g. "[0,275][1080,401]",
+ * Parses a UiAutomator2-style bounds string, e.g. "[0,275][1080,401]",
  * into a rectangle. Returns null if the string doesn't match.
  */
-function parseBounds(boundsAttr) {
+function parseAndroidBounds(boundsAttr) {
   if (!boundsAttr) return null;
   const match = /^\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]$/.exec(boundsAttr.trim());
   if (!match) return null;
   return { x1: Number(match[1]), y1: Number(match[2]), x2: Number(match[3]), y2: Number(match[4]) };
+}
+
+/**
+ * Reads XCUITest-style x/y/width/height attributes into the same
+ * rectangle shape parseAndroidBounds() produces. XCUITest's page source
+ * has no single "bounds" attribute — each element carries its own x, y,
+ * width, height instead. Returns null if the element has none of these
+ * (not every XCUITest element does, e.g. the root Application node).
+ */
+function parseIOSBounds(element) {
+  const get = (name) => {
+    const value = element.getAttribute && element.getAttribute(name);
+    return value !== null && value !== undefined && value !== "" ? Number(value) : null;
+  };
+  const x = get("x");
+  const y = get("y");
+  const width = get("width");
+  const height = get("height");
+  if (x === null || y === null || width === null || height === null) return null;
+  if ([x, y, width, height].some((n) => Number.isNaN(n))) return null;
+  return { x1: x, y1: y, x2: x + width, y2: y + height };
+}
+
+/**
+ * Tries both platforms' bounds representations against one element node
+ * — Android's single "bounds" attribute string first (cheap to check
+ * and rule out), then XCUITest's x/y/width/height attributes. This lets
+ * resolveElementAtCoordinate() work against either tree shape without
+ * needing to know up front which platform captured it (the session
+ * already knows, via platformName, but the recorder itself stays
+ * platform-agnostic — same as it always intentionally has been for
+ * Android's own UiAutomator2 tree).
+ */
+function parseBounds(element) {
+  const androidBounds = element.getAttribute && parseAndroidBounds(element.getAttribute("bounds"));
+  if (androidBounds) return androidBounds;
+  return parseIOSBounds(element);
 }
 
 function containsPoint(rect, x, y) {
@@ -139,9 +176,8 @@ function resolveElementAtCoordinate(coordinate, pageSourceXml) {
 
   const candidates = [];
   const walk = (node) => {
-    if (node.nodeType === 1) {
-      const boundsAttr = node.getAttribute && node.getAttribute("bounds");
-      const rect = parseBounds(boundsAttr);
+    if (node.nodeType === 1 && node.getAttribute) {
+      const rect = parseBounds(node);
       if (rect && containsPoint(rect, x, y)) {
         candidates.push({ node, rect });
       }
@@ -163,11 +199,17 @@ function resolveElementAtCoordinate(coordinate, pageSourceXml) {
     return value ? value : undefined;
   };
 
-  const resourceId = get("resource-id");
-  const contentDesc = get("content-desc");
-  const text = get("text");
+  // Android's UiAutomator2 tree uses resource-id/content-desc/text.
+  // XCUITest's tree has no resource-id equivalent — it uses "name" as
+  // its accessibility identifier (the WebDriver "accessibility id"
+  // strategy on iOS) and "label"/"value" for human-readable text. Try
+  // both attribute sets; whichever the platform actually populated wins,
+  // the other set is simply absent on that tree.
+  const resourceId = get("resource-id"); // Android only
+  const contentDesc = get("content-desc") || get("name"); // Android content-desc, or iOS accessibility id
+  const text = get("text") || get("label") || get("value"); // Android text, or iOS label/value
   const className = element.tagName;
-  const bounds = `[${rect.x1},${rect.y1}][${rect.x2},${rect.y2}]`;
+  const bounds = rect.x1 !== undefined ? `[${rect.x1},${rect.y1}][${rect.x2},${rect.y2}]` : undefined;
   const xpath = buildXPath(element);
 
   /** @type {ResolvedElement} */
@@ -179,4 +221,11 @@ function resolveElementAtCoordinate(coordinate, pageSourceXml) {
   return { ...base, strategy: "xpath", value: xpath };
 }
 
-module.exports = { SessionRecorder, resolveElementAtCoordinate, parseBounds, buildXPath };
+module.exports = {
+  SessionRecorder,
+  resolveElementAtCoordinate,
+  parseBounds,
+  parseAndroidBounds,
+  parseIOSBounds,
+  buildXPath,
+};

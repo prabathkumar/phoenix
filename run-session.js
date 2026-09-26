@@ -52,19 +52,25 @@ async function main() {
       // calls recorder.finish()) before we read recorder.steps.
       setImmediate(async () => {
         try {
-          await onSessionFinished(recorder.steps, driver, wss);
+          await onSessionFinished(recorder.steps, driver, wss, socket);
         } catch (err) {
           console.error("[run-session] failed to finish session:", err);
+          try {
+            socket.send(JSON.stringify({ type: "generation-failed", message: err.message }));
+          } catch (_sendErr) {
+            // socket may already be gone — nothing more useful to do
+          }
         }
       });
     });
   });
 
   console.log(`[run-session] waiting for a tester to connect and record on ws://localhost:${LIVE_VIEW_PORT}`);
-  console.log("[run-session] (run `node live-view/test-client.js` in another terminal to simulate one)");
+  console.log(`[run-session] open frontend/index.html (served via frontend/server.js) to record as a real tester would,`);
+  console.log("[run-session] or run `node live-view/test-client.js` in another terminal to simulate one.");
 }
 
-async function onSessionFinished(steps, driver, wss) {
+async function onSessionFinished(steps, driver, wss, socket) {
   console.log(`[run-session] session finished: ${steps.length} step(s) recorded`);
 
   const result = await generateScript(steps);
@@ -74,6 +80,17 @@ async function onSessionFinished(steps, driver, wss) {
   const outputPath = path.join(OUTPUT_DIR, `${result.testName}.test.js`);
   fs.writeFileSync(outputPath, result.scriptSource, "utf8");
   console.log("[run-session] wrote", outputPath);
+
+  // Send the result back to whoever was recording (the frontend, or
+  // test-client.js) before tearing down, so it can be shown/downloaded
+  // without reading the filesystem directly.
+  socket.send(JSON.stringify({
+    type: "script-generated",
+    testName: result.testName,
+    scriptSource: result.scriptSource,
+    assertionCount: result.assertions.length,
+    parameterCount: result.parameters.length,
+  }));
 
   await driver.deleteSession();
   wss.close();

@@ -140,7 +140,9 @@ describe("login", () => {
 
 The LLM call comes in as a v2 refinement layered on top of this — better flow names, filtering incidental assertions (a clock ticking over) from meaningful ones, smarter parameter naming — without changing the pipeline's shape or output contract.
 
-**End-to-end wiring complete.** `run-session.js` at the repo root wires all four pieces into one live recording session: starts a real Appium session (`engine/session.js`), starts `live-view`'s WebSocket server against it with a `SessionRecorder` attached, and on `"stop"` hands the recorded steps to `generation/pipeline.js` and writes the resulting script to `generated/<test-name>.test.js`. Verified against a stub driver (real WebSocket messages through the real `live-view` → `capture` → `generation` path, no device needed to prove the wiring itself); next real run should be against the actual emulator.
+**End-to-end wiring complete, proven on a real device with a real multi-step flow.** `run-session.js` at the repo root wires all four pieces into one live recording session: starts a real Appium session (`engine/session.js`), starts `live-view`'s WebSocket server against it with a `SessionRecorder` attached, and on `"stop"` hands the recorded steps to `generation/pipeline.js`, writes the resulting script to `generated/<test-name>.test.js`, and sends it back over the socket as a `script-generated` message. A real run against ApiDemos (home screen → "Views" submenu → "Animation" demo screen, 2 real taps) surfaced and fixed two real bugs: list-row selectors needing `resourceId` + `text` combined to disambiguate (shared row-template ids), and assertion diffing needing to key on `(resourceId, text, bounds)` rather than text alone (two different elements coincidentally sharing a label across screens).
+
+**Real front-end complete.** `frontend/index.html` (served by `frontend/server.js`, no build step, vanilla JS) is the actual tester-facing recording UI — replaces `live-view/test-client.js`'s simulated tester with a real live device mirror: it renders each polled screenshot, lets the tester click directly on the image to tap (converting the click position to a device coordinate ratio automatically), has a text field for typed input, a live list of recorded steps, a "Stop & Generate Script" button, and displays the generated script inline with a copy button once the session finishes.
 
 ### Running the full loop locally
 
@@ -151,13 +153,19 @@ With the emulator + Appium server already running (see Stage 0 instructions abov
 export PHOENIX_STAGE0_APP_PATH=~/Downloads/apidemos.apk
 node run-session.js
 
-# terminal 5 — simulates a tester's browser recording a flow
+# terminal 5 — serves the real recording UI
+node frontend/server.js
+```
+
+Then open **http://localhost:8091/** in a browser: you'll see the live device mirror, and can tap directly on it to record a real flow, type into fields, and stop to see the generated script.
+
+To exercise the loop without a browser (e.g. in CI, or to test a specific tap sequence programmatically), `live-view/test-client.js` still works the same way — a scripted stand-in for a tester, configurable via `PHOENIX_TAP_SEQUENCE`:
+
+```bash
 node live-view/test-client.js
 ```
 
-`test-client.js` stands in for the not-yet-built TestOps front-end: it connects to the live-view socket, taps a known point on screen, and stops the session. Once it finishes, check `generated/` for the script Phoenix produced from that real device session.
-
-Next: build the real TestOps-side client (the actual "live device mirror the tester taps on" UI, replacing `test-client.js`), then start on the actual Appium fork work in `engine/` once a concrete reason to embed rather than spawn Appium shows up.
+Next: harden the live-view/generation edge cases further (typed-input flows, back-navigation, screens with no accessible labels), or start the actual Appium fork work in `engine/` once a concrete reason to embed rather than spawn Appium shows up.
 
 ### Running Stage 0 locally
 

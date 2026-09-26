@@ -81,8 +81,18 @@ socket.on("message", async (raw) => {
   }
 
   if (message.type === "session-finished") {
-    console.log(`[test-client] session finished: ${message.stepCount} step(s). Check generated/ for the script.`);
+    console.log(`[test-client] session finished: ${message.stepCount} step(s). Waiting for the generated script...`);
+  }
+
+  if (message.type === "script-generated") {
+    console.log(`[test-client] generated "${message.testName}" (${message.assertionCount} assertion(s), ${message.parameterCount} parameter(s)). Also written to generated/.`);
     socket.close();
+  }
+
+  if (message.type === "generation-failed") {
+    console.error("[test-client] generation failed:", message.message);
+    socket.close();
+    process.exit(1);
   }
 });
 

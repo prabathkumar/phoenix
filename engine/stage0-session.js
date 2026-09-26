@@ -40,7 +40,13 @@ async function stage0() {
 
   // Naive tap at a fixed point, purely to prove the command round-trips.
   // Real element resolution belongs in capture/ once this milestone passes.
-  await driver.touchAction({ action: "tap", x: 200, y: 400 });
+  //
+  // NOTE: WebdriverIO's touchAction()/touchPerform() sends the legacy
+  // JSONWP touch-actions endpoint, which Appium 3 + uiautomator2-driver 3.x
+  // no longer implement (404 unknown command). The current UiAutomator2
+  // driver exposes taps via the `mobile: clickGesture` execute-script
+  // extension instead, so Phoenix uses that going forward.
+  await driver.execute("mobile: clickGesture", { x: 200, y: 400 });
   console.log("[stage0] tap injected");
 
   await driver.deleteSession();

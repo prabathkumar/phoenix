@@ -199,7 +199,7 @@ Two architecturally different ways to talk to the driver now coexist in `engine/
 | Process model | Separate `appium` CLI process, talked to over HTTP | Same Node process, direct method calls |
 | Driver install | `appium driver install uiautomator2` (CLI-managed) | `npm install` in `engine/` (normal npm dependency) |
 | `appium`/`appium-uiautomator2-driver` in `engine/package.json` | Must **not** be listed (CLI manages its own, causes ERESOLVE if pinned here too) | **Must** be listed (no CLI involved, this is how they get installed) |
-| What's proven | Real device, full multi-step flow, real front-end | Structurally correct (real session ID assigned; failed only on missing `ANDROID_HOME` in a sandbox with no Android SDK at all) — **not yet run against a real emulator** |
+| What's proven | Real device, full multi-step flow, real front-end | **Confirmed on real hardware** — full milestone (session start → screenshot → accessibility tree → tap → teardown) run against a real emulator (ApiDemos, `emulator-5554`), no `appium` server process involved |
 
 Full vendoring/forking of the driver's own source was scoped and deliberately not done: `appium-uiautomator2-driver`'s exports are entangled with the `appium` package's own subpath exports rather than the more decoupled `@appium/base-driver`, so a real fork would mean also forking `appium-android-driver` and `@appium/base-driver`'s session/capability machinery — a multi-week effort with no upstream precedent for doing it this way, for no clear payoff yet. Embedding gets the actual goal (no separate process, no extra HTTP hop) without that cost; revisit vendoring only if a concrete need shows up that embedding can't satisfy (e.g. a protocol extension the driver itself doesn't expose).
 
@@ -210,7 +210,9 @@ export PHOENIX_STAGE0_APP_PATH=~/Downloads/apidemos.apk
 npm run embedded-stage0   # needs the emulator running — no appium server needed
 ```
 
-Next: run `embedded-session-stage0.js` against the real emulator to confirm it holds up there too (only sandbox-tested so far), then decide whether `run-session.js`'s full pipeline should migrate to the embedded path.
+**Verified against a real emulator** — `npm run embedded-stage0` completed all four milestone steps end to end with no `appium` server running: session created (`AndroidUiautomator2Driver` in-process, session id assigned directly), screenshot captured (72,552 bytes base64), accessibility tree captured (13,600 chars), tap injected via `mobileClickGesture`, and teardown ran cleanly (UiAutomator2 server instrumentation exited with code 0, port forward removed, hidden-api policy restored). The Appium fork work (embed v1) is closed.
+
+Next (open, not yet scheduled): decide whether `run-session.js`'s full pipeline should migrate from the spawn path to the embedded path — not required now since both are proven, but embedding removes a process and an HTTP hop, which matters more once this needs to scale to many concurrent sessions.
 
 Next (product side): harden the live-view/generation edge cases further (typed-input flows, back-navigation, screens with no accessible labels).
 

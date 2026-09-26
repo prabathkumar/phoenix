@@ -3,9 +3,8 @@
   "version": "0.0.1",
   "private": true,
   "description": "Phoenix engine — session and driver layer. Starts as a thin wrapper around Appium's core + uiautomator2/xcuitest drivers; the fork happens here once Stage 0's single-session milestone is proven.",
+  "comment_appium": "Appium itself and its drivers are installed and managed via the `appium` CLI (npm i -g appium; appium driver install uiautomator2), not as project dependencies. Mixing them here causes ERESOLVE conflicts between this project's pinned appium version and the driver's peer requirement.",
   "dependencies": {
-    "appium": "^2.0.0",
-    "appium-uiautomator2-driver": "^3.0.0",
     "webdriverio": "^8.0.0"
   },
   "scripts": {

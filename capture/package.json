@@ -1,0 +1,12 @@
+{
+  "name": "@phoenix/capture",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Phoenix capture layer — resolves taps against the accessibility tree and records session steps.",
+  "dependencies": {
+    "@xmldom/xmldom": "^0.8.10"
+  },
+  "scripts": {
+    "test": "node test/resolveElementAtCoordinate.test.js"
+  }
+}

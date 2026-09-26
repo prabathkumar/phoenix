@@ -1,0 +1,12 @@
+{
+  "name": "@phoenix/generation",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Phoenix generation pipeline — turns a captured session into a named, asserted, parameterized script.",
+  "dependencies": {
+    "@xmldom/xmldom": "^0.8.10"
+  },
+  "scripts": {
+    "test": "node test/pipeline.test.js"
+  }
+}

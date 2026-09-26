@@ -62,29 +62,83 @@ whatever network/VPN/firewall sits between them.
 ## 3. Configure Phoenix
 
 ```bash
+cd /path/to/phoenix    # the repo root — must contain run-session.js directly
 cp .env.example .env
 ```
 
-At minimum, set:
+**`cp` only copies the template — it does not fill anything in.** Edit
+`.env` and replace every placeholder value before going further. At
+minimum:
 
 - `PHOENIX_STAGE0_APP_PATH` — path to the `.apk`, **as seen by the
   Appium server's host**, not by wherever Phoenix's Node services run
-  (Appium installs and launches it, not us)
+  (Appium installs and launches it, not us). Still says
+  `/absolute/path/to/your-app.apk`? It won't work — Appium will fail
+  with "does not exist or is not accessible".
 - `PHOENIX_APPIUM_HOST` / `PHOENIX_APPIUM_PORT` — where step 2's
   server is listening, from the Node services' point of view (e.g. the
   device host's LAN IP if they're on separate machines; `127.0.0.1` if
   co-located)
 
+You can edit `.env` in any text editor, or from the terminal:
+
+```bash
+sed -i '' 's|PHOENIX_STAGE0_APP_PATH=/absolute/path/to/your-app.apk|PHOENIX_STAGE0_APP_PATH=/real/path/to/app.apk|' .env
+```
+(macOS/BSD `sed` needs the empty `-i ''`; on Linux use `sed -i` with no argument after it.)
+
 See `.env.example` for every variable and what reads it.
 
 Phoenix's scripts don't auto-load `.env` — export it into your shell or
-process manager first:
+process manager first, **from the same directory as `.env`**:
 
 ```bash
 export $(grep -v '^#' .env | xargs)
 ```
 
-## 4. Run the Node services
+Sanity-check it actually loaded your real values, not leftover
+placeholders or a stale shell export:
+
+```bash
+echo $PHOENIX_STAGE0_APP_PATH   # should print YOUR apk path, not a placeholder
+```
+
+## 4. (Optional) LLM refinement layer — Ollama
+
+Skip this section entirely if you're not using it — Phoenix's rule-based
+generation (step 5 below) works standalone with `PHOENIX_USE_LLM` unset
+or `0`.
+
+To turn it on:
+
+1. Install [Ollama](https://ollama.com) on whichever host runs
+   `run-session.js`, and pull a model:
+   ```bash
+   ollama pull llama3
+   ```
+2. Confirm it's serving (Ollama often runs as a background service
+   already — don't assume you need to start it manually):
+   ```bash
+   curl http://localhost:11434/api/tags   # should list your pulled model(s)
+   ```
+   If that fails with a connection error, start it: `ollama serve`. If
+   instead you get "address already in use", it's already running —
+   proceed.
+3. In `.env`, set:
+   ```
+   PHOENIX_USE_LLM=1
+   PHOENIX_OLLAMA_HOST=http://localhost:11434
+   PHOENIX_OLLAMA_MODEL=llama3
+   ```
+   Re-run `export $(grep -v '^#' .env | xargs)` after editing.
+
+Any failure here (Ollama not running, wrong host/model, a timeout) is
+caught internally and Phoenix silently falls back to the rule-based
+result — see `generation/llm.js`. Turning this on can never break a
+recording session, only change how the generated script is named and
+which assertions it keeps.
+
+## 5. Run the Node services
 
 **Option A — directly:**
 
@@ -95,7 +149,25 @@ cd generation && npm install && cd ..
 cd live-view && npm install && cd ..
 
 node run-session.js        # starts the session + live-view + recorder + generation pipeline
-node frontend/server.js    # separate terminal, if not using the public GitHub Pages URL
+```
+
+Then, **in a second terminal, from the same repo root**:
+
+```bash
+node frontend/server.js    # only if not using the public GitHub Pages URL
+```
+
+If either command fails with `Cannot find module '.../run-session.js'`
+or `.../frontend/server.js`, you're in the wrong directory — both must
+be run from the repo root (`run-session.js` and the `frontend/` folder
+are direct children of it, not of `engine/`).
+
+If `frontend/server.js` fails with `EADDRINUSE: address already in use
+:::8091`, a previous instance is still running on that port. Find and
+either reuse or kill it:
+```bash
+lsof -i :8091      # last column is the PID
+kill <PID>         # then re-run node frontend/server.js
 ```
 
 **Option B — via Docker** (packages `run-session.js`'s dependencies
@@ -109,7 +181,7 @@ docker run --rm -p 8090:8090 --env-file .env phoenix
 docker run --rm -p 8091:8091 --env-file .env phoenix node frontend/server.js
 ```
 
-## 5. Verify
+## 6. Verify
 
 - `run-session.js` should log `[run-session] session started: <id>` —
   if it hangs or errors here, the problem is almost always steps 1-3

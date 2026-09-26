@@ -1,0 +1,13 @@
+{
+  "name": "@phoenix/engine",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Phoenix engine — session and driver layer. Starts as a thin wrapper around Appium's core + uiautomator2/xcuitest drivers; the fork happens here once Stage 0's single-session milestone is proven.",
+  "dependencies": {
+    "appium": "^2.0.0",
+    "appium-uiautomator2-driver": "^3.0.0"
+  },
+  "scripts": {
+    "stage0": "node stage0-session.js"
+  }
+}

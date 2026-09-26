@@ -1,0 +1,12 @@
+{
+  "name": "@phoenix/live-view",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Embeddable component: streams the device screen into TestOps and forwards tester taps back to the session. Replaces the desktop Appium Inspector.",
+  "dependencies": {
+    "ws": "^8.0.0"
+  },
+  "scripts": {
+    "dev": "node server.js"
+  }
+}

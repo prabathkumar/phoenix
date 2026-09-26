@@ -1,0 +1,37 @@
+name: Test
+
+# Runs the capture/ and generation/ test suites on every push and PR —
+# the same suites that caught both real bugs found from live device runs
+# (ambiguous list-row selectors, text-only assertion diffing). Catching
+# a regression here is a lot cheaper than catching it on a laptop
+# mid-recording against a real emulator.
+#
+# engine/ and live-view/ aren't included: they need a real Appium
+# session/device to exercise meaningfully and don't have a test suite
+# yet (see README's "Actual Appium fork work" open item).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package: [capture, generation]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install ${{ matrix.package }} dependencies
+        working-directory: ${{ matrix.package }}
+        run: npm install
+
+      - name: Run ${{ matrix.package }} tests
+        working-directory: ${{ matrix.package }}
+        run: npm test

@@ -1,5 +1,8 @@
 # Phoenix
 
+[![Test](https://github.com/prabathkumar/phoenix/actions/workflows/test.yml/badge.svg)](https://github.com/prabathkumar/phoenix/actions/workflows/test.yml)
+[![Deploy frontend](https://github.com/prabathkumar/phoenix/actions/workflows/deploy-frontend.yml/badge.svg)](https://github.com/prabathkumar/phoenix/actions/workflows/deploy-frontend.yml)
+
 Proprietary mobile test-recording and generation engine for TestOps.
 
 Testers record a flow once, inside TestOps — no Appium Inspector, no local install, no separate device-farm dashboard. Phoenix captures the session and generates a working automated script.
@@ -7,6 +10,11 @@ Testers record a flow once, inside TestOps — no Appium Inspector, no local ins
 Built on a fork of Appium's core engine (Apache 2.0), extended with an AI-native layer Appium doesn't have.
 
 See [`docs/PHOENIX_SPEC.md`](docs/PHOENIX_SPEC.md) for the full architecture and roadmap.
+
+**Live: [prabathkumar.github.io/phoenix](https://prabathkumar.github.io/phoenix/)** — the actual recording UI, connecting to a Phoenix backend running against a real device.
+
+![Phoenix recording a real multi-step flow against a live emulator, showing the device mirror, recorded steps, and generated script](docs/screenshots/frontend-live-recording.png)
+*A real session recorded through the public frontend against ApiDemos on a local emulator — 11 steps, 8 assertions, one typed parameter, script generated live.*
 
 ## Repo layout
 
@@ -96,6 +104,8 @@ How Phoenix (target state, not yet fully built — see Status below) compares to
 This is the case *for* building Phoenix, not a claim that today's repo already beats these tools — see Status for what's actually working right now.
 
 ## Status
+
+**v1 milestone complete: a real tester can record a real flow on a real device through a public URL and get back a real, runnable script.** Every piece below has been individually built, tested, and proven end to end on real hardware — the screenshot above is an actual recorded session, not a mockup. CI (`test.yml`) runs the `capture/` and `generation/` suites on every push; the frontend (`deploy-frontend.yml`) auto-deploys to GitHub Pages on every push that touches it.
 
 **Stage 0 complete.** `engine/stage0-session.js` runs end to end against a local Android emulator via Appium 3 + `appium-uiautomator2-driver`: session start → screenshot → accessibility tree → tap → clean teardown, with no project-level Appium version pin (Appium and its drivers are installed globally via the `appium` CLI, not as `engine/package.json` dependencies).
 

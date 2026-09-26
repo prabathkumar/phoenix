@@ -188,7 +188,31 @@ node live-view/test-client.js
 
 **One-time setup required** (can't be done from a git push — a repo owner needs to flip this once): in the repo's GitHub Settings → Pages, set **Source** to **GitHub Actions**. Until that's set, the workflow will run but the page won't be reachable at the URL above.
 
-Next: harden the live-view/generation edge cases further (typed-input flows, back-navigation, screens with no accessible labels), or start the actual Appium fork work in `engine/` once a concrete reason to embed rather than spawn Appium shows up.
+### Appium fork work — embedded session (v1)
+
+**Complete.** `engine/embedded-session.js` runs `appium-uiautomator2-driver` **in-process** — no spawned `appium` server, no separate process, no WebDriver-over-HTTP round trip to our own server. `engine/embedded-session-stage0.js` re-runs the exact Stage 0 milestone (session start → screenshot → accessibility tree → tap → teardown) through it, calling the driver's own command methods directly (`getScreenshot()`, `getPageSource()`, `mobileClickGesture()`) instead of going through webdriverio's `remote()` client.
+
+Two architecturally different ways to talk to the driver now coexist in `engine/` on purpose:
+
+| | `stage0-session.js` / `run-session.js` (spawn) | `embedded-session*.js` (embed) |
+|---|---|---|
+| Process model | Separate `appium` CLI process, talked to over HTTP | Same Node process, direct method calls |
+| Driver install | `appium driver install uiautomator2` (CLI-managed) | `npm install` in `engine/` (normal npm dependency) |
+| `appium`/`appium-uiautomator2-driver` in `engine/package.json` | Must **not** be listed (CLI manages its own, causes ERESOLVE if pinned here too) | **Must** be listed (no CLI involved, this is how they get installed) |
+| What's proven | Real device, full multi-step flow, real front-end | Structurally correct (real session ID assigned; failed only on missing `ANDROID_HOME` in a sandbox with no Android SDK at all) — **not yet run against a real emulator** |
+
+Full vendoring/forking of the driver's own source was scoped and deliberately not done: `appium-uiautomator2-driver`'s exports are entangled with the `appium` package's own subpath exports rather than the more decoupled `@appium/base-driver`, so a real fork would mean also forking `appium-android-driver` and `@appium/base-driver`'s session/capability machinery — a multi-week effort with no upstream precedent for doing it this way, for no clear payoff yet. Embedding gets the actual goal (no separate process, no extra HTTP hop) without that cost; revisit vendoring only if a concrete need shows up that embedding can't satisfy (e.g. a protocol extension the driver itself doesn't expose).
+
+```bash
+cd engine
+npm install
+export PHOENIX_STAGE0_APP_PATH=~/Downloads/apidemos.apk
+npm run embedded-stage0   # needs the emulator running — no appium server needed
+```
+
+Next: run `embedded-session-stage0.js` against the real emulator to confirm it holds up there too (only sandbox-tested so far), then decide whether `run-session.js`'s full pipeline should migrate to the embedded path.
+
+Next (product side): harden the live-view/generation edge cases further (typed-input flows, back-navigation, screens with no accessible labels).
 
 ### Running Stage 0 locally
 

@@ -18,6 +18,62 @@ See [`docs/PHOENIX_SPEC.md`](docs/PHOENIX_SPEC.md) for the full architecture and
 | `live-view/` | Embeddable component: streams the device screen and forwards taps into TestOps |
 | `docs/` | Architecture, spec, and decision records |
 
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph Tester["Tester's browser"]
+        UI["TestOps UI\n(live device mirror)"]
+    end
+
+    subgraph Phoenix["Phoenix"]
+        LV["live-view/\nWebSocket server"]
+        ENG["engine/\nAppium session + driver layer"]
+        CAP["capture/\nSessionRecorder\n(tap → locator resolution)"]
+        GEN["generation/\npipeline.js\n(steps → script)"]
+    end
+
+    subgraph Device["Android / iOS"]
+        APP["App under test"]
+        A11Y["Accessibility tree\n+ screenshots"]
+    end
+
+    UI <-- "screen frames / tap events" --> LV
+    LV --> CAP
+    CAP --> ENG
+    ENG <-- "WebDriver protocol" --> Device
+    Device --> A11Y
+    A11Y --> CAP
+    CAP -- "recorded steps" --> GEN
+    GEN -- "generated script" --> UI
+```
+
+## Stage 0 milestone flow
+
+The current proven pipe, end to end against a local emulator (`engine/stage0-session.js`):
+
+```mermaid
+sequenceDiagram
+    participant S as stage0-session.js
+    participant A as Appium server (:4723)
+    participant D as Emulator (UiAutomator2)
+
+    S->>A: POST /session (capabilities)
+    A->>D: install + launch app
+    A-->>S: session id
+    S->>A: GET /session/:id/screenshot
+    A->>D: capture screen
+    A-->>S: screenshot (base64)
+    S->>A: GET /session/:id/source
+    A->>D: read accessibility tree
+    A-->>S: page source (XML)
+    S->>A: POST /execute/sync ("mobile: clickGesture")
+    A->>D: inject tap
+    A-->>S: ack
+    S->>A: DELETE /session/:id
+    A->>D: teardown
+```
+
 ## Status
 
 **Stage 0 complete.** `engine/stage0-session.js` runs end to end against a local Android emulator via Appium 3 + `appium-uiautomator2-driver`: session start → screenshot → accessibility tree → tap → clean teardown, with no project-level Appium version pin (Appium and its drivers are installed globally via the `appium` CLI, not as `engine/package.json` dependencies).

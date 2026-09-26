@@ -49,14 +49,29 @@ function extractLabels(pageSourceXml) {
       const text = node.getAttribute("text");
       const contentDesc = node.getAttribute("content-desc");
       const resourceId = node.getAttribute("resource-id");
+      const bounds = node.getAttribute("bounds");
       const label = (text && text.trim()) || (contentDesc && contentDesc.trim());
-      if (label) labels.push({ label, resourceId: resourceId || undefined });
+      if (label) labels.push({ label, resourceId: resourceId || undefined, bounds: bounds || undefined });
     }
     const children = node.childNodes || [];
     for (let i = 0; i < children.length; i += 1) walk(children[i]);
   };
   walk(doc.documentElement);
   return labels;
+}
+
+/**
+ * Composite key identifying a specific labeled element, not just its
+ * text. Text alone collides whenever two different screens happen to
+ * use the same word for different things — e.g. ApiDemos' home screen
+ * has an "Animation" category, and its Views submenu separately has an
+ * "Animation" row; diffing by text alone would see "Animation" in both
+ * before and after and wrongly conclude nothing new appeared. Position
+ * (bounds) is what actually distinguishes them, since it's a different
+ * element occupying a different part of the screen.
+ */
+function labelKey({ label, resourceId, bounds }) {
+  return `${resourceId || ""}|${label}|${bounds || ""}`;
 }
 
 /**
@@ -88,6 +103,11 @@ function inferTestName(steps) {
  * proposes one assertion per newly-appeared label — the flow's own
  * evidence that the tap did something, without guessing at intent.
  *
+ * Diffs by (resourceId, text, bounds) — see labelKey()'s note — not by
+ * text alone, so a label that coincidentally repeats across two
+ * different screens (a category name that's also a submenu row) is
+ * still correctly recognized as a different, newly-appeared element.
+ *
  * TODO(stage 2 follow-up): screenshot-diff fallback for steps where the
  * accessibility tree doesn't change but the screen visibly did (custom
  * canvas UI); LLM call to filter noisy/incidental assertions (a clock
@@ -97,17 +117,19 @@ function inferAssertions(steps) {
   const assertions = [];
 
   steps.forEach((step, index) => {
-    const before = new Set(extractLabels(step.pageSourceBefore).map((l) => l.label));
+    const before = new Set(extractLabels(step.pageSourceBefore).map(labelKey));
     const after = extractLabels(step.pageSourceAfter);
-    const appeared = after.filter((l) => !before.has(l.label));
+    const appeared = after.filter((l) => !before.has(labelKey(l)));
 
-    // De-duplicate within the step (a label can appear more than once,
-    // e.g. a list row's text and its content-desc matching).
+    // De-duplicate within the step by the same composite key (a label
+    // can legitimately appear more than once at the same position, e.g.
+    // a list row's text and its content-desc matching).
     const seen = new Set();
-    for (const { label, resourceId } of appeared) {
-      if (seen.has(label)) continue;
-      seen.add(label);
-      assertions.push({ stepIndex: index, label, resourceId });
+    for (const item of appeared) {
+      const key = labelKey(item);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      assertions.push({ stepIndex: index, label: item.label, resourceId: item.resourceId });
     }
   });
 
@@ -275,4 +297,5 @@ module.exports = {
   buildSelector,
   buildResourceIdSelector,
   extractLabels,
+  labelKey,
 };

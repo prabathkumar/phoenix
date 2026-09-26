@@ -98,6 +98,42 @@ test("inferAssertions proposes an assertion for the label that appears after the
   assert.strictEqual(assertions[0].resourceId, "com.phoenix.demo:id/welcome_text");
 });
 
+test("inferAssertions still flags a newly-appeared element whose text coincidentally repeats from the previous screen", () => {
+  // Regression test for a real bug found on a live device: ApiDemos'
+  // home screen has an "Animation" category, and its Views submenu
+  // separately has an unrelated "Animation" row at a different screen
+  // position. Diffing by text alone missed this — "Animation" existed
+  // in both before and after, so nothing looked new even though a real,
+  // different element had appeared. Diffing by (resourceId, text,
+  // bounds) fixes it.
+  const HOME_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy>
+  <android.widget.FrameLayout bounds="[0,0][1080,2400]">
+    <android.widget.TextView text="Animation" content-desc="Animation" resource-id="android:id/text1" bounds="[0,533][1080,659]" />
+    <android.widget.TextView text="Views" content-desc="Views" resource-id="android:id/text1" bounds="[0,1694][1080,1820]" />
+  </android.widget.FrameLayout>
+</hierarchy>`;
+
+  const VIEWS_SUBMENU = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy>
+  <android.widget.FrameLayout bounds="[0,0][1080,2400]">
+    <android.widget.TextView text="Animation" content-desc="Animation" resource-id="android:id/text1" bounds="[0,275][1080,401]" />
+    <android.widget.TextView text="Buttons" content-desc="Buttons" resource-id="android:id/text1" bounds="[0,404][1080,530]" />
+  </android.widget.FrameLayout>
+</hierarchy>`;
+
+  const step = {
+    tapCoordinate: { x: 540, y: 1757 },
+    resolvedElement: { strategy: "resource-id", value: "android:id/text1", resourceId: "android:id/text1", text: "Views" },
+    pageSourceBefore: HOME_SCREEN,
+    pageSourceAfter: VIEWS_SUBMENU,
+  };
+
+  const assertions = inferAssertions([step]);
+  const labels = assertions.map((a) => a.label).sort();
+  assert.deepStrictEqual(labels, ["Animation", "Buttons"]);
+});
+
 test("extractParameters names parameters from the field's resource-id, stripped of _input", () => {
   const parameters = extractParameters(STEPS);
   assert.strictEqual(parameters.length, 2);

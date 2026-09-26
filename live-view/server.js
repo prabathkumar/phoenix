@@ -57,6 +57,18 @@ function startLiveView(driver, recorder, port = 8090) {
         socket.send(JSON.stringify({ type: "step-recorded", stepIndex: recorder.steps.length - 1 }));
       }
 
+      if (message.type === "type") {
+        // Sends keystrokes to whatever element currently has focus —
+        // the field the previous "tap" message just tapped. Attached to
+        // the most recently recorded step so generation/pipeline.js's
+        // extractParameters() can lift it into named test data.
+        await driver.keys(message.value);
+        if (recorder.steps.length > 0) {
+          recorder.steps[recorder.steps.length - 1].typedValue = message.value;
+        }
+        socket.send(JSON.stringify({ type: "text-entered", stepIndex: recorder.steps.length - 1 }));
+      }
+
       if (message.type === "stop") {
         clearInterval(pollTimer);
         const steps = recorder.finish();

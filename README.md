@@ -140,7 +140,24 @@ describe("login", () => {
 
 The LLM call comes in as a v2 refinement layered on top of this — better flow names, filtering incidental assertions (a clock ticking over) from meaningful ones, smarter parameter naming — without changing the pipeline's shape or output contract.
 
-Next: wire `engine/`, `capture/`, `generation/`, and `live-view/` together into one live end-to-end session (record on the emulator through the live-view WebSocket path, not just against synthetic/replayed data), then start on the actual Appium fork work in `engine/`.
+**End-to-end wiring complete.** `run-session.js` at the repo root wires all four pieces into one live recording session: starts a real Appium session (`engine/session.js`), starts `live-view`'s WebSocket server against it with a `SessionRecorder` attached, and on `"stop"` hands the recorded steps to `generation/pipeline.js` and writes the resulting script to `generated/<test-name>.test.js`. Verified against a stub driver (real WebSocket messages through the real `live-view` → `capture` → `generation` path, no device needed to prove the wiring itself); next real run should be against the actual emulator.
+
+### Running the full loop locally
+
+With the emulator + Appium server already running (see Stage 0 instructions above):
+
+```bash
+# terminal 4 — starts the session, live-view server, and waits for a tester
+export PHOENIX_STAGE0_APP_PATH=~/Downloads/apidemos.apk
+node run-session.js
+
+# terminal 5 — simulates a tester's browser recording a flow
+node live-view/test-client.js
+```
+
+`test-client.js` stands in for the not-yet-built TestOps front-end: it connects to the live-view socket, taps a known point on screen, and stops the session. Once it finishes, check `generated/` for the script Phoenix produced from that real device session.
+
+Next: build the real TestOps-side client (the actual "live device mirror the tester taps on" UI, replacing `test-client.js`), then start on the actual Appium fork work in `engine/` once a concrete reason to embed rather than spawn Appium shows up.
 
 ### Running Stage 0 locally
 

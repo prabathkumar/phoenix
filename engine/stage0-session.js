@@ -13,22 +13,10 @@
  * doesn't need, and replace these raw calls with the fork's internals.
  */
 
-const { remote } = require("webdriverio");
-
-const STAGE0_CAPABILITIES = {
-  platformName: "Android",
-  "appium:automationName": "UiAutomator2",
-  "appium:deviceName": "emulator-5554", // local Android emulator, not BrowserStack
-  "appium:app": process.env.PHOENIX_STAGE0_APP_PATH, // path to a .apk on disk
-};
+const { startSession } = require("./session");
 
 async function stage0() {
-  const driver = await remote({
-    hostname: "127.0.0.1",
-    port: 4723,
-    path: "/",
-    capabilities: STAGE0_CAPABILITIES,
-  });
+  const driver = await startSession();
 
   console.log("[stage0] session started:", driver.sessionId);
 

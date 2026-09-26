@@ -264,8 +264,9 @@
 <script>
 (function () {
   const params = new URLSearchParams(location.search);
+  const host = params.get("host") || "localhost"; // override with ?host=... to point at a tunnel (e.g. ngrok) instead of your own machine
   const port = params.get("port") || "8090";
-  const wsUrl = "ws://localhost:" + port;
+  const wsUrl = "ws://" + host + ":" + port;
 
   const connDot = document.getElementById("conn-dot");
   const connLabel = document.getElementById("conn-label");

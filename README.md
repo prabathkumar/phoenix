@@ -165,6 +165,19 @@ To exercise the loop without a browser (e.g. in CI, or to test a specific tap se
 node live-view/test-client.js
 ```
 
+### Public frontend URL
+
+`frontend/index.html` is also deployed via GitHub Actions (`.github/workflows/deploy-frontend.yml`) to GitHub Pages on every push to `main` that touches `frontend/`, so it has a stable public URL instead of needing `node frontend/server.js` run locally every time:
+
+**https://prabathkumar.github.io/phoenix/**
+
+**This deploys the static page only — it still needs a Phoenix backend to talk to.** The page connects, in your own browser, to `run-session.js`'s live-view WebSocket. Two ways to use it:
+
+- **Backend on the same machine as your browser (the normal case):** just open the public URL — it defaults to `ws://localhost:8090`, and browsers treat `localhost` as a secure-context exception, so an `https://` page connecting to `ws://localhost` works with no extra setup. Start `run-session.js` locally as usual, then open the public URL instead of running `frontend/server.js`.
+- **Backend on a different machine:** tunnel `run-session.js`'s port (e.g. `ngrok http 8090`) and open the public URL with `?host=<tunnel-host>&port=<tunnel-port>`.
+
+**One-time setup required** (can't be done from a git push — a repo owner needs to flip this once): in the repo's GitHub Settings → Pages, set **Source** to **GitHub Actions**. Until that's set, the workflow will run but the page won't be reachable at the URL above.
+
 Next: harden the live-view/generation edge cases further (typed-input flows, back-navigation, screens with no accessible labels), or start the actual Appium fork work in `engine/` once a concrete reason to embed rather than spawn Appium shows up.
 
 ### Running Stage 0 locally

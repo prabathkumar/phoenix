@@ -1,0 +1,16 @@
+# Without this, `COPY engine/ ./engine/` etc. in the Dockerfile would copy
+# each subproject's HOST-MACHINE node_modules directly on top of the ones
+# the image just installed fresh with `npm install --prefix <dir> --omit=dev`
+# — shipping wrong-platform native binaries (e.g. macOS-built sharp/appium
+# bits into this Linux image) and pulling in devDependencies the image was
+# never supposed to have. Found while verifying the Docker build actually
+# works end to end, not just that the Dockerfile parses.
+**/node_modules
+
+.git
+.github
+.env
+*.log
+/generated
+/docs
+README.md

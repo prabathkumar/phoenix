@@ -71,14 +71,49 @@ function startLiveView(driver, recorder, port = 8090, platform = "android") {
       }
 
       if (message.type === "type") {
-        // Sends keystrokes to whatever element currently has focus —
-        // the field the previous "tap" message just tapped. Attached to
-        // the most recently recorded step so generation/pipeline.js's
+        // Sends keystrokes to whatever element currently has focus — the
+        // field the previous "tap" message just tapped. Attached to the
+        // most recently recorded step so generation/pipeline.js's
         // extractParameters() can lift it into named test data.
-        await driver.keys(message.value);
-        if (recorder.steps.length > 0) {
-          recorder.steps[recorder.steps.length - 1].typedValue = message.value;
+        //
+        // Two bugs fixed here (found while hardening capture edge cases):
+        //
+        // 1. Typing with no prior recorded step (recorder.steps.length ===
+        //    0) used to silently call driver.keys() and then drop the
+        //    value on the floor — nothing to attach it to, and the client
+        //    got back stepIndex: -1 with no explanation. There's no tap
+        //    coordinate to resolve a field from in this case, so instead
+        //    of guessing we reject the keystroke outright and tell the
+        //    tester why, rather than losing their input silently.
+        if (recorder.steps.length === 0) {
+          socket.send(JSON.stringify({
+            type: "type-error",
+            reason: "no-step-yet",
+            message: "Tap a field before typing into it — there's no recorded step to attach this text to yet.",
+          }));
+          return;
         }
+
+        const currentStep = recorder.steps[recorder.steps.length - 1];
+
+        // 2. frontend/index.html's submitType() sends the FULL current
+        //    value of the input box each time (not incremental
+        //    keystrokes — see submitType()). driver.keys() just appends
+        //    whatever it's given to the on-device field, so typing "foo"
+        //    then correcting to "foobar" used to leave "foofoobar" on the
+        //    device while step.typedValue recorded only the latest
+        //    "foobar" — a real mismatch between the generated script's
+        //    assumed value and what actually happened on hardware.
+        //    Clearing out the previously-sent value first (one backspace
+        //    per character) keeps the field's on-device state in sync
+        //    with what we're about to record.
+        if (currentStep.typedValue) {
+          const backspaces = Array(currentStep.typedValue.length).fill("");
+          await driver.keys(backspaces);
+        }
+
+        await driver.keys(message.value);
+        currentStep.typedValue = message.value;
         socket.send(JSON.stringify({ type: "text-entered", stepIndex: recorder.steps.length - 1 }));
       }
 

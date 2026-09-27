@@ -337,6 +337,15 @@
     if (message.type === "generation-failed") {
       setConnected(false, "Generation failed: " + message.message);
     }
+
+    if (message.type === "type-error") {
+      // Server rejected this keystroke (e.g. typed before any tap was
+      // recorded) — surface why instead of leaving the tester wondering
+      // where their text went. Deliberately doesn't clear typeInput.value
+      // or the connection status's "Live" state: the session is fine,
+      // this one action just didn't have a step to attach to yet.
+      setConnected(true, message.message || "Couldn't record that text entry.");
+    }
   });
 
   function renderFrame(base64) {

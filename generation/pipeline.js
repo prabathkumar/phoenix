@@ -21,6 +21,7 @@
  */
 
 const { DOMParser } = require("@xmldom/xmldom");
+const crypto = require("crypto");
 
 /**
  * @param {import('../capture/recorder').CapturedStep[]} steps
@@ -48,6 +49,11 @@ async function generateScript(steps, options = {}) {
   let testName = inferTestName(steps);
   let assertions = inferAssertions(steps);
   const parameters = extractParameters(steps);
+  // Computed from the pre-refinement assertions: this flags steps that
+  // had NO label-based assertion and NO accessible labels at all after
+  // the tap, which is a property of what the accessibility tree could
+  // see, not something an LLM refinement pass should be filtering.
+  const visualChangeFlags = inferVisualChangeFlags(steps, assertions);
 
   if (useLlm) {
     // Lazily required so that generation/ has no hard dependency on
@@ -59,9 +65,9 @@ async function generateScript(steps, options = {}) {
     ]);
   }
 
-  const scriptSource = synthesizeCode(steps, { testName, assertions, parameters, platform });
+  const scriptSource = synthesizeCode(steps, { testName, assertions, parameters, platform, visualChangeFlags });
 
-  return { scriptSource, testName, assertions, parameters };
+  return { scriptSource, testName, assertions, parameters, visualChangeFlags };
 }
 
 /**
@@ -142,41 +148,113 @@ function inferTestName(steps) {
 }
 
 /**
- * Diffs each step's pageSourceBefore against its pageSourceAfter and
- * proposes one assertion per newly-appeared label — the flow's own
- * evidence that the tap did something, without guessing at intent.
+ * Diffs each step's pageSourceAfter against everything the session has
+ * shown so far and proposes one assertion per label that is genuinely
+ * new to the whole session — the flow's own evidence that the tap did
+ * something, without guessing at intent.
  *
  * Diffs by (resourceId, text, bounds) — see labelKey()'s note — not by
  * text alone, so a label that coincidentally repeats across two
  * different screens (a category name that's also a submenu row) is
  * still correctly recognized as a different, newly-appeared element.
  *
+ * Tracks "seen" CUMULATIVELY across the whole session, not just against
+ * the immediately preceding step's before-state. This matters for back
+ * navigation: without it, tapping "back" to a screen shown earlier in
+ * the flow re-floods the result with an assertion for every label on
+ * that screen, mislabeled as "newly appeared" when it's really just
+ * reappearing — the same bug that would otherwise fire every time a
+ * flow revisits any screen it has already shown once. A label only
+ * counts as new evidence the first time the session ever displays it;
+ * seeing it again later (by going back, or by any other path returning
+ * to that screen) is expected, not noteworthy, and no longer asserted
+ * on a second time.
+ *
  * TODO(stage 2 follow-up): screenshot-diff fallback for steps where the
  * accessibility tree doesn't change but the screen visibly did (custom
- * canvas UI); LLM call to filter noisy/incidental assertions (a clock
- * widget ticking over) out of the meaningful ones.
+ * canvas UI) — see synthesizeCode()'s handling of label-less steps for
+ * the current partial mitigation; LLM call to filter noisy/incidental
+ * assertions (a clock widget ticking over) out of the meaningful ones.
  */
 function inferAssertions(steps) {
   const assertions = [];
+  if (steps.length === 0) return assertions;
+
+  // Seeded from the very first screen the session shows, so nothing
+  // visible before the flow even starts is later mistaken for "new".
+  const seen = new Set(extractLabels(steps[0].pageSourceBefore).map(labelKey));
 
   steps.forEach((step, index) => {
-    const before = new Set(extractLabels(step.pageSourceBefore).map(labelKey));
     const after = extractLabels(step.pageSourceAfter);
-    const appeared = after.filter((l) => !before.has(labelKey(l)));
+    const appeared = after.filter((l) => !seen.has(labelKey(l)));
 
     // De-duplicate within the step by the same composite key (a label
     // can legitimately appear more than once at the same position, e.g.
     // a list row's text and its content-desc matching).
-    const seen = new Set();
+    const dedup = new Set();
     for (const item of appeared) {
       const key = labelKey(item);
-      if (seen.has(key)) continue;
-      seen.add(key);
+      if (dedup.has(key)) continue;
+      dedup.add(key);
       assertions.push({ stepIndex: index, label: item.label, resourceId: item.resourceId });
     }
+
+    // Everything visible after this step — not just what was flagged as
+    // newly appeared — is now "seen", so a later step returning to this
+    // same screen (via back navigation or any other path) won't re-flag
+    // any of it either.
+    for (const item of after) seen.add(labelKey(item));
   });
 
   return assertions;
+}
+
+/**
+ * Cheap fingerprint of a screenshot, used only to answer "did the screen
+ * visibly change at all" — not for any pixel-level comparison. Good
+ * enough to tell two different base64 screenshots apart without pulling
+ * in an image-diffing dependency.
+ */
+function screenshotHash(base64) {
+  if (!base64) return null;
+  return crypto.createHash("sha1").update(base64).digest("hex");
+}
+
+/**
+ * Screens with no usable accessibility attributes at all — raw-drawn
+ * Canvas/OpenGL content, some games, custom chart widgets — produce an
+ * empty extractLabels() result, so inferAssertions() has nothing to diff
+ * and silently proposes zero assertions for that step. That's easy to
+ * mistake for "nothing happened", when really the step just wasn't
+ * observable through the accessibility tree.
+ *
+ * This is the partial mitigation referenced by inferAssertions()'s TODO:
+ * a full screenshot-diff (perceptual hashing, region comparison) is out
+ * of scope for now, but a step whose screenshot changed while producing
+ * zero label-based assertions and zero accessible labels afterward is
+ * exactly the case worth flagging so it isn't mistaken for "no assertion
+ * needed" — synthesizeCode() turns each flag into a visible TODO comment
+ * (and a screenshot save) in the generated script rather than staying
+ * silent about a screen Phoenix genuinely couldn't inspect.
+ */
+function inferVisualChangeFlags(steps, assertions) {
+  const assertedSteps = new Set(assertions.map((a) => a.stepIndex));
+  const flags = [];
+
+  steps.forEach((step, index) => {
+    if (assertedSteps.has(index)) return; // already has a real, locator-based assertion
+
+    const afterLabels = extractLabels(step.pageSourceAfter);
+    if (afterLabels.length > 0) return; // has labels, just none of them were "new" -- not this case
+
+    const before = screenshotHash(step.screenshotBeforeBase64);
+    const after = screenshotHash(step.screenshotAfterBase64);
+    if (before && after && before !== after) {
+      flags.push({ stepIndex: index });
+    }
+  });
+
+  return flags;
 }
 
 /**
@@ -294,7 +372,7 @@ function toIdentifier(name) {
  * synthesis logic itself (selectors, structure) doesn't need to change.
  */
 function synthesizeCode(steps, meta) {
-  const { testName, assertions, parameters, platform = "android" } = meta;
+  const { testName, assertions, parameters, platform = "android", visualChangeFlags = [] } = meta;
   const fnName = toIdentifier(testName);
   // XCUITest's tap extension is `mobile: tap`, not UiAutomator2's
   // `mobile: clickGesture` — see engine/ios-stage0-session.js.
@@ -306,6 +384,7 @@ function synthesizeCode(steps, meta) {
     if (!assertionsByStep.has(a.stepIndex)) assertionsByStep.set(a.stepIndex, []);
     assertionsByStep.get(a.stepIndex).push(a);
   }
+  const visualChangeStepIndexes = new Set(visualChangeFlags.map((f) => f.stepIndex));
 
   const lines = [];
   lines.push(`// Generated by Phoenix from a recorded session — ${steps.length} step(s).`);
@@ -352,6 +431,19 @@ function synthesizeCode(steps, meta) {
       lines.push(`    await expect($(${JSON.stringify(assertSelector)})).toBeDisplayed(); // "${assertion.label}" appeared`);
     }
 
+    if (visualChangeStepIndexes.has(index)) {
+      // The screen changed after this tap but had no accessible labels
+      // for Phoenix to assert on (likely a custom-drawn Canvas/OpenGL
+      // view — see inferVisualChangeFlags()'s note). Left as a visible
+      // TODO plus a saved screenshot rather than silently proposing zero
+      // assertions, so this doesn't read as "nothing happened here".
+      lines.push(`    // TODO(no accessible labels on this screen): the screen visibly changed after`);
+      lines.push(`    // this step, but nothing here exposed a resource-id/label Phoenix could assert`);
+      lines.push(`    // on automatically (custom-drawn UI?). Verify manually, or replace this with an`);
+      lines.push(`    // image-based assertion once one is available.`);
+      lines.push(`    await driver.saveScreenshot("${fnName}_step${index + 1}.png");`);
+    }
+
     lines.push("");
   });
 
@@ -366,6 +458,7 @@ module.exports = {
   generateScript,
   inferTestName,
   inferAssertions,
+  inferVisualChangeFlags,
   extractParameters,
   synthesizeCode,
   buildSelector,

@@ -1,0 +1,179 @@
+/**
+ * Tests for the two typed-input edge cases fixed in server.js's "type"
+ * handler:
+ *   1. Typing before any tap has been recorded used to silently call
+ *      driver.keys() and drop the value (nothing to attach it to).
+ *   2. Retyping into the same field used to just append to whatever was
+ *      already on the device, since driver.keys() sends the full current
+ *      value each time (see frontend/index.html's submitType()) — the
+ *      on-device text and the recorded step.typedValue would diverge.
+ *
+ * Runs against a real WebSocketServer (on an ephemeral port) with a fake
+ * Appium driver and a minimal fake recorder, so no emulator/simulator is
+ * needed — same synthetic-fixture approach as generation/test/pipeline.test.js.
+ *
+ * Run with: npm test (from live-view/) or `node test/server.test.js`
+ */
+
+const assert = require("assert");
+const WebSocket = require("ws");
+const { startLiveView } = require("../server");
+
+function makeFakeDriver() {
+  return {
+    keysCalls: [],
+    async takeScreenshot() {
+      return "ZmFrZS1zY3JlZW5zaG90"; // "fake-screenshot" base64, content unused by these tests
+    },
+    async getWindowSize() {
+      return { width: 1080, height: 2400 };
+    },
+    async keys(value) {
+      this.keysCalls.push(value);
+    },
+    async execute() {
+      return null;
+    },
+  };
+}
+
+function makeFakeRecorder() {
+  return {
+    steps: [],
+    async beginStep(tapCoordinate) {
+      return { tapCoordinate };
+    },
+    async completeStep(partialStep) {
+      const step = { ...partialStep, resolvedElement: { strategy: "coordinate", value: "0,0" } };
+      this.steps.push(step);
+      return step;
+    },
+    finish() {
+      return this.steps;
+    },
+  };
+}
+
+/** Connects a ws client, waits for open, and returns it. */
+function connect(port) {
+  return new Promise((resolve, reject) => {
+    const socket = new WebSocket(`ws://localhost:${port}`);
+    socket.once("open", () => resolve(socket));
+    socket.once("error", reject);
+  });
+}
+
+/** Resolves with the next parsed message of the given type from a socket. */
+function nextMessageOfType(socket, type) {
+  return new Promise((resolve) => {
+    const handler = (raw) => {
+      const message = JSON.parse(raw.toString());
+      if (message.type === type) {
+        socket.off("message", handler);
+        resolve(message);
+      }
+    };
+    socket.on("message", handler);
+  });
+}
+
+async function testAsync(name, fn) {
+  try {
+    await fn();
+    console.log(`  ok - ${name}`);
+  } catch (err) {
+    console.error(`  FAIL - ${name}`);
+    console.error(err);
+    process.exitCode = 1;
+  }
+}
+
+async function main() {
+  console.log("live-view/server:");
+
+  await testAsync("typing before any tap is recorded rejects the keystroke instead of dropping it", async () => {
+    const driver = makeFakeDriver();
+    const recorder = makeFakeRecorder();
+    const port = 18090 + Math.floor(Math.random() * 1000);
+    const wss = startLiveView(driver, recorder, port);
+    try {
+      const socket = await connect(port);
+      const errorPromise = nextMessageOfType(socket, "type-error");
+      socket.send(JSON.stringify({ type: "type", value: "too-soon" }));
+      const error = await errorPromise;
+
+      assert.strictEqual(error.reason, "no-step-yet");
+      assert.strictEqual(driver.keysCalls.length, 0, "driver.keys() must not be called with no recorded step");
+      assert.strictEqual(recorder.steps.length, 0);
+      socket.close();
+    } finally {
+      wss.close();
+    }
+  });
+
+  await testAsync("typing after a tap attaches the value to the most recent step", async () => {
+    const driver = makeFakeDriver();
+    const recorder = makeFakeRecorder();
+    const port = 18090 + Math.floor(Math.random() * 1000);
+    const wss = startLiveView(driver, recorder, port);
+    try {
+      const socket = await connect(port);
+      const stepRecorded = nextMessageOfType(socket, "step-recorded");
+      socket.send(JSON.stringify({ type: "tap", xRatio: 0.5, yRatio: 0.5 }));
+      await stepRecorded;
+
+      const textEntered = nextMessageOfType(socket, "text-entered");
+      socket.send(JSON.stringify({ type: "type", value: "prabath@example.com" }));
+      await textEntered;
+
+      assert.strictEqual(recorder.steps[0].typedValue, "prabath@example.com");
+      assert.deepStrictEqual(driver.keysCalls, ["prabath@example.com"]);
+      socket.close();
+    } finally {
+      wss.close();
+    }
+  });
+
+  await testAsync("retyping into the same field clears the previous value with backspaces before sending the new one", async () => {
+    const driver = makeFakeDriver();
+    const recorder = makeFakeRecorder();
+    const port = 18090 + Math.floor(Math.random() * 1000);
+    const wss = startLiveView(driver, recorder, port);
+    try {
+      const socket = await connect(port);
+      const stepRecorded = nextMessageOfType(socket, "step-recorded");
+      socket.send(JSON.stringify({ type: "tap", xRatio: 0.5, yRatio: 0.5 }));
+      await stepRecorded;
+
+      const firstEntry = nextMessageOfType(socket, "text-entered");
+      socket.send(JSON.stringify({ type: "type", value: "foo" }));
+      await firstEntry;
+
+      const secondEntry = nextMessageOfType(socket, "text-entered");
+      socket.send(JSON.stringify({ type: "type", value: "foobar" }));
+      await secondEntry;
+
+      // 3 backspaces (one per character of "foo") sent before the new
+      // value, so the on-device field ends up as "foobar" -- not
+      // "foofoobar" -- matching the recorded typedValue.
+      assert.deepStrictEqual(driver.keysCalls, [
+        "foo",
+        ["", "", ""],
+        "foobar",
+      ]);
+      assert.strictEqual(recorder.steps[0].typedValue, "foobar");
+      socket.close();
+    } finally {
+      wss.close();
+    }
+  });
+
+  if (process.exitCode) {
+    console.error("\nlive-view/server tests FAILED");
+    process.exit(1);
+  } else {
+    console.log("\nlive-view/server tests passed");
+  }
+}
+
+main();

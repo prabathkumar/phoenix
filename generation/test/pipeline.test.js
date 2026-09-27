@@ -12,6 +12,7 @@ const {
   generateScript,
   inferTestName,
   inferAssertions,
+  inferVisualChangeFlags,
   extractParameters,
   buildSelector,
   buildResourceIdSelector,
@@ -132,6 +133,114 @@ test("inferAssertions still flags a newly-appeared element whose text coincident
   const assertions = inferAssertions([step]);
   const labels = assertions.map((a) => a.label).sort();
   assert.deepStrictEqual(labels, ["Animation", "Buttons"]);
+});
+
+test("inferAssertions does not re-flag a screen's elements when back navigation returns to it", () => {
+  // Regression test for a real bug: screen A -> screen B -> back to A was
+  // flooding assertions because the old diff only compared each step
+  // against its own immediately-preceding screen, not everything seen so
+  // far in the session. Revisiting A a second time made every one of A's
+  // elements look "newly appeared" again, even though the user had simply
+  // navigated back. The fix tracks a cumulative "seen" set across the
+  // whole session so a revisit produces zero new assertions unless the
+  // revisited screen genuinely shows something it didn't before.
+  const SCREEN_A = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy>
+  <android.widget.FrameLayout bounds="[0,0][1080,2400]">
+    <android.widget.TextView resource-id="com.phoenix.demo:id/title_a" text="Screen A" bounds="[42,166][305,237]" />
+    <android.widget.Button resource-id="com.phoenix.demo:id/go_to_b" text="Go to B" bounds="[100,300][980,400]" />
+  </android.widget.FrameLayout>
+</hierarchy>`;
+
+  const SCREEN_B = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy>
+  <android.widget.FrameLayout bounds="[0,0][1080,2400]">
+    <android.widget.TextView resource-id="com.phoenix.demo:id/title_b" text="Screen B" bounds="[42,166][305,237]" />
+    <android.widget.Button resource-id="com.phoenix.demo:id/back_button" text="Back" bounds="[100,300][980,400]" />
+  </android.widget.FrameLayout>
+</hierarchy>`;
+
+  const backNavSteps = [
+    // Step 0: on A, tap "Go to B" -> navigates to B.
+    {
+      tapCoordinate: { x: 540, y: 350 },
+      resolvedElement: { strategy: "resource-id", value: "com.phoenix.demo:id/go_to_b", resourceId: "com.phoenix.demo:id/go_to_b" },
+      pageSourceBefore: SCREEN_A,
+      pageSourceAfter: SCREEN_B,
+    },
+    // Step 1: on B, tap "Back" -> returns to A (already seen once).
+    {
+      tapCoordinate: { x: 540, y: 350 },
+      resolvedElement: { strategy: "resource-id", value: "com.phoenix.demo:id/back_button", resourceId: "com.phoenix.demo:id/back_button" },
+      pageSourceBefore: SCREEN_B,
+      pageSourceAfter: SCREEN_A,
+    },
+  ];
+
+  const assertions = inferAssertions(backNavSteps);
+
+  // Step 0 legitimately introduces Screen B's elements for the first time.
+  const step0 = assertions.filter((a) => a.stepIndex === 0).map((a) => a.label).sort();
+  assert.deepStrictEqual(step0, ["Back", "Screen B"]);
+
+  // Step 1 returns to Screen A, whose elements were already seen as the
+  // very first screen (seeded before any step ran) -- nothing should be
+  // re-flagged as newly appeared.
+  const step1 = assertions.filter((a) => a.stepIndex === 1);
+  assert.strictEqual(step1.length, 0);
+});
+
+test("inferVisualChangeFlags flags a step whose screenshot changed but exposed no accessible labels at all", () => {
+  // Simulates a tap into a custom-drawn Canvas/OpenGL screen: the
+  // accessibility tree has nothing to offer (extractLabels returns
+  // empty for both before and after), so inferAssertions() alone would
+  // silently produce zero assertions -- indistinguishable from "the tap
+  // did nothing". A changed screenshot is the only signal available that
+  // something DID happen.
+  const NO_LABELS_BEFORE = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy><android.opengl.GLSurfaceView bounds="[0,0][1080,2400]" /></hierarchy>`;
+  const NO_LABELS_AFTER = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy><android.opengl.GLSurfaceView bounds="[0,0][1080,2400]" /></hierarchy>`;
+
+  const canvasStep = {
+    tapCoordinate: { x: 540, y: 1200 },
+    resolvedElement: { strategy: "xpath", value: "/hierarchy[1]/GLSurfaceView[1]" },
+    pageSourceBefore: NO_LABELS_BEFORE,
+    pageSourceAfter: NO_LABELS_AFTER,
+    screenshotBeforeBase64: "aaaa",
+    screenshotAfterBase64: "bbbb", // different -> screen visibly changed
+  };
+
+  const assertions = inferAssertions([canvasStep]);
+  assert.strictEqual(assertions.length, 0, "no accessible labels means no label-based assertion is possible");
+
+  const flags = inferVisualChangeFlags([canvasStep], assertions);
+  assert.deepStrictEqual(flags, [{ stepIndex: 0 }]);
+});
+
+test("inferVisualChangeFlags does not flag a step that already has a real assertion, or one whose screenshot didn't change", () => {
+  // STEPS' final step (the login tap) gets a real label-based assertion
+  // ("Welcome"), so it must not also get a visual-change flag.
+  const assertions = inferAssertions(STEPS);
+  const flags = inferVisualChangeFlags(STEPS, assertions);
+  assert.deepStrictEqual(flags, [], "steps with real assertions, or with identical before/after screenshots, should not be flagged");
+});
+
+test("generateScript emits a TODO and a screenshot save for a step with no accessible labels", async () => {
+  const NO_LABELS = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy><android.opengl.GLSurfaceView bounds="[0,0][1080,2400]" /></hierarchy>`;
+  const canvasSteps = [
+    {
+      tapCoordinate: { x: 540, y: 1200 },
+      resolvedElement: { strategy: "xpath", value: "/hierarchy[1]/GLSurfaceView[1]" },
+      pageSourceBefore: NO_LABELS,
+      pageSourceAfter: NO_LABELS,
+      screenshotBeforeBase64: "aaaa",
+      screenshotAfterBase64: "bbbb",
+    },
+  ];
+
+  const result = await generateScript(canvasSteps);
+  assert.strictEqual(result.visualChangeFlags.length, 1);
+  assert.ok(result.scriptSource.includes("TODO(no accessible labels on this screen)"));
+  assert.ok(result.scriptSource.includes("saveScreenshot("));
 });
 
 test("extractParameters names parameters from the field's resource-id, stripped of _input", () => {

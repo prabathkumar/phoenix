@@ -36,6 +36,18 @@ function makeFakeDriver() {
       this.executeCalls.push([script, args]);
       return null;
     },
+    activeElementId: "elem-active-1",
+    async getActiveElement() {
+      return { "element-6066-11e4-a52e-4f735466cecf": this.activeElementId };
+    },
+    elementClearCalls: [],
+    async elementClear(elementId) {
+      this.elementClearCalls.push(elementId);
+    },
+    elementSendKeysCalls: [],
+    async elementSendKeys(elementId, text) {
+      this.elementSendKeysCalls.push([elementId, text]);
+    },
   };
 }
 
@@ -170,7 +182,14 @@ async function main() {
     }
   });
 
-  await testAsync("iOS platform types via 'mobile: type' instead of driver.keys(), avoiding the WDA key-actions bug", async () => {
+  await testAsync("iOS platform types via elementSendKeys on the active element, avoiding both broken WDA paths", async () => {
+    // Confirmed live against a real Simulator: driver.keys() fails with
+    // WDA's "Key Down action ... must have a closing Key Up successor",
+    // and the first fix attempt (`mobile: type`) failed too, with a
+    // separate "405 Method is not implemented" — this xcuitest-driver
+    // build doesn't expose that extension. elementSendKeys/elementClear
+    // against the active element is the fix that actually lands: an
+    // older, non-actions WebDriver endpoint XCUITest does implement.
     const driver = makeFakeDriver();
     const recorder = makeFakeRecorder();
     const port = 18090 + Math.floor(Math.random() * 1000);
@@ -190,11 +209,17 @@ async function main() {
       await secondEntry;
 
       assert.strictEqual(driver.keysCalls.length, 0, "iOS typing must not call driver.keys() (WDA rejects its key actions)");
-      assert.deepStrictEqual(driver.executeCalls, [
-        ["mobile: tap", { x: 540, y: 1200 }],
-        ["mobile: type", { text: "foo" }],
-        ["mobile: type", { text: "\b\b\b" }],
-        ["mobile: type", { text: "foobar" }],
+      assert.strictEqual(
+        driver.executeCalls.filter(([script]) => script === "mobile: type").length,
+        0,
+        "iOS typing must not use mobile: type (not implemented on this xcuitest-driver build)"
+      );
+      // First "type" (no prior value) clears nothing; second one clears
+      // the field before sending the corrected text.
+      assert.deepStrictEqual(driver.elementClearCalls, [driver.activeElementId]);
+      assert.deepStrictEqual(driver.elementSendKeysCalls, [
+        [driver.activeElementId, "foo"],
+        [driver.activeElementId, "foobar"],
       ]);
       assert.strictEqual(recorder.steps[0].typedValue, "foobar");
       socket.close();

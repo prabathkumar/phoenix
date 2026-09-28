@@ -113,15 +113,32 @@ function startLiveView(driver, recorder, port = 8090, platform = "android") {
         //    must have a closing Key Up successor" — even though
         //    webdriverio built the pairs correctly; it's a WDA-side
         //    actions bug, not something fixable from this side.
-        //    `mobile: type` bypasses the W3C actions endpoint entirely
-        //    and types straight into the focused field, so iOS uses
-        //    that instead; Android keeps the plain keys() path since
-        //    UiAutomator2 doesn't hit this bug.
+        //
+        //    First attempted fix was `mobile: type`, which bypasses the
+        //    W3C actions endpoint — but this xcuitest-driver build
+        //    doesn't implement that extension either ("405 Method is
+        //    not implemented", confirmed live). Element Send Keys
+        //    (`POST .../element/:id/value`, WebdriverIO's
+        //    elementSendKeys) is a separate, older WebDriver endpoint
+        //    that XCUITest does implement directly against WDA rather
+        //    than through W3C actions, so it hits neither broken path.
+        //    It targets a specific element rather than "whatever has
+        //    focus", so the currently-focused field is looked up via
+        //    the standard Get Active Element command first. Element
+        //    Clear (`elementClear`) replaces the previous
+        //    backspace-per-character approach for the same reason —
+        //    it's the same non-actions endpoint family, and clearing a
+        //    field outright is simpler and more reliable than counting
+        //    backspaces. Android keeps the plain keys() path below
+        //    since UiAutomator2 doesn't hit this bug.
         if (platform === "ios") {
+          const activeElement = await driver.getActiveElement();
+          const elementId =
+            activeElement["element-6066-11e4-a52e-4f735466cecf"] || activeElement.ELEMENT;
           if (currentStep.typedValue) {
-            await driver.execute("mobile: type", { text: "\b".repeat(currentStep.typedValue.length) });
+            await driver.elementClear(elementId);
           }
-          await driver.execute("mobile: type", { text: message.value });
+          await driver.elementSendKeys(elementId, message.value);
         } else {
           if (currentStep.typedValue) {
             const backspaces = Array(currentStep.typedValue.length).fill("");

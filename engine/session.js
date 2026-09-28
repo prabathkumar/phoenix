@@ -4,18 +4,27 @@
  * eventual TestOps backend integration) starts an Appium session the
  * same way this does — one place to change capabilities/connection
  * details, not one per script.
+ *
+ * PHOENIX_APPIUM_PROVIDER selects where that session actually runs —
+ * "local" (default, a local emulator via a local Appium server) or
+ * "browserstack" (BrowserStack App Automate, no local Android SDK
+ * needed at all) — see remote-provider.js for what that changes.
  */
 
 const { remote } = require("webdriverio");
+const remoteProvider = require("./remote-provider");
 
-function buildCapabilities(overrides = {}) {
+function buildBaseCapabilities() {
   return {
     platformName: "Android",
     "appium:automationName": "UiAutomator2",
-    "appium:deviceName": "emulator-5554", // local Android emulator, not BrowserStack
+    "appium:deviceName": "emulator-5554", // local Android emulator; ignored on BrowserStack
     "appium:app": process.env.PHOENIX_STAGE0_APP_PATH, // path to a .apk on disk
-    ...overrides,
   };
+}
+
+function buildCapabilities(overrides = {}) {
+  return remoteProvider.buildCapabilities(buildBaseCapabilities(), overrides);
 }
 
 /**
@@ -24,9 +33,7 @@ function buildCapabilities(overrides = {}) {
  */
 async function startSession(capabilityOverrides) {
   return remote({
-    hostname: process.env.PHOENIX_APPIUM_HOST || "127.0.0.1",
-    port: Number(process.env.PHOENIX_APPIUM_PORT) || 4723,
-    path: "/",
+    ...remoteProvider.buildConnectionConfig(),
     capabilities: buildCapabilities(capabilityOverrides),
   });
 }

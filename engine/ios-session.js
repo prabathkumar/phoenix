@@ -16,11 +16,21 @@
  *     emulator-5554 AVD name is; both must be set to match a Simulator
  *     actually installed via Xcode on this machine (`xcrun simctl list
  *     devices` shows what's available).
+ *
+ * A local iOS Simulator can only run on macOS at all (Apple's license
+ * rules out virtualizing it on a Linux TestOps VM), so
+ * PHOENIX_APPIUM_PROVIDER=browserstack is how a Linux-hosted Phoenix
+ * points this same startSession() at BrowserStack App Automate's real
+ * iOS devices instead of a Simulator on this machine — see
+ * remote-provider.js. deviceName/platformVersion then mean "which of
+ * BrowserStack's real-device catalog entries to request", not "which
+ * Simulator to boot".
  */
 
 const { remote } = require("webdriverio");
+const remoteProvider = require("./remote-provider");
 
-function buildCapabilities(overrides = {}) {
+function buildBaseCapabilities() {
   const base = {
     platformName: "iOS",
     "appium:automationName": "XCUITest",
@@ -32,14 +42,20 @@ function buildCapabilities(overrides = {}) {
   // — see PHOENIX_IOS_APP_PATH), or a bundle id of an app already on the
   // simulator (e.g. "com.apple.mobilesafari") when you want to smoke-test
   // the session/driver plumbing itself without building anything first.
-  // PHOENIX_IOS_BUNDLE_ID takes priority if both are set.
+  // PHOENIX_IOS_BUNDLE_ID takes priority if both are set. Both are
+  // local-only concepts — remote-provider.js replaces this entirely
+  // with PHOENIX_BROWSERSTACK_APP_URL when the provider is browserstack.
   if (process.env.PHOENIX_IOS_BUNDLE_ID) {
     base["appium:bundleId"] = process.env.PHOENIX_IOS_BUNDLE_ID;
   } else {
     base["appium:app"] = process.env.PHOENIX_IOS_APP_PATH;
   }
 
-  return { ...base, ...overrides };
+  return base;
+}
+
+function buildCapabilities(overrides = {}) {
+  return remoteProvider.buildCapabilities(buildBaseCapabilities(), overrides);
 }
 
 /**
@@ -48,9 +64,7 @@ function buildCapabilities(overrides = {}) {
  */
 async function startSession(capabilityOverrides) {
   return remote({
-    hostname: process.env.PHOENIX_APPIUM_HOST || "127.0.0.1",
-    port: Number(process.env.PHOENIX_APPIUM_PORT) || 4723,
-    path: "/",
+    ...remoteProvider.buildConnectionConfig(),
     capabilities: buildCapabilities(capabilityOverrides),
   });
 }

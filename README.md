@@ -240,6 +240,43 @@ That fix surfaced one more real edge case live: `getActiveElement()` only resolv
 
 **Precondition, not a Phoenix bug — recorded apps need accessibility identifiers.** A real 18-step recording against a custom SwiftUI app (`org.stratalang.orders`) resolved every single tap to the same `~Orders` locator and produced zero assertions, regardless of where on screen the tester tapped. `capture/recorder.js`'s `resolveElementAtCoordinate` picks the smallest accessible element whose bounds contain the tap point — that logic is correct and already unit-tested; the app's own XCUITest accessibility tree simply exposed only one accessible node on screen (the nav title/root view, named "Orders"), with none of its rows, buttons, or fields carrying their own `.accessibilityIdentifier(...)`. Without distinct accessible elements underneath, there is nothing smaller for any resolution strategy to find, on any tool built on XCUITest, not just Phoenix. **Takeaway for anyone recording a custom app**: the app's interactive views need explicit accessibility identifiers (SwiftUI's `.accessibilityIdentifier("...")`, or UIKit's `accessibilityIdentifier` property) before a recording will produce distinguishable locators or meaningful assertions — confirm first with Xcode's Accessibility Inspector (Xcode → Open Developer Tool → Accessibility Inspector, hover the app's elements on the booted Simulator) that individual controls report their own identifiers, not just the screen as a whole.
 
+### Remote provider: BrowserStack App Automate, for when there's no local device host
+
+TestOps running on Linux VMs is a hard wall for iOS specifically —
+Xcode and the iOS Simulator only run on macOS, and Apple's license
+rules out virtualizing macOS on non-Apple hardware, so there's no way
+to stand one up directly on a Linux host. Standing up a dedicated Mac
+(owned or cloud-rented) works but is a real ongoing cost on top of
+whatever's already paid for; `engine/remote-provider.js` lets an
+already-licensed BrowserStack App Automate account be reused instead,
+with **no changes needed anywhere else in the pipeline** —
+`capture/`, `generation/`, and `live-view/` only ever see a normal
+WebdriverIO `Browser`, regardless of where its session actually runs.
+This falls directly out of a decision already made early on:
+`engine/session.js` and `engine/ios-session.js` always talked to
+Appium over a plain hostname/port rather than assuming `localhost`,
+so "point this at a different Appium-compatible endpoint" was already
+possible — BrowserStack just needed its own connection shape (HTTPS,
+a fixed hub hostname, account auth via a `bstack:options` capability
+block) and app-reference format (an uploaded app's `bs://` URL, not a
+local file path or a bundle id already installed on a
+Simulator/emulator) taught to it, via `PHOENIX_APPIUM_PROVIDER=browserstack`.
+
+One real tradeoff: BrowserStack App Automate runs real physical
+devices for iOS, not Simulators — `PHOENIX_IOS_DEVICE_NAME`/
+`PHOENIX_IOS_PLATFORM_VERSION` then mean "which of BrowserStack's
+real-device catalog to request," not "which Simulator to boot."
+
+See `docs/SETUP.md`'s "2b. Or: skip your own device host entirely and
+use BrowserStack" for the full walkthrough, including
+`engine/browserstack-upload.js` (a one-time-per-build helper for
+getting an app its `bs://` URL, since BrowserStack has no concept of
+"a file already on this machine"). Verified with a unit test suite
+(`engine/test/`, 9 tests) covering both providers' connection config
+and capability shape, including the required-env-var error messages;
+not yet exercised against a real BrowserStack account, since Phoenix
+doesn't have credentials for one yet.
+
 ### Running the Android engine directly (spawn path)
 
 One-time setup and a minimal session against just `engine/`, with no capture/generation/live-view involved — useful to confirm the engine layer works in isolation before running the full loop above.

@@ -1,14 +1,13 @@
 name: Test
 
-# Runs the capture/ and generation/ test suites on every push and PR —
-# the same suites that caught both real bugs found from live device runs
-# (ambiguous list-row selectors, text-only assertion diffing). Catching
-# a regression here is a lot cheaper than catching it on a laptop
-# mid-recording against a real emulator.
-#
-# engine/ and live-view/ aren't included: they need a real Appium
-# session/device to exercise meaningfully and don't have a test suite
-# yet (see README's "Actual Appium fork work" open item).
+# Runs every package's test suite on every push and PR. capture/ and
+# generation/'s suites caught two real bugs found from live device runs
+# (ambiguous list-row selectors, text-only assertion diffing); engine/'s
+# and live-view/'s suites (added later) caught real bugs the same way —
+# a crashing session on an unfocused iOS field, a broken WDA typing path
+# — against fake drivers/recorders rather than needing a real device in
+# CI. Catching a regression here is a lot cheaper than catching it on a
+# laptop mid-recording against a real emulator or Simulator.
 
 on:
   push:
@@ -20,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        package: [capture, generation]
+        package: [capture, generation, engine, live-view]
     steps:
       - uses: actions/checkout@v4
 

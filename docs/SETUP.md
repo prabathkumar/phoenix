@@ -98,6 +98,54 @@ Leave this running. If Phoenix's Node services run on a *different*
 host than this one, make sure that host's IP:4723 is reachable across
 whatever network/VPN/firewall sits between them.
 
+## 2b. Or: skip your own device host entirely and use BrowserStack
+
+Steps 1-2 above assume you're standing up your own Android emulator or
+iOS Simulator plus a local Appium server. If TestOps runs on Linux VMs,
+that's a hard wall for iOS specifically — Xcode and the iOS Simulator
+only run on macOS at all, and Apple's license rules out virtualizing
+macOS on non-Apple hardware, so there's no way to stand one up directly
+on a Linux host. Renting or racking dedicated Mac hardware works, but
+if your org already pays for BrowserStack App Automate, pointing
+Phoenix at that instead avoids the extra ongoing Mac cost.
+
+This needs no code changes to use — `engine/session.js` and
+`engine/ios-session.js` have always talked to Appium over a plain
+hostname/port rather than assuming `localhost`, and
+`engine/remote-provider.js` is what teaches them BrowserStack's
+specific connection shape (HTTPS, a fixed hub hostname, account auth,
+a `bstack:options` capability block) and app-reference format (an
+uploaded app's `bs://` URL, not a local file path or a bundle id
+already installed on a device you booted yourself).
+
+1. Upload your app build once (re-upload only when the build changes,
+   not per session):
+   ```bash
+   export PHOENIX_BROWSERSTACK_USER=<your BrowserStack username>
+   export PHOENIX_BROWSERSTACK_KEY=<your Automate access key, not your password>
+   node engine/browserstack-upload.js /path/to/app.ipa   # or .apk
+   # prints a bs://<id> URL — set it below
+   ```
+2. Point Phoenix at BrowserStack instead of a local Appium server:
+   ```bash
+   export PHOENIX_APPIUM_PROVIDER=browserstack
+   export PHOENIX_BROWSERSTACK_APP_URL=bs://<id from step 1>
+   # PHOENIX_APPIUM_HOST/PORT are ignored under this provider
+   ```
+3. `PHOENIX_IOS_DEVICE_NAME`/`PHOENIX_IOS_PLATFORM_VERSION` (or
+   Android's equivalent capabilities) now mean "which of BrowserStack's
+   real-device catalog to request", not "which Simulator/emulator to
+   boot" — BrowserStack App Automate runs real physical devices for
+   iOS, not simulators.
+4. Skip steps 1-2 above entirely (no local emulator, no local Appium
+   server needed) and continue from step 3 ("Configure Phoenix") for
+   everything else — `run-session.js`, the frontend, and the rest of
+   the pipeline don't know or care where the session actually runs.
+
+Optional: `PHOENIX_BROWSERSTACK_PROJECT` / `_BUILD` / `_SESSION_NAME`
+label the session in BrowserStack's dashboard (defaults to "Phoenix" /
+"phoenix-recording" / "Phoenix recording session" if unset).
+
 ## 3. Configure Phoenix
 
 ```bash

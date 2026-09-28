@@ -88,7 +88,13 @@ function buildCapabilities(baseCapabilities, overrides = {}) {
         "settings — not your account password)."
     );
   }
-  if (!process.env.PHOENIX_BROWSERSTACK_APP_URL) {
+  // Normally this comes from PHOENIX_BROWSERSTACK_APP_URL (the env-var-
+  // configured flow), but the on-demand upload path (frontend/upload-session.js)
+  // already resolved a fresh bs:// URL for *this* session and passes it as
+  // an "appium:app" override -- that's just as valid a source, and check
+  // for it first so a concurrent request with a different uploaded app
+  // never has to touch process.env (which every session shares).
+  if (!overrides["appium:app"] && !process.env.PHOENIX_BROWSERSTACK_APP_URL) {
     throw new Error(
       "PHOENIX_APPIUM_PROVIDER=browserstack requires PHOENIX_BROWSERSTACK_APP_URL. " +
         "Upload the app first with `node engine/browserstack-upload.js <path-to-app>` " +
@@ -102,7 +108,7 @@ function buildCapabilities(baseCapabilities, overrides = {}) {
 
   return {
     ...platformCapabilities,
-    "appium:app": process.env.PHOENIX_BROWSERSTACK_APP_URL,
+    "appium:app": overrides["appium:app"] || process.env.PHOENIX_BROWSERSTACK_APP_URL,
     "bstack:options": {
       userName: process.env.PHOENIX_BROWSERSTACK_USER,
       accessKey: process.env.PHOENIX_BROWSERSTACK_KEY,

@@ -136,6 +136,26 @@ test("browserstack capabilities require an uploaded app URL", () => {
   );
 });
 
+test("browserstack capabilities accept an appium:app override without requiring PHOENIX_BROWSERSTACK_APP_URL " +
+  "-- the on-demand upload flow resolves a fresh bs:// URL per session and passes it this way", () => {
+  withEnv(
+    {
+      PHOENIX_APPIUM_PROVIDER: "browserstack",
+      PHOENIX_BROWSERSTACK_USER: "someuser",
+      PHOENIX_BROWSERSTACK_KEY: "somekey",
+      PHOENIX_BROWSERSTACK_APP_URL: undefined,
+    },
+    () => {
+      const remoteProvider = freshProvider();
+      const result = remoteProvider.buildCapabilities(
+        { platformName: "iOS" },
+        { "appium:app": "bs://per-session-upload-id" }
+      );
+      assert.strictEqual(result["appium:app"], "bs://per-session-upload-id");
+    }
+  );
+});
+
 test("browserstack capabilities replace the local app reference with the uploaded app's bs:// URL, wrapped in bstack:options", () => {
   withEnv(
     {

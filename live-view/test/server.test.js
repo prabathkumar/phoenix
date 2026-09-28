@@ -38,6 +38,11 @@ function makeFakeDriver() {
     },
     activeElementId: "elem-active-1",
     async getActiveElement() {
+      // A real WDA response when nothing is keyboard-focused: {} with no
+      // element key (or, in the bug this models, an error-shaped body
+      // that resolves rather than throws) -- confirmed live by tapping a
+      // non-editable Settings row and trying to type into it.
+      if (this.activeElementId === null) return {};
       return { "element-6066-11e4-a52e-4f735466cecf": this.activeElementId };
     },
     elementClearCalls: [],
@@ -222,6 +227,38 @@ async function main() {
         [driver.activeElementId, "foobar"],
       ]);
       assert.strictEqual(recorder.steps[0].typedValue, "foobar");
+      socket.close();
+    } finally {
+      wss.close();
+    }
+  });
+
+  await testAsync("iOS typing into an unfocused field reports an error instead of crashing the session", async () => {
+    // Regression test for a real crash found on a live Simulator: tapping
+    // a non-editable Settings row (no on-screen keyboard came up) left
+    // nothing keyboard-focused, so getActiveElement() resolved with no
+    // usable element id -- and elementSendKeys(undefined, ...) then threw
+    // "Malformed type for elementId parameter", taking down the whole
+    // run-session.js process over one bad keystroke.
+    const driver = makeFakeDriver();
+    driver.activeElementId = null; // nothing focused, as WDA reported live
+    const recorder = makeFakeRecorder();
+    const port = 18090 + Math.floor(Math.random() * 1000);
+    const wss = startLiveView(driver, recorder, port, "ios");
+    try {
+      const socket = await connect(port);
+      const stepRecorded = nextMessageOfType(socket, "step-recorded");
+      socket.send(JSON.stringify({ type: "tap", xRatio: 0.5, yRatio: 0.5 }));
+      await stepRecorded;
+
+      const errorPromise = nextMessageOfType(socket, "type-error");
+      socket.send(JSON.stringify({ type: "type", value: "test" }));
+      const error = await errorPromise;
+
+      assert.strictEqual(error.reason, "no-active-element");
+      assert.strictEqual(driver.elementSendKeysCalls.length, 0, "must not call elementSendKeys with no resolvable element");
+      assert.strictEqual(driver.elementClearCalls.length, 0);
+      assert.strictEqual(recorder.steps[0].typedValue, undefined, "typedValue must not be set when typing failed");
       socket.close();
     } finally {
       wss.close();

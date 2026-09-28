@@ -131,10 +131,38 @@ function startLiveView(driver, recorder, port = 8090, platform = "android") {
         //    field outright is simpler and more reliable than counting
         //    backspaces. Android keeps the plain keys() path below
         //    since UiAutomator2 doesn't hit this bug.
+        // 4. Get Active Element only resolves to something when XCUITest
+        //    considers a field genuinely keyboard-focused (on-screen
+        //    keyboard actually up). Tapping a non-editable row — a plain
+        //    Settings cell, a disabled control — leaves nothing focused;
+        //    confirmed live as WDA returning a "no such element" 404 for
+        //    getActiveElement(), which this webdriver/appium version
+        //    resolves as a value rather than throwing, so elementId came
+        //    back undefined and elementSendKeys crashed the whole
+        //    session instead of failing just this one keystroke. Treated
+        //    the same way as the "no step yet" case above: tell the
+        //    tester why and let the session keep running, rather than
+        //    taking down `run-session.js` over one bad type attempt.
         if (platform === "ios") {
-          const activeElement = await driver.getActiveElement();
+          let activeElement;
+          try {
+            activeElement = await driver.getActiveElement();
+          } catch (err) {
+            activeElement = null;
+          }
           const elementId =
-            activeElement["element-6066-11e4-a52e-4f735466cecf"] || activeElement.ELEMENT;
+            activeElement &&
+            (activeElement["element-6066-11e4-a52e-4f735466cecf"] || activeElement.ELEMENT);
+
+          if (!elementId) {
+            socket.send(JSON.stringify({
+              type: "type-error",
+              reason: "no-active-element",
+              message: "No editable field is focused on the device — tap directly into a text field that brings up the on-screen keyboard, then try typing again.",
+            }));
+            return;
+          }
+
           if (currentStep.typedValue) {
             await driver.elementClear(elementId);
           }

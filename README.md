@@ -288,16 +288,23 @@ correctly on the same setup.
 
 That backend-reachability gap is what BrowserStack Local (a tunnel
 binary that gives BrowserStack's remote devices a route into a
-private/internal network) is for, needed by any app-under-test whose
-backend isn't reachable from the public internet. `engine/remote-provider.js`
-now supports it: with a `BrowserStackLocal` tunnel already running
-separately (Phoenix doesn't start or manage that process — see
-BrowserStack's own docs for the binary), set
-`PHOENIX_BROWSERSTACK_LOCAL=1` (and `PHOENIX_BROWSERSTACK_LOCAL_IDENTIFIER`
-if running more than one tunnel at once) to route the session's
-`bstack:options` through it. Verified via `engine/test/`'s unit suite
-(2 more tests covering the flag's on/off/identifier shape); not yet
-exercised against a real internal backend end to end.
+private/internal network) is for. It's only needed for an
+app-under-test whose backend isn't reachable from the public internet
+(Rope, for instance) — a self-contained app with no such backend
+dependency (BrowserStack's own sample apps, including the biometrics
+screens in `BitBarSampleApp.ipa`) runs on BrowserStack App Automate
+with **no Local tunnel at all**, exactly as already verified above.
+
+`engine/remote-provider.js` now supports Local for when it *is*
+needed: with a `BrowserStackLocal` tunnel already running separately
+(Phoenix doesn't start or manage that process — see BrowserStack's own
+docs for the binary), set `PHOENIX_BROWSERSTACK_LOCAL=1` (and
+`PHOENIX_BROWSERSTACK_LOCAL_IDENTIFIER` if running more than one
+tunnel at once) to route that session's `bstack:options` through it;
+leave both unset for anything that doesn't need it. Verified via
+`engine/test/`'s unit suite (2 more tests covering the flag's
+on/off/identifier shape); not yet exercised against a real internal
+backend end to end.
 
 ### Running the Android engine directly (spawn path)
 

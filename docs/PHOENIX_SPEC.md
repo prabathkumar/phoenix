@@ -76,10 +76,10 @@ This split alone removes most of the friction testers feel today waiting on clou
 *Act 2 — Unattended AI (Phase 2/3, below).* Same foundation, now deciding the next action itself and knowing when to stop and hand back to a human. Pitch: *same trusted foundation, now walking the flow itself.* This is the differentiator, but it earns that status by being built in the right order — proven guided first, autonomous only once that trust exists — not by being rushed alongside v1 hardening to look more impressive sooner.
 
 **Phase 2 — AI-native semantic layer (the actual differentiator):**
-- Grounded screen snapshot: merge accessibility tree + screenshot into one compact structured format an LLM reads directly — the mobile equivalent of the grounded ARIA-snapshot work already done for Web.
-- Semantic action layer: `act("tap the Login button")` instead of raw locator resolution — the engine resolves against the grounded snapshot internally.
-- State-diff reporting: feeds the assertion-inference step directly.
-- Keep the standard WebDriver protocol surface working underneath, so existing recorded scripts don't break.
+- Grounded screen snapshot: merge accessibility tree + screenshot into one compact structured format an LLM reads directly — the mobile equivalent of the grounded ARIA-snapshot work already done for Web. **First cut built:** `generation/semantic-snapshot.js` (text-only for now — accessibility tree, not yet fused with the screenshot).
+- Semantic action layer: `act("tap the Login button")` instead of raw locator resolution — the engine resolves against the grounded snapshot internally. **First cut built:** `generation/semantic-act.js`, resolving via the local Ollama model with a hard "unresolved rather than guess" contract — not yet wired into a live Appium session.
+- State-diff reporting: feeds the assertion-inference step directly. **First cut built:** `generation/semantic-diff.js` — not yet actually feeding `pipeline.js`'s assertion inference or a Phase 3 loop; both are still unbuilt consumers.
+- Keep the standard WebDriver protocol surface working underneath, so existing recorded scripts don't break. **Holds today** — all three modules above are additive, operate on already-captured `pageSourceXml`, and are not called from `run-session.js`/`session-manager.js`/the guided pipeline anywhere yet.
 
 **Phase 3 — autonomous exploration (R&D track, not customer-facing until proven):**
 - An agent that takes a goal in plain language, reads the grounded snapshot, decides the next action, executes it, and knows when to stop and hand back to a human.

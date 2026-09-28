@@ -164,7 +164,7 @@ describe("login", () => {
 
 ### Uploading an app directly
 
-**Complete for the BrowserStack provider; local-provider support is wired but only reaches an Appium server on the same machine.** Originally, the app under test was fixed by an env var (`PHOENIX_STAGE0_APP_PATH`/`PHOENIX_IOS_APP_PATH`/`PHOENIX_BROWSERSTACK_APP_URL`) before `run-session.js` even started — there was no way for a tester to pick a file once the page was open, unlike TestOps proper, where a tester uploads a `.ipa`/`.apk` directly. `frontend/index.html` now opens on an upload screen (drag-and-drop or click to choose a `.apk`/`.ipa`) instead of connecting immediately; the frontend posts it as `multipart/form-data` to a new endpoint, `POST /api/sessions` (`frontend/upload-session.js`), which:
+**Confirmed end to end on real hardware, for the BrowserStack provider; local-provider support is wired but only reaches an Appium server on the same machine, not yet exercised.** Originally, the app under test was fixed by an env var (`PHOENIX_STAGE0_APP_PATH`/`PHOENIX_IOS_APP_PATH`/`PHOENIX_BROWSERSTACK_APP_URL`) before `run-session.js` even started — there was no way for a tester to pick a file once the page was open, unlike TestOps proper, where a tester uploads a `.ipa`/`.apk` directly. `frontend/index.html` now opens on an upload screen (drag-and-drop or click to choose a `.apk`/`.ipa`) instead of connecting immediately; the frontend posts it as `multipart/form-data` to a new endpoint, `POST /api/sessions` (`frontend/upload-session.js`), which:
 
 - saves the upload to `frontend/uploads/`,
 - figures out the platform from the file extension (`.apk` → Android, `.ipa` → iOS; a `platform` form field can override this if ever needed),
@@ -179,7 +179,55 @@ The env-var-configured flow (`PHOENIX_STAGE0_APP_PATH` + `node run-session.js` b
 
 **This upload endpoint only exists on a self-hosted `frontend/server.js`.** The public GitHub Pages deploy (below) serves `index.html` as a static file with no backend behind it at all — `POST /api/sessions` has nowhere to land there. Uploading a file only works when you're running `node frontend/server.js` yourself (or pointing the public page at a self-hosted backend that also serves this endpoint, which it doesn't today — the public page still assumes a pre-started `run-session.js` reachable at `?host=&port=`).
 
-Verified with a unit test suite (`frontend/test/`, 7 tests, and `engine/test/session-manager.test.js`, 4 tests) covering platform detection, the concurrency guard, capability-override wiring for both providers, and error responses — against fake session/upload/provider modules, no real network or Appium session; not yet exercised against a real tester's browser end to end.
+Verified with a unit test suite (`frontend/test/`, 7 tests, and `engine/test/session-manager.test.js`, 4 tests) covering platform detection, the concurrency guard, capability-override wiring for both providers, and error responses — against fake session/upload/provider modules, no real network or Appium session. **And confirmed against a real BrowserStack account with a real tester's browser end to end:** dragging `BitBarSampleApp.ipa` into the upload screen below, with only `PHOENIX_APPIUM_PROVIDER=browserstack` + BrowserStack credentials exported (no `PHOENIX_BROWSERSTACK_APP_URL` set beforehand — that's the whole point) started a real session on a real BrowserStack device and dropped straight into the live mirror.
+
+![Phoenix's upload screen, mid-upload, after dragging in an .ipa](docs/screenshots/frontend-upload-screen.png)
+
+A real 4-tap recording against the biometrics screen from that same session generated this:
+
+<details>
+<summary>Sample generated script, from the upload flow (BitBar Sample App, biometrics screen, 4 recorded steps)</summary>
+
+```js
+describe("bitbar_sample_app", () => {
+  it("bitbar_sample_app", async () => {
+    // Step 1
+    const step0El = await $("~Biometric authentication");
+    await step0El.waitForDisplayed();
+    await step0El.click();
+    // ...16 assertions on the screen's labels appearing, including:
+    await expect($("-ios predicate string:label == \"Authentication status title WAITING\" OR value == \"Authentication status title WAITING\"")).toBeDisplayed();
+
+    // Step 2 — tapped an element with no accessible name/label at all
+    const step1El = await $("~");
+    await step1El.waitForDisplayed();
+    await step1El.click();
+
+    // Step 3 — same
+    const step2El = await $("~");
+    await step2El.waitForDisplayed();
+    await step2El.click();
+
+    // Step 4 — also unlabeled, fell back to a structural XPath
+    const step3El = await $("/AppiumAUT[1]/XCUIElementTypeApplication[1]/.../XCUIElementTypeOther[3]");
+    await step3El.waitForDisplayed();
+    await step3El.click();
+    await expect($("-ios predicate string:label == \"Authentication status title FAILED\" OR value == \"Authentication status title FAILED\"")).toBeDisplayed(); // real state change: WAITING -> FAILED
+  });
+});
+```
+</details>
+
+The `WAITING` → `FAILED` assertion is real inferred state — the app's own authentication status label actually changed between steps, and `inferAssertions` caught it correctly. Steps 2-4's weak locators are a real gap, not a recording error — see "What's still open" below.
+
+This surfaced one real bug along the way, now fixed: `remote-provider.js`'s `buildCapabilities()` validated `PHOENIX_BROWSERSTACK_APP_URL` unconditionally, even when `capabilityOverrides` already supplied a per-session `appium:app` — which is exactly what the upload path does after calling `uploadApp()`. Every upload failed immediately with "requires PHOENIX_BROWSERSTACK_APP_URL" until that validation was changed to check `overrides["appium:app"]` first. Covered by a new regression test in `engine/test/remote-provider.test.js`.
+
+**What's still open:**
+- **Local-provider upload path** (Android VM, planned AWS iOS VM) is implemented identically to the BrowserStack path but not yet run against a real local Appium host reachable from `frontend/server.js` — the two are expected to be co-located once those VMs exist, but that's unverified.
+- **One session at a time.** A concurrent-session device pool (matching TestOps's real device-farm model) is a real follow-on, not started.
+- **Upload cleanup on the local-provider path** — files in `frontend/uploads/` are only deleted after a successful BrowserStack hand-off; a local-provider run or a failed upload leaves the file behind today.
+- **Locator quality on elements with no accessible label**, seen directly in that same biometrics recording — two of the four taps resolved to an empty accessibility-id (`~""`) and one fell back to a long structural XPath, because those elements exposed no name/label/text at all. This is a pre-existing `capture/recorder.js`/`generation/pipeline.js` gap (same class of issue as the Developer Guide's SwiftUI note above), not something the upload work introduced — worth a closer look next.
+- **The public GitHub Pages frontend still can't upload** (see above) — it only works against a pre-started session today.
 
 ### Running the full loop locally
 

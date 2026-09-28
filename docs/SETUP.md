@@ -227,14 +227,39 @@ which assertions it keeps.
 
 ## 5. Run the Node services
 
-**Option A — directly:**
+Every path below needs the same dependencies installed first:
 
 ```bash
 cd engine && npm install && cd ..
 cd capture && npm install && cd ..
 cd generation && npm install && cd ..
 cd live-view && npm install && cd ..
+cd frontend && npm install && cd ..
+```
 
+**Option A — a tester uploads the app directly (no `PHOENIX_STAGE0_APP_PATH`/`PHOENIX_IOS_APP_PATH`/`PHOENIX_BROWSERSTACK_APP_URL` needed):**
+
+```bash
+node frontend/server.js
+```
+
+That's the only process to start — `frontend/server.js` now starts a
+recording session on demand per upload (`POST /api/sessions`, see
+`frontend/upload-session.js`), instead of needing a separately-started
+`run-session.js` pinned to one pre-chosen app. This is the path to use
+once step 2 or 2b above is done (an Appium server or BrowserStack
+credentials already configured) — a tester just opens the page and
+drags in a `.apk`/`.ipa`. Under the BrowserStack provider this needs
+no local emulator/Appium host at all, confirmed against a real
+BrowserStack account (see README's "Uploading an app directly"
+section). Under the local provider, the uploaded file's path is passed
+straight to Appium as `appium:app` — this only works when
+`frontend/server.js` and the Appium server share a filesystem, so it's
+Option B below for a split host setup.
+
+**Option B — the app is already fixed by an env var (the original flow, or a split host setup):**
+
+```bash
 node run-session.js        # starts the session + live-view + recorder + generation pipeline
 ```
 
@@ -244,8 +269,12 @@ Then, **in a second terminal, from the same repo root**:
 node frontend/server.js    # only if not using the public GitHub Pages URL
 ```
 
+Open the frontend with `?port=8090` (or whatever `PHOENIX_LIVE_VIEW_PORT`
+is) so it skips the upload screen and connects straight to the
+already-started session — e.g. `http://localhost:8091/?port=8090`.
+
 If either command fails with `Cannot find module '.../run-session.js'`
-or `.../frontend/server.js`, you're in the wrong directory — both must
+or `.../frontend/server.js'`, you're in the wrong directory — both must
 be run from the repo root (`run-session.js` and the `frontend/` folder
 are direct children of it, not of `engine/`).
 
@@ -257,7 +286,7 @@ lsof -i :8091      # last column is the PID
 kill <PID>         # then re-run node frontend/server.js
 ```
 
-**Option B — via Docker** (packages `run-session.js`'s dependencies
+**Option C — via Docker** (packages `run-session.js`'s dependencies
 only, see the Dockerfile's header comment for what's intentionally out
 of scope):
 
@@ -270,18 +299,28 @@ docker run --rm -p 8091:8091 --env-file .env phoenix node frontend/server.js
 
 ## 6. Verify
 
-- `run-session.js` should log `[run-session] session started: <id>` —
-  if it hangs or errors here, the problem is almost always steps 1-3
-  (device host unreachable, wrong `.apk` path, or wrong
-  `PHOENIX_APPIUM_HOST`/`PORT`), not Phoenix's own code.
-- Open the frontend (either `http://localhost:<PHOENIX_FRONTEND_PORT>`
-  from step 4, or the public URL at
+- **Option A (upload flow):** open `http://localhost:<PHOENIX_FRONTEND_PORT>`,
+  drag in a `.apk`/`.ipa`, and click "Start recording session" — the
+  terminal running `frontend/server.js` should log
+  `[session-manager] session started: <id>` within a few seconds
+  (BrowserStack) to a minute or so (a large upload). If it errors
+  immediately with a BrowserStack auth/app-url message, re-check step 2b's
+  env vars are exported in *that* terminal, not just an earlier one.
+- **Option B (env-var flow):** `run-session.js` should log
+  `[session-manager] session started: <id>` (or `[run-session]`'s own
+  startup lines around it) — if it hangs or errors here, the problem is
+  almost always steps 1-3 (device host unreachable, wrong `.apk` path,
+  or wrong `PHOENIX_APPIUM_HOST`/`PORT`), not Phoenix's own code. Then
+  open the frontend (either `http://localhost:<PHOENIX_FRONTEND_PORT>/?port=<PHOENIX_LIVE_VIEW_PORT>`
+  from step 5, or the public URL at
   https://prabathkumar.github.io/phoenix/ pointed at your live-view
   host via `?host=&port=`) and confirm the device mirror renders and
   taps register.
 - Alternatively, drive it headlessly with
   `node live-view/test-client.js` (see `.env.example` for
   `PHOENIX_TAP_SEQUENCE`) and confirm a script lands in `generated/`.
+  This only exercises Option B's env-var-configured session (it
+  connects to an already-running `run-session.js`), not the upload flow.
 
 ## Notes for CI / automated environments
 

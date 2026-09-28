@@ -5,20 +5,40 @@ a runnable script out**, on a Phoenix instance someone else has already
 stood up (see `docs/SETUP.md` if that's not the case yet — you need at
 minimum a reachable live-view WebSocket and a frontend URL).
 
-## 1. Open the recording UI
+## 1. Open the recording UI and pick your app
 
-- **If your team hosts `run-session.js` publicly reachable**, open the
-  public frontend: https://prabathkumar.github.io/phoenix/ — this is a
-  static page auto-deployed from `frontend/index.html`, it needs no
-  local setup on your machine at all.
-  - If the backend isn't on the same machine as your browser, add
-    `?host=<host>&port=<port>` to the URL, pointing at wherever
-    `run-session.js`'s live-view WebSocket is reachable (ask whoever
-    runs it, or see `docs/SETUP.md`'s tunnel note).
+- **The normal case: upload the `.apk`/`.ipa` yourself.** Open
+  `http://localhost:<PHOENIX_FRONTEND_PORT>` (or wherever your team
+  hosts `frontend/server.js`) — the page opens on an upload screen.
+  Drag in your build, or click to choose it, then click **"Start
+  recording session."** Phoenix uploads it (to BrowserStack, or passes
+  it straight to a local Appium host — whichever your instance is
+  configured for) and starts a session against it automatically; no
+  one needs to have pre-started anything for your specific app, and no
+  env var needs to name your `.apk`/`.ipa` path in advance. This is
+  confirmed working end to end against a real BrowserStack account —
+  see the README's "Uploading an app directly" section.
+  - **Only one recording session runs at a time.** If someone else's
+    session is still active, your upload gets a "session already
+    active" error — wait for them to finish (or stop their recording)
+    and try again.
+  - This upload screen only appears on a self-hosted
+    `frontend/server.js` — the public GitHub Pages URL below is a
+    static page with nowhere for an upload to go.
+- **If someone already started a session for a specific app** (the
+  older flow — a fixed build pinned by an env var before
+  `run-session.js` started), you don't upload anything: open the page
+  with `?port=<that session's live-view port>` appended to the URL
+  (ask whoever started it what port), which skips the upload screen and
+  connects you straight in. The public frontend works this way too:
+  https://prabathkumar.github.io/phoenix/?host=<host>&port=<port> — a
+  static page auto-deployed from `frontend/index.html`, no local setup
+  needed on your machine, but it can only connect to an
+  already-running session, never accept an upload itself.
 - **If you're running everything locally** (developing Phoenix itself,
-  or testing against your own emulator), see `docs/SETUP.md` steps 1-5,
-  then open `http://localhost:8091/` (or whatever `PHOENIX_FRONTEND_PORT`
-  you set).
+  or testing against your own emulator), see `docs/SETUP.md` steps 1-5
+  to get an Appium server or BrowserStack credentials set up first,
+  then either option above works.
 
 ## 2. Record a flow
 
@@ -95,6 +115,14 @@ needed, and run it the same way you'd run any WebdriverIO Android test.
   screen coordinate in the generated script, which is more fragile
   than a resolved locator. This is one of the acknowledged open items,
   see the README's Status section.
+- **One tap in an otherwise well-labeled flow can still fall back
+  weakly** — confirmed on a real BrowserStack recording (BitBar Sample
+  App's biometrics screen): most steps resolved cleanly, but a couple
+  of individual buttons had no accessible name/label at all and
+  produced an empty (`~""`) accessibility-id or a long structural
+  XPath. Same underlying cause as the point above, just on individual
+  elements rather than a whole screen — review any locator that looks
+  unusually generic or empty before relying on it.
 - **Recording a custom iOS app and getting the same locator for every
   tap, with zero assertions?** The app's own views are missing
   accessibility identifiers — confirmed live against a real SwiftUI

@@ -95,6 +95,19 @@ needed, and run it the same way you'd run any WebdriverIO Android test.
   screen coordinate in the generated script, which is more fragile
   than a resolved locator. This is one of the acknowledged open items,
   see the README's Status section.
+- **Recording a custom iOS app and getting the same locator for every
+  tap, with zero assertions?** The app's own views are missing
+  accessibility identifiers — confirmed live against a real SwiftUI
+  app where every tap resolved to the same top-level `~Orders` locator
+  because that was the *only* accessible element XCUITest could see on
+  screen. This isn't a Phoenix bug: without `.accessibilityIdentifier`
+  (SwiftUI) or `accessibilityIdentifier` (UIKit) set on the app's
+  buttons/rows/fields, no tool built on XCUITest — Phoenix included —
+  can tell them apart. Check with Xcode's Accessibility Inspector
+  (Open Developer Tool → Accessibility Inspector, hover the app on the
+  booted Simulator) before recording; if it only ever reports the
+  screen as a whole rather than individual controls, add identifiers
+  to the app first.
 - Questions about what a specific generated line means, or why an
   assertion looks off, are usually answered by looking at the actual
   accessibility tree for that screen (`adb shell uiautomator dump`, or

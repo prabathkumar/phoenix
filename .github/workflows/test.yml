@@ -6,8 +6,13 @@ name: Test
 # and live-view/'s suites (added later) caught real bugs the same way —
 # a crashing session on an unfocused iOS field, a broken WDA typing path
 # — against fake drivers/recorders rather than needing a real device in
-# CI. Catching a regression here is a lot cheaper than catching it on a
-# laptop mid-recording against a real emulator or Simulator.
+# CI. frontend/'s suite (added with the direct-upload flow) covers
+# upload-session.js's platform detection and error handling the same
+# way, against a real HTTP server + real multipart parsing but faked
+# session-manager/browserstack-upload/remote-provider — no real
+# BrowserStack account or Appium session needed in CI either. Catching
+# a regression here is a lot cheaper than catching it on a laptop
+# mid-recording against a real emulator or Simulator.
 
 on:
   push:
@@ -19,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        package: [capture, generation, engine, live-view]
+        package: [capture, generation, engine, live-view, frontend]
     steps:
       - uses: actions/checkout@v4
 

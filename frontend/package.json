@@ -1,0 +1,13 @@
+{
+  "name": "@phoenix/frontend",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Tester-facing recording UI: serves index.html and, since the app-upload flow was added, the POST /api/sessions endpoint that starts a recording session on demand against an uploaded .ipa/.apk.",
+  "dependencies": {
+    "busboy": "^1.6.0"
+  },
+  "scripts": {
+    "dev": "node server.js",
+    "test": "node test/upload-session.test.js"
+  }
+}

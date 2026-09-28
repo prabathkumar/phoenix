@@ -1,112 +1,25 @@
 /**
- * Wires engine/ + capture/ + live-view/ + generation/ into one live,
- * end-to-end recording session — the actual product loop, not each
- * stage tested in isolation the way stage0-session.js and the
- * capture/generation test suites do.
+ * Boot-once CLI entry point for the original env-var-configured
+ * workflow (docs/SETUP.md, CI, live-view/test-client.js): starts one
+ * recording session against whatever PHOENIX_STAGE0_APP_PATH /
+ * PHOENIX_IOS_APP_PATH / PHOENIX_BROWSERSTACK_APP_URL already point at,
+ * then waits for a tester to connect and record.
  *
- * Flow:
- *   1. Start a real Appium session against the local emulator (engine/).
- *   2. Start the live-view WebSocket server against that session,
- *      wired to a SessionRecorder (capture/).
- *   3. A tester's browser (or, for now, live-view/test-client.js
- *      simulating one) connects, taps forward through the socket, and
- *      each tap is captured with a resolved locator.
- *   4. On "stop", the captured steps are handed to generation/, and the
- *      resulting script is written to generated/<test-name>.test.js.
- *
- * Run this, then in another terminal run:
- *   node live-view/test-client.js
- * to simulate a tester recording a flow, and watch a real script land
- * in generated/.
+ * The actual session/live-view/recorder/generation wiring now lives in
+ * engine/session-manager.js's startRecordingSession(), shared with the
+ * on-demand path (a tester uploading an app through frontend/index.html,
+ * handled by frontend/server.js's POST /api/sessions) — see README's
+ * "Uploading an app directly" section for how the two relate.
  */
 
-const fs = require("fs");
-const path = require("path");
-
-// PHOENIX_PLATFORM selects which engine/ session starter and capability
-// set to use. "android" (default) uses engine/session.js (UiAutomator2,
-// the only platform proven end to end so far); "ios" uses
-// engine/ios-session.js (XCUITest, against a local Simulator — see
-// docs/SETUP.md's iOS section and engine/ios-stage0-session.js for how
-// this was verified in isolation before being wired in here).
-const PLATFORM = process.env.PHOENIX_PLATFORM === "ios" ? "ios" : "android";
-const { startSession } = require(PLATFORM === "ios" ? "./engine/ios-session" : "./engine/session");
-const { SessionRecorder } = require("./capture/recorder");
-const { startLiveView } = require("./live-view/server");
-const { generateScript } = require("./generation/pipeline");
-
-const LIVE_VIEW_PORT = Number(process.env.PHOENIX_LIVE_VIEW_PORT) || 8090;
-const OUTPUT_DIR = path.join(__dirname, "generated");
+const { startRecordingSession } = require("./engine/session-manager");
 
 async function main() {
-  console.log(`[run-session] starting Appium session (platform: ${PLATFORM})...`);
-  const driver = await startSession();
-  console.log("[run-session] session started:", driver.sessionId);
-
-  const recorder = new SessionRecorder(driver);
-  const wss = startLiveView(driver, recorder, LIVE_VIEW_PORT, PLATFORM);
-
-  // startLiveView's own "stop" handling clears the screenshot poll timer
-  // and calls recorder.finish(), but generation + file output is
-  // orchestration-level, not live-view's job — so we listen for the same
-  // event here rather than have live-view depend on generation/.
-  wss.on("connection", (socket) => {
-    socket.on("message", async (raw) => {
-      const message = JSON.parse(raw.toString());
-      if (message.type !== "stop") return;
-
-      // Let live-view's own handler run first (clears its poll timer,
-      // calls recorder.finish()) before we read recorder.steps.
-      setImmediate(async () => {
-        try {
-          await onSessionFinished(recorder.steps, driver, wss, socket);
-        } catch (err) {
-          console.error("[run-session] failed to finish session:", err);
-          try {
-            socket.send(JSON.stringify({ type: "generation-failed", message: err.message }));
-          } catch (_sendErr) {
-            // socket may already be gone — nothing more useful to do
-          }
-        }
-      });
-    });
-  });
-
-  console.log(`[run-session] waiting for a tester to connect and record on ws://localhost:${LIVE_VIEW_PORT}`);
+  const { platform, port } = await startRecordingSession();
+  console.log(`[run-session] waiting for a tester to connect and record on ws://localhost:${port}`);
   console.log(`[run-session] open frontend/index.html (served via frontend/server.js) to record as a real tester would,`);
   console.log("[run-session] or run `node live-view/test-client.js` in another terminal to simulate one.");
-}
-
-async function onSessionFinished(steps, driver, wss, socket) {
-  console.log(`[run-session] session finished: ${steps.length} step(s) recorded`);
-
-  // PHOENIX_USE_LLM=1 opts into the Ollama-backed refinement layer
-  // (generation/llm.js) for a better flow name and filtered assertions.
-  // Unset/0 (the default) uses v1's rule-based output only — a complete
-  // result on its own, see pipeline.js's generateScript() doc comment.
-  const useLlm = process.env.PHOENIX_USE_LLM === "1";
-  const result = await generateScript(steps, { useLlm, platform: PLATFORM });
-  console.log(`[run-session] generated script: "${result.testName}" (${result.assertions.length} assertion(s), ${result.parameters.length} parameter(s))`);
-
-  fs.mkdirSync(OUTPUT_DIR, { recursive: true });
-  const outputPath = path.join(OUTPUT_DIR, `${result.testName}.test.js`);
-  fs.writeFileSync(outputPath, result.scriptSource, "utf8");
-  console.log("[run-session] wrote", outputPath);
-
-  // Send the result back to whoever was recording (the frontend, or
-  // test-client.js) before tearing down, so it can be shown/downloaded
-  // without reading the filesystem directly.
-  socket.send(JSON.stringify({
-    type: "script-generated",
-    testName: result.testName,
-    scriptSource: result.scriptSource,
-    assertionCount: result.assertions.length,
-    parameterCount: result.parameters.length,
-  }));
-
-  await driver.deleteSession();
-  wss.close();
-  console.log("[run-session] done");
+  console.log(`[run-session] platform: ${platform}`);
 }
 
 main().catch((err) => {

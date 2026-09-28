@@ -219,6 +219,68 @@
     line-height: 1.5;
     white-space: pre;
   }
+
+  .upload-screen {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .upload-card {
+    width: 100%;
+    max-width: 420px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 28px;
+    text-align: center;
+  }
+  .upload-card h2 {
+    margin: 0 0 6px;
+    font-size: 16px;
+  }
+  .upload-card p.hint {
+    margin: 0 0 20px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: 10px;
+    padding: 28px 16px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .drop-zone:hover, .drop-zone.dragover {
+    border-color: var(--accent);
+    background: rgba(255, 90, 54, 0.06);
+  }
+  .drop-zone input[type="file"] { display: none; }
+  .drop-zone .icon { font-size: 28px; margin-bottom: 8px; }
+  .drop-zone .filename {
+    margin-top: 10px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--text);
+    word-break: break-all;
+  }
+  #upload-start-btn {
+    width: 100%;
+    margin-top: 18px;
+    padding: 11px;
+  }
+  #upload-error {
+    margin-top: 14px;
+    font-size: 13px;
+    color: var(--danger);
+    display: none;
+  }
+  #upload-status {
+    margin-top: 14px;
+    font-size: 13px;
+    color: var(--muted);
+    display: none;
+  }
 </style>
 </head>
 <body>
@@ -227,11 +289,27 @@
   <h1><span>Phoenix</span> — Record a flow</h1>
   <div class="status">
     <span class="dot" id="conn-dot"></span>
-    <span id="conn-label">Connecting…</span>
+    <span id="conn-label">Not connected</span>
   </div>
 </header>
 
-<main>
+<section class="upload-screen" id="upload-screen">
+  <div class="upload-card">
+    <h2>Upload the app to test</h2>
+    <p class="hint">A .apk (Android) or .ipa (iOS) build — Phoenix uploads it to BrowserStack (or your local Appium host) and starts a session against it.</p>
+    <label class="drop-zone" id="drop-zone" for="app-file-input">
+      <div class="icon">📱</div>
+      <div id="drop-zone-label">Click to choose a file, or drag one here</div>
+      <div class="filename" id="selected-filename"></div>
+      <input type="file" id="app-file-input" accept=".apk,.ipa" />
+    </label>
+    <button class="btn-primary" id="upload-start-btn" disabled>Start recording session</button>
+    <div id="upload-error"></div>
+    <div id="upload-status"></div>
+  </div>
+</section>
+
+<main style="display:none;" id="recorder-main">
   <section class="device-pane">
     <div class="device-frame" id="device-frame">
       <div class="placeholder" id="placeholder">Waiting for the device...</div>
@@ -265,7 +343,93 @@
 (function () {
   const params = new URLSearchParams(location.search);
   const host = params.get("host") || "localhost"; // override with ?host=... to point at a tunnel (e.g. ngrok) instead of your own machine
-  const port = params.get("port") || "8090";
+
+  const uploadScreen = document.getElementById("upload-screen");
+  const recorderMain = document.getElementById("recorder-main");
+  const dropZone = document.getElementById("drop-zone");
+  const dropZoneLabel = document.getElementById("drop-zone-label");
+  const fileInput = document.getElementById("app-file-input");
+  const selectedFilename = document.getElementById("selected-filename");
+  const uploadStartBtn = document.getElementById("upload-start-btn");
+  const uploadError = document.getElementById("upload-error");
+  const uploadStatus = document.getElementById("upload-status");
+  const connLabel0 = document.getElementById("conn-label");
+
+  // Legacy path: run-session.js already started a session at boot the
+  // old (env-var-configured) way, and this page was opened with
+  // ?port=<its live-view port> — skip the upload screen and connect
+  // straight to it, exactly as before the upload flow existed.
+  if (params.get("port")) {
+    connectAndRecord(params.get("port"));
+    return;
+  }
+
+  fileInput.addEventListener("change", () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    selectedFilename.textContent = file.name;
+    dropZoneLabel.textContent = "Selected:";
+    uploadStartBtn.disabled = false;
+    uploadError.style.display = "none";
+  });
+
+  ["dragover", "dragleave", "drop"].forEach((evt) => {
+    dropZone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      dropZone.classList.toggle("dragover", evt === "dragover");
+    });
+  });
+  dropZone.addEventListener("drop", (e) => {
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    fileInput.files = e.dataTransfer.files;
+    fileInput.dispatchEvent(new Event("change"));
+  });
+
+  uploadStartBtn.addEventListener("click", startSessionFromUpload);
+
+  async function startSessionFromUpload() {
+    const file = fileInput.files[0];
+    if (!file) return;
+
+    uploadStartBtn.disabled = true;
+    fileInput.disabled = true;
+    uploadError.style.display = "none";
+    uploadStatus.style.display = "block";
+    uploadStatus.textContent = "Uploading " + file.name + " and starting a session — this can take a minute for a large build...";
+
+    try {
+      const formData = new FormData();
+      formData.append("app", file);
+
+      const response = await fetch("/api/sessions", { method: "POST", body: formData });
+      const body = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(body.error || ("Upload failed (HTTP " + response.status + ")"));
+      }
+
+      uploadStatus.textContent = "Session started (" + body.platform + ") — connecting...";
+      uploadScreen.style.display = "none";
+      recorderMain.style.display = "flex";
+      connectAndRecord(body.port);
+    } catch (err) {
+      uploadError.textContent = err.message;
+      uploadError.style.display = "block";
+      uploadStatus.style.display = "none";
+      uploadStartBtn.disabled = false;
+      fileInput.disabled = false;
+    }
+  }
+
+  function connectAndRecord(port) {
+    uploadScreen.style.display = "none";
+    recorderMain.style.display = "flex";
+    runRecorder(host, port);
+  }
+})();
+
+function runRecorder(host, port) {
   const wsUrl = "ws://" + host + ":" + port;
 
   const connDot = document.getElementById("conn-dot");
@@ -420,7 +584,7 @@
       setTimeout(() => (copyBtn.textContent = "Copy"), 1200);
     });
   });
-})();
+}
 </script>
 
 </body>

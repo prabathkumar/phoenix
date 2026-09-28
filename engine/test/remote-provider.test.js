@@ -173,6 +173,44 @@ test("browserstack capabilities replace the local app reference with the uploade
   );
 });
 
+test("browserstack capabilities omit local/localIdentifier when PHOENIX_BROWSERSTACK_LOCAL is unset", () => {
+  withEnv(
+    {
+      PHOENIX_APPIUM_PROVIDER: "browserstack",
+      PHOENIX_BROWSERSTACK_USER: "someuser",
+      PHOENIX_BROWSERSTACK_KEY: "somekey",
+      PHOENIX_BROWSERSTACK_APP_URL: "bs://abc123",
+      PHOENIX_BROWSERSTACK_LOCAL: undefined,
+      PHOENIX_BROWSERSTACK_LOCAL_IDENTIFIER: undefined,
+    },
+    () => {
+      const remoteProvider = freshProvider();
+      const result = remoteProvider.buildCapabilities({ platformName: "iOS" });
+      assert.strictEqual(result["bstack:options"].local, undefined);
+      assert.strictEqual(result["bstack:options"].localIdentifier, undefined);
+    }
+  );
+});
+
+test("browserstack capabilities set local:true when PHOENIX_BROWSERSTACK_LOCAL=1, with an optional localIdentifier", () => {
+  withEnv(
+    {
+      PHOENIX_APPIUM_PROVIDER: "browserstack",
+      PHOENIX_BROWSERSTACK_USER: "someuser",
+      PHOENIX_BROWSERSTACK_KEY: "somekey",
+      PHOENIX_BROWSERSTACK_APP_URL: "bs://abc123",
+      PHOENIX_BROWSERSTACK_LOCAL: "1",
+      PHOENIX_BROWSERSTACK_LOCAL_IDENTIFIER: "phoenix-tunnel-1",
+    },
+    () => {
+      const remoteProvider = freshProvider();
+      const result = remoteProvider.buildCapabilities({ platformName: "iOS" });
+      assert.strictEqual(result["bstack:options"].local, true);
+      assert.strictEqual(result["bstack:options"].localIdentifier, "phoenix-tunnel-1");
+    }
+  );
+});
+
 test("browserstack capability overrides still apply last, on top of the provider's own additions", () => {
   withEnv(
     {

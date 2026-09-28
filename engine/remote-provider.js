@@ -109,6 +109,18 @@ function buildCapabilities(baseCapabilities, overrides = {}) {
       projectName: process.env.PHOENIX_BROWSERSTACK_PROJECT || "Phoenix",
       buildName: process.env.PHOENIX_BROWSERSTACK_BUILD || "phoenix-recording",
       sessionName: process.env.PHOENIX_BROWSERSTACK_SESSION_NAME || "Phoenix recording session",
+      // Routes this session's device traffic through a BrowserStackLocal
+      // tunnel running on PHOENIX_BROWSERSTACK_USER's machine (or wherever
+      // it was started), so the app-under-test can reach a backend that
+      // isn't reachable from the public internet (e.g. an internal VPN-only
+      // API). Requires that tunnel to already be running separately --
+      // this flag only tells BrowserStack to use it, it doesn't start one.
+      ...(process.env.PHOENIX_BROWSERSTACK_LOCAL === "1" && {
+        local: true,
+        ...(process.env.PHOENIX_BROWSERSTACK_LOCAL_IDENTIFIER && {
+          localIdentifier: process.env.PHOENIX_BROWSERSTACK_LOCAL_IDENTIFIER,
+        }),
+      }),
     },
     ...overrides,
   };

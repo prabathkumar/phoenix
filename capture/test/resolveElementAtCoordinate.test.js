@@ -101,6 +101,31 @@ test("resolveElementAtCoordinate resolves an iOS/XCUITest-style tree via name/la
   assert.strictEqual(label.value, "Welcome");
 });
 
+test("falls through to text (or xpath) instead of an unusable empty accessibility-id, " +
+  "when name/content-desc is present but blank or whitespace-only", () => {
+  // Found for real against a BrowserStack-recorded iOS app (BitBar Sample
+  // App's biometrics screen): a couple of elements carried a `name`
+  // attribute that was present but whitespace-only rather than simply
+  // absent, producing `~` (nothing after the tilde) in the generated
+  // script instead of a usable locator.
+  const TREE_WITH_BLANK_NAME = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<AppiumAUT>
+  <XCUIElementTypeApplication name="MyApp" x="0" y="0" width="390" height="844">
+    <XCUIElementTypeOther name="   " label="Force pass callback" x="100" y="700" width="190" height="44" />
+    <XCUIElementTypeOther name="" x="20" y="100" width="200" height="30" />
+  </XCUIElementTypeApplication>
+</AppiumAUT>`;
+
+  const withLabelFallback = resolveElementAtCoordinate({ x: 150, y: 720 }, TREE_WITH_BLANK_NAME);
+  assert.notStrictEqual(withLabelFallback.strategy, "accessibility-id");
+  assert.strictEqual(withLabelFallback.strategy, "text");
+  assert.strictEqual(withLabelFallback.value, "Force pass callback");
+
+  const noLabelAtAll = resolveElementAtCoordinate({ x: 30, y: 110 }, TREE_WITH_BLANK_NAME);
+  assert.notStrictEqual(noLabelAtAll.strategy, "accessibility-id");
+  assert.strictEqual(noLabelAtAll.strategy, "xpath");
+});
+
 test("buildXPath returns a structural path usable as a last-resort locator", () => {
   const result = resolveElementAtCoordinate({ x: 150, y: 200 }, API_DEMOS_TREE);
   assert.ok(result.xpath.startsWith("/hierarchy[1]"));

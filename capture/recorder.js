@@ -194,9 +194,19 @@ function resolveElementAtCoordinate(coordinate, pageSourceXml) {
   candidates.sort((a, b) => rectArea(a.rect) - rectArea(b.rect));
   const { node: element, rect } = candidates[0];
 
+  // Trims and treats a whitespace-only value the same as a missing one --
+  // seen for real against a BrowserStack-recorded iOS app (BitBar Sample
+  // App's biometrics screen): a couple of elements carried a `name`
+  // attribute that was present but blank/whitespace-only rather than
+  // simply absent, which a plain truthiness check lets through as a
+  // "real" accessibility-id, producing an unusable `~` selector (nothing
+  // after the tilde) instead of falling through to text or xpath as
+  // designed. A bare falsy check on the raw attribute value doesn't catch
+  // this -- a non-empty string of only spaces is truthy in JS.
   const get = (name) => {
     const value = element.getAttribute && element.getAttribute(name);
-    return value ? value : undefined;
+    const trimmed = typeof value === "string" ? value.trim() : value;
+    return trimmed ? trimmed : undefined;
   };
 
   // Android's UiAutomator2 tree uses resource-id/content-desc/text.

@@ -115,14 +115,15 @@ needed, and run it the same way you'd run any WebdriverIO Android test.
   screen coordinate in the generated script, which is more fragile
   than a resolved locator. This is one of the acknowledged open items,
   see the README's Status section.
-- **One tap in an otherwise well-labeled flow can still fall back
-  weakly** — confirmed on a real BrowserStack recording (BitBar Sample
-  App's biometrics screen): most steps resolved cleanly, but a couple
-  of individual buttons had no accessible name/label at all and
-  produced an empty (`~""`) accessibility-id or a long structural
-  XPath. Same underlying cause as the point above, just on individual
-  elements rather than a whole screen — review any locator that looks
-  unusually generic or empty before relying on it.
+- **A generated selector that's literally `~` with nothing after the
+  tilde** (seen on a real BrowserStack recording, BitBar Sample App's
+  biometrics screen) was a real bug, now fixed: an element whose
+  accessibility identifier was present but blank/whitespace-only was
+  being accepted as a "real" identifier instead of falling through to
+  its visible text or a structural xpath. If you still see this on an
+  older `generated/*.test.js` file, re-record — the fix is in
+  `capture/recorder.js`'s locator resolution, not something you need to
+  work around by hand.
 - **Recording a custom iOS app and getting the same locator for every
   tap, with zero assertions?** The app's own views are missing
   accessibility identifiers — confirmed live against a real SwiftUI

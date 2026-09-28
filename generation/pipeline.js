@@ -191,11 +191,29 @@ function inferAssertions(steps) {
     // De-duplicate within the step by the same composite key (a label
     // can legitimately appear more than once at the same position, e.g.
     // a list row's text and its content-desc matching).
+    //
+    // A second, coarser pass then collapses by label text alone within
+    // this one step. Nested accessibility nodes commonly expose the
+    // same text at multiple bounds — e.g. a button and its inner
+    // StaticText child both carry "Screen Time" — which the composite
+    // key above correctly treats as distinct *elements* (needed for the
+    // cross-screen "seen" logic below), but which reads as pure
+    // repetition in a single step's assertions: three near-identical
+    // `toBeDisplayed()` checks for the same visible words. Only the
+    // first element carrying a given label is asserted per step; every
+    // element's key still gets added to `seen` afterward, so this is
+    // purely about not re-stating the same on-screen text three times,
+    // not about which elements are tracked.
     const dedup = new Set();
+    const labelsAssertedThisStep = new Set();
     for (const item of appeared) {
       const key = labelKey(item);
       if (dedup.has(key)) continue;
       dedup.add(key);
+
+      if (labelsAssertedThisStep.has(item.label)) continue;
+      labelsAssertedThisStep.add(item.label);
+
       assertions.push({ stepIndex: index, label: item.label, resourceId: item.resourceId });
     }
 

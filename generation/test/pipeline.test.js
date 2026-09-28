@@ -135,6 +135,39 @@ test("inferAssertions still flags a newly-appeared element whose text coincident
   assert.deepStrictEqual(labels, ["Animation", "Buttons"]);
 });
 
+test("inferAssertions collapses repeated labels within one step to a single assertion", () => {
+  // Regression test for noise observed on a real iOS recording: nested
+  // accessibility nodes commonly expose the same text at multiple
+  // bounds -- e.g. a button and its inner StaticText child both carry
+  // "Screen Time" -- which the composite (resourceId, label, bounds)
+  // key correctly treats as distinct elements, but which shouldn't
+  // produce three near-identical toBeDisplayed() assertions for the
+  // same visible words in one step's generated script.
+  const BEFORE = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy><android.widget.FrameLayout bounds="[0,0][1080,2400]" /></hierarchy>`;
+
+  const AFTER = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy>
+  <android.widget.FrameLayout bounds="[0,0][1080,2400]">
+    <android.widget.Button text="Screen Time" bounds="[0,100][1080,300]">
+      <android.widget.TextView text="Screen Time" bounds="[24,120][400,180]" />
+    </android.widget.Button>
+    <android.widget.TextView text="App &amp; Website Activity" bounds="[0,320][1080,420]" />
+  </android.widget.FrameLayout>
+</hierarchy>`;
+
+  const step = {
+    tapCoordinate: { x: 540, y: 200 },
+    resolvedElement: { strategy: "text", value: "Screen Time", text: "Screen Time" },
+    pageSourceBefore: BEFORE,
+    pageSourceAfter: AFTER,
+  };
+
+  const assertions = inferAssertions([step]);
+  const labels = assertions.map((a) => a.label).sort();
+  assert.deepStrictEqual(labels, ["App & Website Activity", "Screen Time"]);
+});
+
 test("inferAssertions does not re-flag a screen's elements when back navigation returns to it", () => {
   // Regression test for a real bug: screen A -> screen B -> back to A was
   // flooding assertions because the old diff only compared each step

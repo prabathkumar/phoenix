@@ -107,12 +107,28 @@ function startLiveView(driver, recorder, port = 8090, platform = "android") {
         //    Clearing out the previously-sent value first (one backspace
         //    per character) keeps the field's on-device state in sync
         //    with what we're about to record.
-        if (currentStep.typedValue) {
-          const backspaces = Array(currentStep.typedValue.length).fill("");
-          await driver.keys(backspaces);
+        // 3. driver.keys() drives XCUITest through W3C key actions
+        //    (keyDown/keyUp pairs). WebDriverAgent on Appium 3 rejects
+        //    those for plain character input — "Key Down action 's'
+        //    must have a closing Key Up successor" — even though
+        //    webdriverio built the pairs correctly; it's a WDA-side
+        //    actions bug, not something fixable from this side.
+        //    `mobile: type` bypasses the W3C actions endpoint entirely
+        //    and types straight into the focused field, so iOS uses
+        //    that instead; Android keeps the plain keys() path since
+        //    UiAutomator2 doesn't hit this bug.
+        if (platform === "ios") {
+          if (currentStep.typedValue) {
+            await driver.execute("mobile: type", { text: "\b".repeat(currentStep.typedValue.length) });
+          }
+          await driver.execute("mobile: type", { text: message.value });
+        } else {
+          if (currentStep.typedValue) {
+            const backspaces = Array(currentStep.typedValue.length).fill("");
+            await driver.keys(backspaces);
+          }
+          await driver.keys(message.value);
         }
-
-        await driver.keys(message.value);
         currentStep.typedValue = message.value;
         socket.send(JSON.stringify({ type: "text-entered", stepIndex: recorder.steps.length - 1 }));
       }

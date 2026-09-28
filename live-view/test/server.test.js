@@ -31,7 +31,9 @@ function makeFakeDriver() {
     async keys(value) {
       this.keysCalls.push(value);
     },
-    async execute() {
+    executeCalls: [],
+    async execute(script, args) {
+      this.executeCalls.push([script, args]);
       return null;
     },
   };
@@ -160,6 +162,39 @@ async function main() {
         "foo",
         ["", "", ""],
         "foobar",
+      ]);
+      assert.strictEqual(recorder.steps[0].typedValue, "foobar");
+      socket.close();
+    } finally {
+      wss.close();
+    }
+  });
+
+  await testAsync("iOS platform types via 'mobile: type' instead of driver.keys(), avoiding the WDA key-actions bug", async () => {
+    const driver = makeFakeDriver();
+    const recorder = makeFakeRecorder();
+    const port = 18090 + Math.floor(Math.random() * 1000);
+    const wss = startLiveView(driver, recorder, port, "ios");
+    try {
+      const socket = await connect(port);
+      const stepRecorded = nextMessageOfType(socket, "step-recorded");
+      socket.send(JSON.stringify({ type: "tap", xRatio: 0.5, yRatio: 0.5 }));
+      await stepRecorded;
+
+      const firstEntry = nextMessageOfType(socket, "text-entered");
+      socket.send(JSON.stringify({ type: "type", value: "foo" }));
+      await firstEntry;
+
+      const secondEntry = nextMessageOfType(socket, "text-entered");
+      socket.send(JSON.stringify({ type: "type", value: "foobar" }));
+      await secondEntry;
+
+      assert.strictEqual(driver.keysCalls.length, 0, "iOS typing must not call driver.keys() (WDA rejects its key actions)");
+      assert.deepStrictEqual(driver.executeCalls, [
+        ["mobile: tap", { x: 540, y: 1200 }],
+        ["mobile: type", { text: "foo" }],
+        ["mobile: type", { text: "\b\b\b" }],
+        ["mobile: type", { text: "foobar" }],
       ]);
       assert.strictEqual(recorder.steps[0].typedValue, "foobar");
       socket.close();

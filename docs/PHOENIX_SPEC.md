@@ -69,6 +69,12 @@ This split alone removes most of the friction testers feel today waiting on clou
 
 ## 6. Roadmap beyond v1
 
+**The AI story, told as two deliberate acts — not one blurred claim.**
+
+*Act 1 — Guided AI (v1, this repo).* A human walks the flow once, because judgment calls (an OTP screen, a payment confirmation) aren't reliably solvable by an agent yet, and a wrong guess there costs trust fast (§2). The AI is everything *around* that human judgment: locator resolution, assertion inference, an opt-in LLM pass for naming/noise-filtering. Pitch: *a human's judgment, a machine's tedium removed.*
+
+*Act 2 — Unattended AI (Phase 2/3, below).* Same foundation, now deciding the next action itself and knowing when to stop and hand back to a human. Pitch: *same trusted foundation, now walking the flow itself.* This is the differentiator, but it earns that status by being built in the right order — proven guided first, autonomous only once that trust exists — not by being rushed alongside v1 hardening to look more impressive sooner.
+
 **Phase 2 — AI-native semantic layer (the actual differentiator):**
 - Grounded screen snapshot: merge accessibility tree + screenshot into one compact structured format an LLM reads directly — the mobile equivalent of the grounded ARIA-snapshot work already done for Web.
 - Semantic action layer: `act("tap the Login button")` instead of raw locator resolution — the engine resolves against the grounded snapshot internally.

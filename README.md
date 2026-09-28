@@ -107,6 +107,21 @@ This is the case *for* building Phoenix, not a claim that today's repo already b
 
 **Current state: Phoenix records a real flow — on a real Android emulator/device or a real iOS Simulator — and generates a real, runnable script from it, with an optional local-LLM refinement pass. Every capability below is proven on real hardware, not just unit-tested.** CI (`test.yml`) runs the `capture/` and `generation/` suites on every push; the frontend (`deploy-frontend.yml`) auto-deploys to GitHub Pages on every push that touches it.
 
+### Handoff to the dev team
+
+**Ready now (BrowserStack path only):** upload flow, session/live-view/capture/generation pipeline, script output — all proven end to end on real hardware (see "Uploading an app directly" below). This is what's in scope for immediate use; the local-provider path (your own Android/iOS VM hosts) is implemented the same way but genuinely unverified, and isn't expected to be exercised until those VMs exist (Oct–Nov).
+
+**Real backlog for the dev team to plan against, not blockers for using the BrowserStack path today:**
+- **Concurrent sessions.** One recording session at a time, hard limit — a second upload while one's active gets a 409. No device pool yet.
+- **TestOps embedding.** Per the original spec (`docs/PHOENIX_SPEC.md` §3), a generated script should save directly as a TestOps test case with no export/import step. Today it's written to `generated/<name>.test.js` on disk and shown in the browser with a copy button — the actual integration with TestOps's own test-case storage hasn't been built.
+- **Real-device CI.** `test.yml` only runs unit tests (`capture/`, `generation/`, `engine/`, `live-view/`, `frontend/`) against fixtures and fakes — every "confirmed on real hardware" claim in this README came from a manual session, not an automated gate. Worth a scheduled or gated real-device/BrowserStack CI job at some point.
+- **Elements with no accessibility info at all** (custom-drawn Canvas/OpenGL UI) still fall back to a raw screen coordinate — the last-resort tier, and the most fragile one. Flagged as a TODO in `capture/recorder.js` since Stage 0; not needed for standard native widgets, which covers most apps.
+- Smaller, already-noted items: upload cleanup only happens on the BrowserStack success path (see "Uploading an app directly"), and the public GitHub Pages frontend can't accept an upload itself (static hosting, no backend).
+
+**The "AI" question, answered precisely** — two different things go by that name here:
+- **Built and working:** `generation/llm.js`, an opt-in *local* refinement pass via Ollama (`PHOENIX_USE_LLM=1`) — better flow names, filtered incidental assertions. Off by default, fails safe to the plain rule-based output if Ollama isn't available. See "LLM refinement" below. This is real but narrow: a polish layer on top of a fundamentally rule-based generation pipeline, not the semantic layer described next.
+- **Not started:** the "AI-native" differentiator in `docs/PHOENIX_SPEC.md` §6 (Phase 2/3) — a grounded accessibility+screenshot snapshot an LLM reads directly, semantic actions (`act("tap the Login button")`) instead of raw locator resolution, and eventually autonomous exploration. Explicitly out of v1 scope in the spec itself, and needs its own team/skillset per §7 — nothing has been built toward it yet.
+
 ### Recording and script generation
 
 **Session engine.** `engine/session.js` (Android, UiAutomator2) and `engine/ios-session.js` (iOS, XCUITest) each start a real Appium session and expose the same lifecycle: session start → screenshot → accessibility tree → tap → clean teardown. Android needs no project-level Appium version pin (Appium and its drivers are installed globally via the `appium` CLI, not as `engine/package.json` dependencies); iOS capabilities target either a built `.app`/`.ipa` or, for smoke-testing the plumbing itself, an app already on the Simulator by bundle id (`appium:bundleId`).

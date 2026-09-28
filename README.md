@@ -273,9 +273,28 @@ use BrowserStack" for the full walkthrough, including
 getting an app its `bs://` URL, since BrowserStack has no concept of
 "a file already on this machine"). Verified with a unit test suite
 (`engine/test/`, 9 tests) covering both providers' connection config
-and capability shape, including the required-env-var error messages;
-not yet exercised against a real BrowserStack account, since Phoenix
-doesn't have credentials for one yet.
+and capability shape, including the required-env-var error messages,
+and now also confirmed end to end against a real BrowserStack App
+Automate account: uploading BrowserStack's own `BitBarSampleApp.ipa`
+(`bitbar/test-samples`), running a full recording session against it
+on real hardware, and generating a correct script from real captured
+taps confirmed the provider, install, session, live-view, and
+generation layers all work correctly together. That run also isolated
+a separate problem seen with an internal app (Rope): a 404 on launch
+there is Rope's own backend being unreachable from BrowserStack's
+real-device network, not a Phoenix or BrowserStack integration issue
+— since a public app with no backend dependency rendered and recorded
+correctly on the same setup.
+
+That backend-reachability gap is what BrowserStack Local (a tunnel
+binary that gives BrowserStack's remote devices a route into a
+private/internal network) is for, and is the next thing to wire up for
+any app-under-test whose backend isn't reachable from the public
+internet — see BrowserStack's own docs for the `BrowserStackLocal`
+binary. Phoenix's side of that is just one more `bstack:options` flag
+(`local: true`, plus a shared `localIdentifier` when needed) in
+`engine/remote-provider.js` once a Local tunnel is running; that flag
+isn't wired up yet.
 
 ### Running the Android engine directly (spawn path)
 

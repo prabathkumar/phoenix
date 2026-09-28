@@ -116,14 +116,19 @@ needed, and run it the same way you'd run any WebdriverIO Android test.
   than a resolved locator. This is one of the acknowledged open items,
   see the README's Status section.
 - **A generated selector that's literally `~` with nothing after the
-  tilde** (seen on a real BrowserStack recording, BitBar Sample App's
-  biometrics screen) was a real bug, now fixed: an element whose
-  accessibility identifier was present but blank/whitespace-only was
-  being accepted as a "real" identifier instead of falling through to
-  its visible text or a structural xpath. If you still see this on an
-  older `generated/*.test.js` file, re-record — the fix is in
-  `capture/recorder.js`'s locator resolution, not something you need to
-  work around by hand.
+  tilde, or an assertion on `label == ""`** (both seen on a real
+  BrowserStack recording, BitBar Sample App's biometrics screen) were
+  real bugs, now fixed: an element whose accessibility identifier was
+  present but blank/whitespace-only — or, in the trickier case, a
+  zero-width space (an invisible character some iOS accessibility
+  containers use for a rolled-up-empty label, which survives a plain
+  `.trim()` check since it isn't ordinary whitespace) — was being
+  accepted as a "real" value instead of falling through to visible text
+  or a structural xpath. If you still see either of these on an older
+  `generated/*.test.js` file, re-record — the fix is in
+  `capture/recorder.js`'s locator resolution and
+  `generation/pipeline.js`'s label extraction, not something you need
+  to work around by hand.
 - **Recording a custom iOS app and getting the same locator for every
   tap, with zero assertions?** The app's own views are missing
   accessibility identifiers — confirmed live against a real SwiftUI

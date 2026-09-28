@@ -126,6 +126,25 @@ test("falls through to text (or xpath) instead of an unusable empty accessibilit
   assert.strictEqual(noLabelAtAll.strategy, "xpath");
 });
 
+test("also falls through when name is a zero-width space, not just plain whitespace", () => {
+  // Same real bug, narrower cause: a zero-width space (​) is non-empty
+  // and truthy, and untouched by String.prototype.trim() (which only
+  // strips real whitespace) -- so a plain trim-then-check misses it. Seen
+  // for real on the same BrowserStack recording as the plain-whitespace
+  // case above.
+  const TREE_WITH_ZERO_WIDTH_NAME = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<AppiumAUT>
+  <XCUIElementTypeApplication name="MyApp" x="0" y="0" width="390" height="844">
+    <XCUIElementTypeOther name="​" label="Force fail callback" x="100" y="700" width="190" height="44" />
+  </XCUIElementTypeApplication>
+</AppiumAUT>`;
+
+  const result = resolveElementAtCoordinate({ x: 150, y: 720 }, TREE_WITH_ZERO_WIDTH_NAME);
+  assert.notStrictEqual(result.strategy, "accessibility-id");
+  assert.strictEqual(result.strategy, "text");
+  assert.strictEqual(result.value, "Force fail callback");
+});
+
 test("buildXPath returns a structural path usable as a last-resort locator", () => {
   const result = resolveElementAtCoordinate({ x: 150, y: 200 }, API_DEMOS_TREE);
   assert.ok(result.xpath.startsWith("/hierarchy[1]"));

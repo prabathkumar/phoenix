@@ -11,6 +11,16 @@ const { DOMParser } = require("@xmldom/xmldom");
 
 /** @typedef {{ strategy: "resource-id"|"accessibility-id"|"text"|"xpath"|"coordinate", value: string, resourceId?: string, accessibilityId?: string, text?: string, contentDesc?: string, className?: string, bounds?: string, xpath?: string }} ResolvedElement */
 
+// Zero-width space/non-joiner/joiner and the BOM/zero-width-no-break-space
+// -- invisible characters String.prototype.trim() does NOT strip. Seen for
+// real in a BrowserStack recording (BitBar Sample App): an iOS element's
+// accessibility identifier was literally "​", which survives a plain
+// .trim() check as a "real" value (non-empty, truthy) but renders as an
+// empty selector (`~` with nothing visible after it) everywhere it's used.
+// Same rule generation/pipeline.js's isBlank()/cleanLabel() apply to labels
+// pulled from the same accessibility trees for assertions.
+const INVISIBLE_CHARS_RE = /[​‌‍﻿]/g;
+
 /**
  * @typedef {Object} CapturedStep
  * @property {number} timestamp
@@ -205,7 +215,7 @@ function resolveElementAtCoordinate(coordinate, pageSourceXml) {
   // this -- a non-empty string of only spaces is truthy in JS.
   const get = (name) => {
     const value = element.getAttribute && element.getAttribute(name);
-    const trimmed = typeof value === "string" ? value.trim() : value;
+    const trimmed = typeof value === "string" ? value.replace(INVISIBLE_CHARS_RE, "").trim() : value;
     return trimmed ? trimmed : undefined;
   };
 

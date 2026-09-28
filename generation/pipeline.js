@@ -23,6 +23,27 @@
 const { DOMParser } = require("@xmldom/xmldom");
 const crypto = require("crypto");
 
+// Zero-width space/non-joiner/joiner and the BOM/zero-width-no-break-space
+// -- invisible characters JS's String.prototype.trim() does NOT strip
+// (it only trims real whitespace). Seen for real in a BrowserStack
+// recording (BitBar Sample App): an iOS accessibility container's rolled-up
+// label was literally "​", which survived a plain .trim() check as a
+// "real" label, non-empty and therefore truthy, but displayed as an empty
+// string everywhere it was used -- a generated assertion on `label == ""`
+// that looked meaningless in the script and told the tester nothing.
+const INVISIBLE_CHARS_RE = /[​‌‍﻿]/g;
+
+/** True for a value that's empty, only whitespace, or only invisible characters. */
+function isBlank(value) {
+  if (!value) return true;
+  return value.replace(INVISIBLE_CHARS_RE, "").trim().length === 0;
+}
+
+/** Strips invisible characters and surrounding whitespace, same rule isBlank() checks by. */
+function cleanLabel(value) {
+  return value ? value.replace(INVISIBLE_CHARS_RE, "").trim() : value;
+}
+
 /**
  * @param {import('../capture/recorder').CapturedStep[]} steps
  * @param {object} [options]
@@ -99,7 +120,7 @@ function extractLabels(pageSourceXml) {
       const width = node.getAttribute("width");
       const height = node.getAttribute("height");
       const bounds = androidBounds || (x && y && width && height ? `${x},${y},${width},${height}` : undefined);
-      const label = (text && text.trim()) || (contentDesc && contentDesc.trim());
+      const label = (!isBlank(text) && cleanLabel(text)) || (!isBlank(contentDesc) && cleanLabel(contentDesc));
       if (label) labels.push({ label, resourceId: resourceId || undefined, bounds: bounds || undefined });
     }
     const children = node.childNodes || [];
@@ -483,4 +504,6 @@ module.exports = {
   buildResourceIdSelector,
   extractLabels,
   labelKey,
+  isBlank,
+  cleanLabel,
 };

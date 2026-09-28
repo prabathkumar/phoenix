@@ -16,6 +16,8 @@ const {
   extractParameters,
   buildSelector,
   buildResourceIdSelector,
+  extractLabels,
+  isBlank,
 } = require("../pipeline");
 
 const LOGIN_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
@@ -221,6 +223,31 @@ test("inferAssertions does not re-flag a screen's elements when back navigation 
   // re-flagged as newly appeared.
   const step1 = assertions.filter((a) => a.stepIndex === 1);
   assert.strictEqual(step1.length, 0);
+});
+
+test("extractLabels/isBlank treat a zero-width space as blank, not a real label", () => {
+  // Found for real in a BrowserStack recording (BitBar Sample App, iOS):
+  // an accessibility container's rolled-up label was literally "​"
+  // (a zero-width space) -- non-empty and truthy by a plain .trim() check,
+  // so it survived as a "real" label and produced a generated assertion on
+  // `label == ""`, which displays as empty everywhere (the terminal, the
+  // script file, the test report) despite technically being non-empty.
+  assert.strictEqual(isBlank("​"), true);
+  assert.strictEqual(isBlank("  ​‌  "), true);
+  assert.strictEqual(isBlank(""), true);
+  assert.strictEqual(isBlank("   "), true);
+  assert.strictEqual(isBlank("Real label"), false);
+
+  const TREE_WITH_ZERO_WIDTH_LABEL = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<AppiumAUT>
+  <XCUIElementTypeApplication name="MyApp" x="0" y="0" width="390" height="844">
+    <XCUIElementTypeOther label="​" x="0" y="0" width="390" height="100" />
+    <XCUIElementTypeButton label="Real Button" x="0" y="200" width="390" height="44" />
+  </XCUIElementTypeApplication>
+</AppiumAUT>`;
+
+  const labels = extractLabels(TREE_WITH_ZERO_WIDTH_LABEL).map((l) => l.label);
+  assert.deepStrictEqual(labels, ["MyApp", "Real Button"], "the zero-width-space label should be skipped entirely, not included as \"\"");
 });
 
 test("inferVisualChangeFlags flags a step whose screenshot changed but exposed no accessible labels at all", () => {

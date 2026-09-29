@@ -101,6 +101,18 @@ Screenshot fusion is now built: `buildFusedSnapshot()` (`generation/semantic-sna
 - Self-hosted emulator infrastructure: existing team capacity, or new infra to provision?
 - Team size and who owns the fork vs. the AI pipeline vs. the TestOps embedding work — three fairly distinct skill sets.
 
+**Note on TestOps' own stack (Python backend, JS/React frontend):**
+Phoenix itself stays Node.js — that's not up for revisiting, it's what
+the Appium fork and the whole engine/capture/generation pipeline are
+built on. The integration surface is `POST /api/semantic-action`
+(§6, opt-in via `PHOENIX_ENABLE_SEMANTIC_API=1`), which is plain JSON
+over HTTP — nothing Node-specific to bridge. TestOps' React frontend
+can call it with an ordinary `fetch()`; a Python-side caller (TestOps'
+backend, or an orchestration script) can use
+`docs/examples/testops_semantic_action_client.py` as a starting point
+for the request/response shape. No new service or language needs to be
+introduced on Phoenix's side for either half of TestOps to reach it.
+
 ---
 
 *This is a starting spec, not a finished one — meant to hand to engineering as the basis for sprint planning, not as final architecture.*

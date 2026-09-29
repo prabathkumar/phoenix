@@ -207,6 +207,29 @@ async function test(name, fn) {
     }
   });
 
+  await test("toSelector prefers xpath over an ambiguousResourceId (real bug: two fields shared one resource-id)", async () => {
+    const { semanticAct, restore } = loadWithFakeOllama(async () => ({ ref: 1 }));
+    try {
+      assert.deepStrictEqual(
+        semanticAct.toSelector({ resourceId: "edtCommon", ambiguousResourceId: true, xpath: "/hierarchy/EditText[2]" }),
+        { strategy: "xpath", value: "/hierarchy/EditText[2]" }
+      );
+      // accessibility-id/label still win over an ambiguous resource-id when present.
+      assert.deepStrictEqual(
+        semanticAct.toSelector({ resourceId: "edtCommon", ambiguousResourceId: true, accessibilityId: "a11y1" }),
+        { strategy: "accessibility-id", value: "a11y1" }
+      );
+      // No xpath computed somehow -- still falls back to the resource-id
+      // rather than returning undefined and failing to resolve at all.
+      assert.deepStrictEqual(
+        semanticAct.toSelector({ resourceId: "edtCommon", ambiguousResourceId: true }),
+        { strategy: "resource-id", value: "edtCommon" }
+      );
+    } finally {
+      restore();
+    }
+  });
+
   await test("resolveSemanticAction tells the model to prefer an editable input when kind is \"type\"", async () => {
     const calls = [];
     const { semanticAct, restore } = loadWithFakeOllama(async (prompt, options) => {

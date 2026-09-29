@@ -56,13 +56,21 @@ const { callOllamaJson } = require("./llm");
  * @returns {{strategy: string, value: string}|undefined}
  */
 function toSelector(element) {
-  if (element.resourceId) return { strategy: "resource-id", value: element.resourceId };
+  // Found for real: two EditTexts on the same screen (Yes Number and
+  // Password) sharing one resource-id, distinguished only by a sibling
+  // label TextView -- a resource-id selector built from either one is
+  // genuinely ambiguous (WebDriver's `$` just returns whichever matches
+  // first), so semantic-snapshot.js flags this case and also computes
+  // an xpath for it; prefer that over the ambiguous resource-id.
+  if (element.resourceId && !element.ambiguousResourceId) return { strategy: "resource-id", value: element.resourceId };
   if (element.accessibilityId) return { strategy: "accessibility-id", value: element.accessibilityId };
   if (element.label) return { strategy: "text", value: element.label };
-  // A blank input field (see semantic-snapshot.js's INPUT_ROLE_RE) has
-  // none of the above -- xpath is the only locator available for it,
-  // same last-resort tier the guided path already uses.
+  // A blank input field, or one with an ambiguous resource-id (see
+  // semantic-snapshot.js's INPUT_ROLE_RE/ambiguousResourceId), has none
+  // of the above -- xpath is the last-resort locator for it, same tier
+  // the guided path already uses.
   if (element.xpath) return { strategy: "xpath", value: element.xpath };
+  if (element.resourceId) return { strategy: "resource-id", value: element.resourceId };
   return undefined;
 }
 

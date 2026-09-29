@@ -68,15 +68,25 @@ function clean(value) {
  *   image — see buildFusedSnapshot() below and
  *   docs/PHOENIX_SPEC.md §6's "merge accessibility tree + screenshot"
  *   bullet.
- * @property {string} [nearbyLabel] - only set on a blank editable input
- *   (see INPUT_ROLE_RE) that has none of label/resourceId/accessibilityId
- *   of its own: the most recent labeled text seen before it in document
- *   order, as a best-effort hint of which field this is (e.g. "Yes
- *   Number"). Found necessary from a real device run where a Compose UI
- *   left every input field itself unlabeled.
- * @property {string} [xpath] - only set on a blank editable input (same
- *   condition as nearbyLabel) -- a structural locator, since that's the
- *   only kind available when there's no id/label to select on.
+ * @property {string} [nearbyLabel] - set on a blank editable input (see
+ *   INPUT_ROLE_RE) that has none of label/resourceId/accessibilityId of
+ *   its own, OR on an input whose resourceId is ambiguous (see
+ *   ambiguousResourceId below): the most recent labeled text seen before
+ *   it in document order, as a best-effort hint of which field this is
+ *   (e.g. "Yes Number"). Found necessary from a real device run where a
+ *   Compose UI left every input field itself unlabeled.
+ * @property {string} [xpath] - set under the same two conditions as
+ *   nearbyLabel -- a structural locator, used as a fallback when there's
+ *   no reliable id/label to select on.
+ * @property {boolean} [ambiguousResourceId] - true when this input-role
+ *   element's resourceId is shared by more than one element in this same
+ *   snapshot (and it has no label/accessibilityId of its own to
+ *   disambiguate). Found for real: a login screen's Yes Number and
+ *   Password fields were both plain EditTexts with the identical
+ *   resource-id, so a resource-id selector built from either one matched
+ *   whichever WebDriver happened to find first. semantic-act.js's
+ *   toSelector() checks this flag to prefer the xpath fallback over the
+ *   ambiguous resource-id.
  */
 
 const ANDROID_BOUNDS_RE = /\[(\d+),(\d+)\]\[(\d+),(\d+)\]/;
@@ -193,6 +203,10 @@ function buildGroundedSnapshot(pageSourceXml) {
           bounds: parseBounds(node),
           ...(isBlankInput && lastLabelSeen ? { nearbyLabel: lastLabelSeen } : {}),
           ...(isBlankInput ? { xpath: buildXPath(node) } : {}),
+          // Kept only for the duplicate-resource-id pass below, never
+          // part of the returned SnapshotElement shape.
+          __node: node,
+          __nearbyLabelAtTime: lastLabelSeen,
         });
       }
 
@@ -202,6 +216,38 @@ function buildGroundedSnapshot(pageSourceXml) {
     for (let i = 0; i < children.length; i += 1) walk(children[i], depth + 1);
   };
   walk(doc.documentElement, 0);
+
+  // Found for real on a login screen where the Yes Number and Password
+  // inputs are both plain EditTexts sharing the SAME resource-id
+  // (my.yes.yes4g:id/edtCommon), distinguished only by their own label
+  // TextView sitting next to them: a resource-id selector built from
+  // either one is genuinely ambiguous on this screen (WebDriver's `$`
+  // returns whichever matches first), so a "type the password"
+  // instruction that resolves to this resource-id can silently act on
+  // the Yes Number field instead. For any input-role element whose
+  // resource-id isn't unique on this screen and that has no label/
+  // accessibility-id of its own, attach the same nearbyLabel/xpath
+  // fallback blank inputs already get, so toSelector() (semantic-act.js)
+  // can prefer the disambiguating xpath over the ambiguous resource-id.
+  const resourceIdCounts = new Map();
+  for (const el of elements) {
+    if (el.resourceId) resourceIdCounts.set(el.resourceId, (resourceIdCounts.get(el.resourceId) || 0) + 1);
+  }
+  for (const el of elements) {
+    const isAmbiguousInput =
+      el.resourceId &&
+      resourceIdCounts.get(el.resourceId) > 1 &&
+      !el.label &&
+      !el.accessibilityId &&
+      INPUT_ROLE_RE.test(el.role);
+    if (isAmbiguousInput) {
+      el.ambiguousResourceId = true;
+      if (el.__nearbyLabelAtTime) el.nearbyLabel = el.__nearbyLabelAtTime;
+      el.xpath = buildXPath(el.__node);
+    }
+    delete el.__node;
+    delete el.__nearbyLabelAtTime;
+  }
 
   return elements;
 }

@@ -45,6 +45,23 @@ const BLANK_INPUT_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes
   </android.view.View>
 </hierarchy>`;
 
+// The exact real-bug screen: Yes Number and Password are both plain
+// EditTexts sharing the SAME resource-id, distinguished only by their
+// own preceding label TextView. Found on a real device run where a
+// "type the password" instruction resolved (via the shared resource-id)
+// to the Yes Number field and silently overwrote it.
+const DUPLICATE_RESOURCE_ID_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy>
+  <android.view.View bounds="[0,0][1080,2400]">
+    <android.widget.TextView text="Yes Number" bounds="[102,578][978,645]" />
+    <android.widget.EditText resource-id="my.yes.yes4g:id/edtCommon" text="" bounds="[102,645][978,782]" />
+    <android.widget.TextView text="Password" bounds="[102,850][978,917]" />
+    <android.widget.EditText resource-id="my.yes.yes4g:id/edtCommon" text="" password="true" bounds="[102,917][978,1054]" />
+    <android.widget.TextView text="Log In" bounds="[363,1234][718,1336]" />
+    <android.widget.Button bounds="[363,1234][718,1336]" />
+  </android.view.View>
+</hierarchy>`;
+
 function test(name, fn) {
   try {
     fn();
@@ -215,6 +232,29 @@ test("snapshotToText renders a blank input's nearbyLabel as an 'empty input near
   const elements = buildGroundedSnapshot(BLANK_INPUT_SCREEN);
   const text = snapshotToText(elements);
   assert.ok(text.includes('empty input near: "Yes Number"'));
+});
+
+test("buildGroundedSnapshot flags an input whose resourceId is shared by another element as ambiguousResourceId", () => {
+  const elements = buildGroundedSnapshot(DUPLICATE_RESOURCE_ID_SCREEN);
+  const inputs = elements.filter((el) => el.role === "android.widget.EditText");
+  assert.strictEqual(inputs.length, 2);
+  assert.ok(inputs.every((el) => el.ambiguousResourceId === true));
+  assert.ok(inputs.every((el) => el.resourceId === "my.yes.yes4g:id/edtCommon"));
+});
+
+test("buildGroundedSnapshot gives each ambiguous-resourceId input its own distinguishing nearbyLabel and xpath", () => {
+  const elements = buildGroundedSnapshot(DUPLICATE_RESOURCE_ID_SCREEN);
+  const [yesNumberInput, passwordInput] = elements.filter((el) => el.role === "android.widget.EditText");
+  assert.strictEqual(yesNumberInput.nearbyLabel, "Yes Number");
+  assert.strictEqual(passwordInput.nearbyLabel, "Password");
+  assert.ok(yesNumberInput.xpath && passwordInput.xpath);
+  assert.notStrictEqual(yesNumberInput.xpath, passwordInput.xpath);
+});
+
+test("buildGroundedSnapshot does NOT flag a resourceId that's actually unique on screen", () => {
+  const elements = buildGroundedSnapshot(ANDROID_LOGIN_SCREEN);
+  const input = elements.find((el) => el.resourceId === "com.phoenix.demo:id/username_input");
+  assert.strictEqual(input.ambiguousResourceId, undefined);
 });
 
 setImmediate(() => {

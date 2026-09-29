@@ -101,17 +101,28 @@ Screenshot fusion is now built: `buildFusedSnapshot()` (`generation/semantic-sna
 - Self-hosted emulator infrastructure: existing team capacity, or new infra to provision?
 - Team size and who owns the fork vs. the AI pipeline vs. the TestOps embedding work — three fairly distinct skill sets.
 
-**Note on TestOps' own stack (Python backend, JS/React frontend):**
+**Note on TestOps' own stack (confirmed: Django 4.2.11 + DRF 3.14.0
+backend, JS/React frontend):**
 Phoenix itself stays Node.js — that's not up for revisiting, it's what
 the Appium fork and the whole engine/capture/generation pipeline are
 built on. The integration surface is `POST /api/semantic-action`
 (§6, opt-in via `PHOENIX_ENABLE_SEMANTIC_API=1`), which is plain JSON
 over HTTP — nothing Node-specific to bridge. TestOps' React frontend
-can call it with an ordinary `fetch()`; a Python-side caller (TestOps'
-backend, or an orchestration script) can use
-`docs/examples/testops_semantic_action_client.py` as a starting point
-for the request/response shape. No new service or language needs to be
-introduced on Phoenix's side for either half of TestOps to reach it.
+can call it with an ordinary `fetch()`. For the Django/DRF side,
+`docs/examples/` has two starting points:
+- `testops_semantic_action_client.py` — a plain-Python client (stdlib
+  only, no `requests` dependency assumed) for the request/response shape.
+- `testops_drf_view_example.py` — a DRF 3.14 `APIView` built on top of
+  that client, matching TestOps' actual framework version, with request
+  validation, `PHOENIX_BASE_URL` read from Django settings, and
+  Phoenix's 200/422/409 responses passed through as the equivalent DRF
+  status codes rather than collapsed into one shape.
+
+Neither file is meant as a drop-in final version — both are explicitly
+commented as starting points to adapt into TestOps' real app structure
+(its URLconf, permission classes, serializer conventions). No new
+service or language needs to be introduced on Phoenix's side for either
+half of TestOps to reach it.
 
 ---
 

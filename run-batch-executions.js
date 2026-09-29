@@ -201,6 +201,32 @@ async function runOneSemanticIteration(platform, instruction) {
   }
 }
 
+/**
+ * Turns runAutonomousLoop()'s step list into something safe to write
+ * into the JSON report: every "type" step's actual typed text is
+ * dropped entirely (replaced with "[REDACTED]") regardless of whether
+ * it matches a configured secret, since a type step's text is
+ * arbitrary user input at execution time and may be sensitive even
+ * when no PHOENIX_BATCH_LOGIN_* credentials are set. instruction/
+ * diffSummary still go through redactSecrets() as a second pass, in
+ * case a credential shows up somewhere unexpected (a screen echoing a
+ * typed value back, for instance). Found necessary after debugging a
+ * real max-steps-reached run required pasting raw console logs back
+ * and forth -- the JSON report alone should be enough to diagnose a
+ * stalled loop without that. Pure function, unit-tested.
+ *
+ * @param {import('./engine/semantic-loop').LoopStep[]} steps
+ * @returns {Array<{instruction: string, kind: string, diffSummary: string}>}
+ */
+function sanitizeStepsForReport(steps) {
+  return steps.map((step) => ({
+    instruction: redactSecrets(step.instruction),
+    kind: step.kind,
+    ...(step.kind === "type" ? { text: "[REDACTED]" } : {}),
+    diffSummary: redactSecrets(step.diffSummary),
+  }));
+}
+
 async function runOneLoopIteration(platform, goal, maxSteps) {
   const { startSession } = require(platform === "ios" ? "./engine/ios-session" : "./engine/session");
   const driver = await startSession();
@@ -210,6 +236,7 @@ async function runOneLoopIteration(platform, goal, maxSteps) {
     return {
       success: result.stoppedBecause === "goal-achieved",
       detail: `${result.stoppedBecause}${result.reason ? `: ${result.reason}` : ""} (${result.steps.length} step(s))`,
+      steps: sanitizeStepsForReport(result.steps),
     };
   } finally {
     await driver.deleteSession();
@@ -220,7 +247,7 @@ async function runIteration(mode, index, { platform, instruction, goal, maxSteps
   const startedAt = Date.now();
   console.log(`[run-batch-executions] [${mode} ${index}] starting...`);
   try {
-    const { success, detail: rawDetail } = await (mode === "guided"
+    const { success, detail: rawDetail, steps } = await (mode === "guided"
       ? runOneGuidedIteration(platform)
       : mode === "semantic"
       ? runOneSemanticIteration(platform, instruction)
@@ -228,7 +255,10 @@ async function runIteration(mode, index, { platform, instruction, goal, maxSteps
     const detail = redactSecrets(rawDetail);
     const durationMs = Date.now() - startedAt;
     console.log(`[run-batch-executions] [${mode} ${index}] ${success ? "OK" : "FAILED"} (${durationMs}ms) - ${detail}`);
-    return { mode, index, success, durationMs, detail };
+    // `steps` is only present for loop iterations (see
+    // runOneLoopIteration/sanitizeStepsForReport) -- guided/semantic
+    // results are unaffected and stay exactly as before.
+    return { mode, index, success, durationMs, detail, ...(steps ? { steps } : {}) };
   } catch (err) {
     const durationMs = Date.now() - startedAt;
     const detail = redactSecrets(err.message);
@@ -291,4 +321,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { splitBatchCounts, summarizeBatchResults, buildEffectiveGoal, redactSecrets };
+module.exports = { splitBatchCounts, summarizeBatchResults, buildEffectiveGoal, redactSecrets, sanitizeStepsForReport };

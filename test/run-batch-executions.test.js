@@ -160,5 +160,38 @@ test("redactSecrets passes non-string values through unchanged", () => {
   });
 });
 
+test("sanitizeStepsForReport always redacts a type step's text, even with no credentials configured", () => {
+  withEnvAndFreshModule({ PHOENIX_BATCH_LOGIN_PHONE: undefined, PHOENIX_BATCH_LOGIN_PASSWORD: undefined }, (mod) => {
+    const sanitized = mod.sanitizeStepsForReport([
+      { instruction: "type the phone number", kind: "type", text: "0183400351", diffSummary: "Appeared: \"Password\"." },
+    ]);
+    assert.strictEqual(sanitized[0].text, "[REDACTED]");
+    assert.strictEqual(sanitized[0].instruction, "type the phone number");
+    assert.strictEqual(sanitized[0].diffSummary, "Appeared: \"Password\".");
+  });
+});
+
+test("sanitizeStepsForReport omits the text field entirely for a tap step", () => {
+  withEnvAndFreshModule({ PHOENIX_BATCH_LOGIN_PHONE: undefined, PHOENIX_BATCH_LOGIN_PASSWORD: undefined }, (mod) => {
+    const sanitized = mod.sanitizeStepsForReport([
+      { instruction: "tap the Login button", kind: "tap", diffSummary: "Appeared: \"Yes Number\"." },
+    ]);
+    assert.strictEqual(sanitized[0].text, undefined);
+    assert.ok(!("text" in sanitized[0]));
+  });
+});
+
+test("sanitizeStepsForReport redacts a configured credential if it leaks into instruction/diffSummary", () => {
+  withEnvAndFreshModule(
+    { PHOENIX_BATCH_LOGIN_PHONE: "0183400351", PHOENIX_BATCH_LOGIN_PASSWORD: undefined },
+    (mod) => {
+      const sanitized = mod.sanitizeStepsForReport([
+        { instruction: "tap the button", kind: "tap", diffSummary: "Cannot set the element to '0183400351'" },
+      ]);
+      assert.ok(!sanitized[0].diffSummary.includes("0183400351"));
+    }
+  );
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

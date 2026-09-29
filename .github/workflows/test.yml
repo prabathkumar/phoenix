@@ -36,6 +36,20 @@ jobs:
         working-directory: ${{ matrix.package }}
         run: npm install
 
+      # engine/ cross-requires generation/pipeline.js directly (auto-heal.js,
+      # semantic-act-executor.js, session-manager.js) rather than depending on
+      # it as a published package, so generation's own dependencies (e.g.
+      # @xmldom/xmldom) must physically exist under generation/node_modules
+      # for those requires to resolve -- Node resolves a module relative to
+      # the FILE doing the requiring, not the package that ends up running
+      # it. Each matrix job otherwise only installs its own directory, so
+      # this was silently relying on generation/node_modules already being
+      # present locally and broke on a clean checkout.
+      - name: Install generation dependencies (engine cross-requires generation/pipeline.js)
+        if: matrix.package == 'engine'
+        working-directory: generation
+        run: npm install
+
       - name: Run ${{ matrix.package }} tests
         working-directory: ${{ matrix.package }}
         run: npm test

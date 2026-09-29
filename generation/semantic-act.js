@@ -53,9 +53,19 @@ const { callOllamaJson } = require("./llm");
  * differently.
  *
  * @param {import('./semantic-snapshot').SnapshotElement} element
+ * @param {Object} [options]
+ * @param {"tap"|"type"} [options.kind] - when "tap" and this element is
+ *   explicitly non-clickable but semantic-snapshot.js found a clickable
+ *   ancestor (see clickableAncestorXPath), redirect the tap there instead
+ *   of an element a real click on it would do nothing to. Found for
+ *   real: a Compose tab whose visible label was a non-clickable TextView
+ *   -- tapping it "succeeded" (no WebDriver error) but changed nothing.
  * @returns {{strategy: string, value: string}|undefined}
  */
-function toSelector(element) {
+function toSelector(element, options = {}) {
+  if (options.kind === "tap" && element.clickable === false && element.clickableAncestorXPath) {
+    return { strategy: "xpath", value: element.clickableAncestorXPath };
+  }
   // Found for real: two EditTexts on the same screen (Yes Number and
   // Password) sharing one resource-id, distinguished only by a sibling
   // label TextView -- a resource-id selector built from either one is
@@ -154,7 +164,7 @@ async function resolveSemanticAction(pageSourceXml, instruction, options = {}) {
       return { resolved: false, reason: `model referenced ref ${result.ref}, which is not in this snapshot` };
     }
 
-    const selector = toSelector(element);
+    const selector = toSelector(element, { kind: options.kind });
     if (!selector) {
       // Shouldn't happen -- every snapshot element has a label, id, or
       // accessibility id by construction (see semantic-snapshot.js) --

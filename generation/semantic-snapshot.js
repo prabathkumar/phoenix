@@ -87,6 +87,21 @@ function clean(value) {
  *   whichever WebDriver happened to find first. semantic-act.js's
  *   toSelector() checks this flag to prefer the xpath fallback over the
  *   ambiguous resource-id.
+ * @property {boolean} [clickable] - Android only, from the tree's own
+ *   `clickable` attribute; undefined on iOS (no such attribute) or when
+ *   Android simply didn't set it. false means tapping this exact element
+ *   is a known no-op.
+ * @property {string} [clickableAncestorXPath] - set when clickable is
+ *   explicitly false and some ancestor in the tree IS clickable: an
+ *   xpath to that ancestor, for redirecting a tap there instead. Found
+ *   for real on a Compose tab control where the visible label ("PASSWORD")
+ *   sat on a non-clickable TextView and neither it nor its non-clickable
+ *   sibling Button was what actually handled the tap -- a clickable
+ *   wrapper View one level up (with no label/id of its own, so invisible
+ *   to the snapshot otherwise) was. Tapping the label "succeeded"
+ *   (WebDriver's click() doesn't error) but silently did nothing.
+ *   semantic-act.js's toSelector() uses this, for "tap" actions only, to
+ *   redirect to the element that actually responds.
  */
 
 const ANDROID_BOUNDS_RE = /\[(\d+),(\d+)\]\[(\d+),(\d+)\]/;
@@ -182,11 +197,21 @@ function buildGroundedSnapshot(pageSourceXml) {
   // input it describes in both Android's and iOS's layout trees.
   let lastLabelSeen;
 
-  const walk = (node, depth) => {
+  const walk = (node, depth, nearestClickableAncestor) => {
+    let clickableAncestorForChildren = nearestClickableAncestor;
     if (node.nodeType === 1 && node.getAttribute) {
       const text = node.getAttribute("text") || node.getAttribute("label") || node.getAttribute("value");
       const contentDesc = node.getAttribute("content-desc") || node.getAttribute("name");
       const resourceId = node.getAttribute("resource-id") || undefined; // Android only
+      // Android only -- iOS trees don't carry this attribute, so
+      // `clickable` stays undefined there and none of the ancestor-
+      // redirect logic below ever fires (nothing to check it against).
+      // xmldom's getAttribute() returns "" (not null) for a missing
+      // attribute, per the DOM spec (hasAttribute is the existence
+      // check) -- treat that the same as "not present" rather than as
+      // clickable="false".
+      const clickableAttr = node.getAttribute("clickable");
+      const isClickable = !clickableAttr ? undefined : clickableAttr === "true";
 
       const label = (!isBlank(text) && clean(text)) || undefined;
       const accessibilityId = (!isBlank(contentDesc) && clean(contentDesc)) || undefined;
@@ -201,21 +226,40 @@ function buildGroundedSnapshot(pageSourceXml) {
           accessibilityId,
           depth,
           bounds: parseBounds(node),
+          ...(isClickable !== undefined ? { clickable: isClickable } : {}),
           ...(isBlankInput && lastLabelSeen ? { nearbyLabel: lastLabelSeen } : {}),
           ...(isBlankInput ? { xpath: buildXPath(node) } : {}),
-          // Kept only for the duplicate-resource-id pass below, never
-          // part of the returned SnapshotElement shape.
+          // Kept only for the post-passes below, never part of the
+          // returned SnapshotElement shape.
           __node: node,
           __nearbyLabelAtTime: lastLabelSeen,
+          __nearestClickableAncestor: nearestClickableAncestor,
         });
       }
 
       if (label) lastLabelSeen = label;
+      if (isClickable) clickableAncestorForChildren = node;
     }
     const children = node.childNodes || [];
-    for (let i = 0; i < children.length; i += 1) walk(children[i], depth + 1);
+    for (let i = 0; i < children.length; i += 1) walk(children[i], depth + 1, clickableAncestorForChildren);
   };
-  walk(doc.documentElement, 0);
+  walk(doc.documentElement, 0, undefined);
+
+  // Found for real: a Compose tab control where the visible label
+  // ("PASSWORD") sits on a non-clickable TextView, and the element that
+  // actually handles the tap is a clickable ancestor View one or two
+  // levels up -- neither the label nor the sibling Button (also
+  // non-clickable here) is in the snapshot at all otherwise. Tapping the
+  // label resolves and "succeeds" (WebDriver's click() doesn't error)
+  // but visibly does nothing, silently wasting a step. For any element
+  // that's explicitly non-clickable (clickable="false") but has a
+  // clickable ancestor, record that ancestor's xpath so a tap on this
+  // element can be redirected to the thing that actually responds.
+  for (const el of elements) {
+    if (el.clickable === false && el.__nearestClickableAncestor) {
+      el.clickableAncestorXPath = buildXPath(el.__nearestClickableAncestor);
+    }
+  }
 
   // Found for real on a login screen where the Yes Number and Password
   // inputs are both plain EditTexts sharing the SAME resource-id
@@ -247,6 +291,7 @@ function buildGroundedSnapshot(pageSourceXml) {
     }
     delete el.__node;
     delete el.__nearbyLabelAtTime;
+    delete el.__nearestClickableAncestor;
   }
 
   return elements;

@@ -62,6 +62,23 @@ const DUPLICATE_RESOURCE_ID_SCREEN = `<?xml version='1.0' encoding='UTF-8' stand
   </android.view.View>
 </hierarchy>`;
 
+// The exact real-bug screen: a Compose tab control whose visible label
+// ("PASSWORD") sits on a non-clickable TextView, with a non-clickable
+// sibling Button, but a clickable wrapper View (no label/id of its own)
+// one level up actually handles the tap. Found on a real device run
+// where tapping the "PASSWORD" label resolved, "succeeded" (no WebDriver
+// error), and silently did nothing.
+const NONCLICKABLE_LABEL_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy>
+  <android.view.View bounds="[0,0][1080,2400]">
+    <android.view.View clickable="true" bounds="[102,1024][506,1126]">
+      <android.widget.TextView text="PASSWORD" clickable="false" bounds="[191,1044][418,1107]" />
+      <android.widget.Button clickable="false" bounds="[102,1024][506,1126]" />
+    </android.view.View>
+    <android.widget.TextView text="Log In" resource-id="my.yes.yes4g:id/tvLogin" clickable="true" bounds="[363,1234][718,1336]" />
+  </android.view.View>
+</hierarchy>`;
+
 function test(name, fn) {
   try {
     fn();
@@ -255,6 +272,33 @@ test("buildGroundedSnapshot does NOT flag a resourceId that's actually unique on
   const elements = buildGroundedSnapshot(ANDROID_LOGIN_SCREEN);
   const input = elements.find((el) => el.resourceId === "com.phoenix.demo:id/username_input");
   assert.strictEqual(input.ambiguousResourceId, undefined);
+});
+
+test("buildGroundedSnapshot records clickable:false for an explicitly non-clickable labeled element", () => {
+  const elements = buildGroundedSnapshot(NONCLICKABLE_LABEL_SCREEN);
+  const passwordLabel = elements.find((el) => el.label === "PASSWORD");
+  assert.strictEqual(passwordLabel.clickable, false);
+});
+
+test("buildGroundedSnapshot gives a non-clickable label its clickable ancestor's xpath", () => {
+  const elements = buildGroundedSnapshot(NONCLICKABLE_LABEL_SCREEN);
+  const passwordLabel = elements.find((el) => el.label === "PASSWORD");
+  assert.ok(passwordLabel.clickableAncestorXPath, "expected a clickableAncestorXPath");
+  assert.ok(!passwordLabel.clickableAncestorXPath.includes("TextView"), "ancestor xpath should point at the clickable View, not the label itself");
+});
+
+test("buildGroundedSnapshot does not set clickableAncestorXPath on an element that's already clickable", () => {
+  const elements = buildGroundedSnapshot(NONCLICKABLE_LABEL_SCREEN);
+  const loginLabel = elements.find((el) => el.label === "Log In");
+  assert.strictEqual(loginLabel.clickable, true);
+  assert.strictEqual(loginLabel.clickableAncestorXPath, undefined);
+});
+
+test("buildGroundedSnapshot leaves clickable undefined on a tree with no clickable attribute at all (e.g. iOS)", () => {
+  const elements = buildGroundedSnapshot(IOS_SCREEN_WITH_BLANK_LABEL);
+  const button = elements.find((el) => el.label === "Log In");
+  assert.strictEqual(button.clickable, undefined);
+  assert.strictEqual(button.clickableAncestorXPath, undefined);
 });
 
 setImmediate(() => {

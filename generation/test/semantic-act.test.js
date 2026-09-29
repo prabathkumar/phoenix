@@ -230,6 +230,48 @@ async function test(name, fn) {
     }
   });
 
+  await test("toSelector redirects a tap on a non-clickable element to its clickable ancestor (real bug: Compose tab label)", async () => {
+    const { semanticAct, restore } = loadWithFakeOllama(async () => ({ ref: 1 }));
+    try {
+      const element = { label: "PASSWORD", clickable: false, clickableAncestorXPath: "/hierarchy/android.view.View[1]" };
+      assert.deepStrictEqual(
+        semanticAct.toSelector(element, { kind: "tap" }),
+        { strategy: "xpath", value: "/hierarchy/android.view.View[1]" }
+      );
+      // Only for "tap" -- a "type" action (or no kind at all) still uses
+      // the element's own selector, since redirecting a type action to a
+      // container View would make no sense.
+      assert.deepStrictEqual(
+        semanticAct.toSelector(element, { kind: "type" }),
+        { strategy: "text", value: "PASSWORD" }
+      );
+      assert.deepStrictEqual(
+        semanticAct.toSelector(element),
+        { strategy: "text", value: "PASSWORD" }
+      );
+    } finally {
+      restore();
+    }
+  });
+
+  await test("toSelector does not redirect a tap when the element is already clickable or has no clickable ancestor recorded", async () => {
+    const { semanticAct, restore } = loadWithFakeOllama(async () => ({ ref: 1 }));
+    try {
+      // clickable: true -- own selector wins.
+      assert.deepStrictEqual(
+        semanticAct.toSelector({ label: "Log In", clickable: true, clickableAncestorXPath: "/should/not/be/used" }, { kind: "tap" }),
+        { strategy: "text", value: "Log In" }
+      );
+      // clickable: false but no ancestor xpath was found -- own selector wins.
+      assert.deepStrictEqual(
+        semanticAct.toSelector({ label: "PASSWORD", clickable: false }, { kind: "tap" }),
+        { strategy: "text", value: "PASSWORD" }
+      );
+    } finally {
+      restore();
+    }
+  });
+
   await test("resolveSemanticAction tells the model to prefer an editable input when kind is \"type\"", async () => {
     const calls = [];
     const { semanticAct, restore } = loadWithFakeOllama(async (prompt, options) => {

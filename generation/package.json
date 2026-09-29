@@ -7,6 +7,6 @@
     "@xmldom/xmldom": "^0.8.10"
   },
   "scripts": {
-    "test": "node test/pipeline.test.js && node test/semantic-snapshot.test.js && node test/semantic-act.test.js && node test/semantic-diff.test.js"
+    "test": "node test/pipeline.test.js && node test/semantic-snapshot.test.js && node test/semantic-act.test.js && node test/semantic-diff.test.js && node test/semantic-assertions.test.js"
   }
 }

@@ -29,6 +29,7 @@
 
 const { resolveSemanticAction } = require("../generation/semantic-act");
 const { diffSnapshots, diffToText } = require("../generation/semantic-diff");
+const { inferSemanticAssertions } = require("../generation/semantic-assertions");
 const { buildSelector } = require("../generation/pipeline");
 
 const SUPPORTED_KINDS = new Set(["tap", "type"]);
@@ -40,6 +41,9 @@ const SUPPORTED_KINDS = new Set(["tap", "type"]);
  * @property {{strategy: string, value: string}} [selector] - present on success.
  * @property {import('../generation/semantic-diff').SemanticDiff} [diff] - present on success.
  * @property {string} [diffSummary] - present on success; diffToText(diff).
+ * @property {import('../generation/semantic-assertions').SemanticAssertion[]} [assertions] -
+ *   present when `diff` is (i.e. success and the post-action screen
+ *   read worked); inferSemanticAssertions(diff) -- see that module.
  */
 
 /**
@@ -141,7 +145,17 @@ async function executeSemanticAction(driver, instruction, options = {}) {
   }
 
   const diff = diffSnapshots(pageSourceBefore, pageSourceAfter);
-  return { success: true, selector: resolution.selector, diff, diffSummary: diffToText(diff) };
+  return {
+    success: true,
+    selector: resolution.selector,
+    diff,
+    diffSummary: diffToText(diff),
+    // Closes spec §6's "state-diff reporting... feeds the assertion-
+    // inference step directly" -- see generation/semantic-assertions.js.
+    // Always computed (cheap, pure) so a caller building up a test case
+    // or a report doesn't need its own separate call for it.
+    assertions: inferSemanticAssertions(diff),
+  };
 }
 
 module.exports = { executeSemanticAction };

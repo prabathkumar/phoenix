@@ -135,6 +135,7 @@ function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl 
       assert.strictEqual(calls.click, 1);
       assert.deepStrictEqual(result.selector, { strategy: "resource-id", value: "com.phoenix.demo:id/login_button" });
       assert.strictEqual(result.diffSummary, "changed");
+      assert.deepStrictEqual(result.assertions, [{ label: "Welcome", resourceId: undefined }]);
     } finally {
       restore();
     }

@@ -116,7 +116,12 @@ function fakeDriver(pageSource = SIMPLE_SCREEN) {
         { done: true },
       ],
       executionResults: [
-        { success: true, selector: { strategy: "resource-id", value: "login_button" }, diffSummary: 'Appeared: "Welcome".' },
+        {
+          success: true,
+          selector: { strategy: "resource-id", value: "login_button" },
+          diffSummary: 'Appeared: "Welcome".',
+          assertions: [{ label: "Welcome", resourceId: "welcome_text" }],
+        },
       ],
     });
     try {
@@ -125,6 +130,26 @@ function fakeDriver(pageSource = SIMPLE_SCREEN) {
       assert.strictEqual(result.steps.length, 1);
       assert.strictEqual(result.steps[0].instruction, "tap the Login button");
       assert.strictEqual(result.steps[0].diffSummary, 'Appeared: "Welcome".');
+      // stepIndex is stamped on by the loop itself, not the executor.
+      assert.deepStrictEqual(result.steps[0].assertions, [{ label: "Welcome", resourceId: "welcome_text", stepIndex: 0 }]);
+    } finally {
+      restore();
+    }
+  });
+
+  await run("runAutonomousLoop defaults a step's assertions to [] when the executor doesn't return any", async () => {
+    const { loop, restore } = freshLoopWithFakes({
+      decisions: [
+        { instruction: "tap something inert", kind: "tap" },
+        { done: true },
+      ],
+      executionResults: [
+        { success: true, selector: { strategy: "text", value: "something inert" } }, // no `assertions` field at all
+      ],
+    });
+    try {
+      const result = await loop.runAutonomousLoop(fakeDriver(), "goal");
+      assert.deepStrictEqual(result.steps[0].assertions, []);
     } finally {
       restore();
     }

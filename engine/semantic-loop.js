@@ -38,6 +38,9 @@ const DEFAULT_MAX_STEPS = 10;
  * @property {string} [text] - present when kind is "type".
  * @property {{strategy: string, value: string}} selector - what was actually acted on.
  * @property {string} diffSummary - what visibly changed as a result.
+ * @property {import('../generation/semantic-assertions').SemanticAssertion[]} assertions -
+ *   candidate assertions inferred from this step's diff (see
+ *   generation/semantic-assertions.js), stamped with this step's index.
  */
 
 /**
@@ -157,12 +160,18 @@ async function runAutonomousLoop(driver, goal, options = {}) {
         return { stoppedBecause: "action-failed", reason: result.reason, steps };
       }
 
+      const stepIndex = steps.length;
       steps.push({
         instruction: decision.instruction,
         kind: decision.kind,
         text: decision.text,
         selector: result.selector,
         diffSummary: result.diffSummary || "(couldn't read the screen after acting)",
+        // Reuses executeSemanticAction's own inferSemanticAssertions()
+        // call (spec §6's "state-diff reporting... feeds the assertion-
+        // inference step directly") -- just stamped with this step's
+        // index so a multi-step run's assertions are attributable.
+        assertions: (result.assertions || []).map((a) => ({ ...a, stepIndex })),
       });
     }
 

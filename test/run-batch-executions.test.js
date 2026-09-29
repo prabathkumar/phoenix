@@ -1,5 +1,5 @@
 const assert = require("assert");
-const { splitBatchCounts, summarizeBatchResults } = require("../run-batch-executions");
+const { splitBatchCounts, summarizeBatchResults, computeModeCounts, parseBatchModes } = require("../run-batch-executions");
 
 const modulePath = require.resolve("../run-batch-executions");
 
@@ -191,6 +191,60 @@ test("sanitizeStepsForReport redacts a configured credential if it leaks into in
       assert.ok(!sanitized[0].diffSummary.includes("0183400351"));
     }
   );
+});
+
+test("computeModeCounts matches splitBatchCounts when all three modes are requested", () => {
+  assert.deepStrictEqual(computeModeCounts(100, ["guided", "semantic", "loop"]), splitBatchCounts(100));
+});
+
+test("computeModeCounts gives a single requested mode the entire total (the bug this fixes)", () => {
+  // Found for real: PHOENIX_BATCH_TOTAL=1 with only "loop" requested
+  // must yield one loop iteration, not zero -- zeroing "loop" out of
+  // splitBatchCounts(1)'s own ratio split (which puts total 1 into
+  // "guided" by its remainder rule) would silently run nothing.
+  assert.deepStrictEqual(computeModeCounts(1, ["loop"]), { guided: 0, semantic: 0, loop: 1 });
+  assert.deepStrictEqual(computeModeCounts(10, ["loop"]), { guided: 0, semantic: 0, loop: 10 });
+});
+
+test("computeModeCounts splits evenly across a subset of modes, remainder to the first requested", () => {
+  assert.deepStrictEqual(computeModeCounts(5, ["semantic", "loop"]), { guided: 0, semantic: 3, loop: 2 });
+});
+
+test("computeModeCounts handles zero total and empty modes safely", () => {
+  assert.deepStrictEqual(computeModeCounts(0, ["loop"]), { guided: 0, semantic: 0, loop: 0 });
+  assert.deepStrictEqual(computeModeCounts(10, []), { guided: 0, semantic: 0, loop: 0 });
+});
+
+test("parseBatchModes defaults to all three modes when unset", () => {
+  const previous = process.env.PHOENIX_BATCH_MODES;
+  delete process.env.PHOENIX_BATCH_MODES;
+  try {
+    assert.deepStrictEqual(parseBatchModes(), ["guided", "semantic", "loop"]);
+  } finally {
+    if (previous !== undefined) process.env.PHOENIX_BATCH_MODES = previous;
+  }
+});
+
+test("parseBatchModes parses a comma-separated subset, case-insensitively", () => {
+  const previous = process.env.PHOENIX_BATCH_MODES;
+  process.env.PHOENIX_BATCH_MODES = "Loop, SEMANTIC";
+  try {
+    assert.deepStrictEqual(parseBatchModes(), ["loop", "semantic"]);
+  } finally {
+    if (previous === undefined) delete process.env.PHOENIX_BATCH_MODES;
+    else process.env.PHOENIX_BATCH_MODES = previous;
+  }
+});
+
+test("parseBatchModes falls back to all three when every named mode is invalid", () => {
+  const previous = process.env.PHOENIX_BATCH_MODES;
+  process.env.PHOENIX_BATCH_MODES = "bogus";
+  try {
+    assert.deepStrictEqual(parseBatchModes(), ["guided", "semantic", "loop"]);
+  } finally {
+    if (previous === undefined) delete process.env.PHOENIX_BATCH_MODES;
+    else process.env.PHOENIX_BATCH_MODES = previous;
+  }
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

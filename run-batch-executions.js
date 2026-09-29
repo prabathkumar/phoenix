@@ -267,12 +267,66 @@ async function runIteration(mode, index, { platform, instruction, goal, maxSteps
   }
 }
 
+// Restricts which mode(s) actually run, e.g. PHOENIX_BATCH_MODES=loop
+// for a focused debug run. Without this, PHOENIX_BATCH_TOTAL=1 doesn't
+// reliably give you a loop iteration -- splitBatchCounts() puts any
+// remainder into "guided" (see its own doc comment), so a total of 1
+// silently ran one guided iteration instead of the loop iteration that
+// was actually wanted. Defaults to all three modes, unchanged from
+// before this existed. Invalid mode names are ignored with a warning
+// rather than silently running nothing.
+const ALL_MODES = ["guided", "semantic", "loop"];
+function parseBatchModes() {
+  const raw = process.env.PHOENIX_BATCH_MODES;
+  if (!raw) return ALL_MODES;
+  const requested = raw.split(",").map((m) => m.trim().toLowerCase()).filter(Boolean);
+  const valid = requested.filter((m) => ALL_MODES.includes(m));
+  const invalid = requested.filter((m) => !ALL_MODES.includes(m));
+  if (invalid.length > 0) {
+    console.warn(`[run-batch-executions] ignoring unknown mode(s) in PHOENIX_BATCH_MODES: ${invalid.join(", ")}`);
+  }
+  return valid.length > 0 ? valid : ALL_MODES;
+}
+
+/**
+ * Splits `total` across only the requested `modes`. When all three
+ * modes are requested (the default), this is exactly
+ * splitBatchCounts(total) -- unchanged behavior. When a subset is
+ * requested (PHOENIX_BATCH_MODES=loop, say), the total is divided
+ * evenly across just those modes instead, with any remainder going to
+ * the first requested mode -- simply zeroing out excluded modes from
+ * splitBatchCounts()'s own ratio split would NOT redistribute the
+ * total to what's left (its remainder always goes to "guided"
+ * specifically, by design), so a modes=["loop"] request would
+ * otherwise silently run zero iterations for a small total. Pure
+ * function, unit-tested.
+ *
+ * @param {number} total
+ * @param {string[]} modes - non-empty subset of ["guided", "semantic", "loop"]
+ * @returns {{guided: number, semantic: number, loop: number}}
+ */
+function computeModeCounts(total, modes) {
+  if (modes.length === ALL_MODES.length) return splitBatchCounts(total);
+
+  const counts = { guided: 0, semantic: 0, loop: 0 };
+  if (total <= 0 || modes.length === 0) return counts;
+
+  const each = Math.floor(total / modes.length);
+  let remainder = total - each * modes.length;
+  for (const mode of modes) {
+    counts[mode] = each + (remainder > 0 ? 1 : 0);
+    if (remainder > 0) remainder -= 1;
+  }
+  return counts;
+}
+
 async function main() {
   const total = Number(process.env.PHOENIX_BATCH_TOTAL) || 100;
   const platform = process.env.PHOENIX_PLATFORM === "ios" ? "ios" : "android";
   const instruction = process.env.PHOENIX_BATCH_INSTRUCTION || "tap the first visible button";
   const goal = process.env.PHOENIX_BATCH_GOAL || "explore the app's first screen";
   const maxSteps = Number(process.env.PHOENIX_BATCH_LOOP_MAX_STEPS) || 3;
+  const modes = parseBatchModes();
 
   if (process.env.PHOENIX_APPIUM_PROVIDER !== "browserstack") {
     console.warn(
@@ -281,7 +335,7 @@ async function main() {
     );
   }
 
-  const counts = splitBatchCounts(total);
+  const counts = computeModeCounts(total, modes);
   console.log(`[run-batch-executions] plan: ${counts.guided} guided, ${counts.semantic} semantic, ${counts.loop} loop (total ${total})`);
   console.log(`[run-batch-executions] platform: ${platform}, instruction: "${instruction}", goal: "${goal}"`);
   if (SECRETS.length > 0) {
@@ -321,4 +375,12 @@ if (require.main === module) {
   });
 }
 
-module.exports = { splitBatchCounts, summarizeBatchResults, buildEffectiveGoal, redactSecrets, sanitizeStepsForReport };
+module.exports = {
+  splitBatchCounts,
+  summarizeBatchResults,
+  buildEffectiveGoal,
+  redactSecrets,
+  sanitizeStepsForReport,
+  parseBatchModes,
+  computeModeCounts,
+};

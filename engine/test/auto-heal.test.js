@@ -55,7 +55,13 @@ function freshAutoHealWithFakes({ resolveSemanticActionImpl, buildSelectorImpl }
   };
 }
 
-/** A fake driver whose `$()` returns elements keyed by the exact selector string requested. */
+/**
+ * A fake driver whose `$()` returns elements keyed by the exact
+ * selector string requested. Each entry is either `true` (exists, no
+ * text) or `{ text }` (exists, with a getText() value for the
+ * expectedLabel-mismatch tests) -- anything falsy/missing means the
+ * selector doesn't resolve.
+ */
 function makeFakeDriver(elementsBySelector, { throwOnSelector, getPageSourceImpl } = {}) {
   return {
     getPageSource: getPageSourceImpl || (async () => "<hierarchy><Button text=\"Log In\" resource-id=\"login_button_v2\" /></hierarchy>"),
@@ -63,9 +69,15 @@ function makeFakeDriver(elementsBySelector, { throwOnSelector, getPageSourceImpl
       if (throwOnSelector && selectorString === throwOnSelector) {
         throw new Error(`invalid selector: ${selectorString}`);
       }
-      const exists = Boolean(elementsBySelector[selectorString]);
+      const entry = elementsBySelector[selectorString];
+      const exists = Boolean(entry);
+      const text = entry && typeof entry === "object" ? entry.text : undefined;
       return {
         isExisting: async () => exists,
+        getText: async () => {
+          if (text === undefined) throw new Error("no text configured for this fake element");
+          return text;
+        },
         marker: selectorString,
       };
     },
@@ -175,6 +187,81 @@ function makeFakeDriver(elementsBySelector, { throwOnSelector, getPageSourceImpl
       );
       const result = await autoHeal.resolveElementWithHealing(driver, { selector: "((broken xpath", description: "the Login button" });
       assert.strictEqual(result.healed, true);
+    } finally {
+      restore();
+    }
+  });
+
+  await run("heals when the original selector resolves but expectedLabel doesn't match (a path/structural change)", async () => {
+    const { autoHeal, restore } = freshAutoHealWithFakes({
+      resolveSemanticActionImpl: async () => ({
+        resolved: true,
+        element: { ref: 1, role: "Button", label: "Log In" },
+        selector: { strategy: "resource-id", value: "login_button_v2" },
+      }),
+    });
+    try {
+      // The xpath still finds AN element after the tree shifted -- just
+      // the wrong one now (e.g. a "Sign Up" button that slid into the
+      // position the recorded xpath points at).
+      const driver = makeFakeDriver({
+        '//hierarchy/FrameLayout/Button[3]': { text: "Sign Up" },
+        'android=new UiSelector().resourceId("login_button_v2")': { text: "Log In" },
+      });
+      const result = await autoHeal.resolveElementWithHealing(driver, {
+        selector: "//hierarchy/FrameLayout/Button[3]",
+        description: "the Login button",
+        expectedLabel: "Log In",
+      });
+      assert.strictEqual(result.healed, true);
+      assert.ok(result.mismatchReason.includes("Sign Up"));
+      assert.ok(result.mismatchReason.includes("Log In"));
+      assert.deepStrictEqual(result.healedSelector, { strategy: "resource-id", value: "login_button_v2" });
+    } finally {
+      restore();
+    }
+  });
+
+  await run("trusts the original element as-is when expectedLabel is given but it matches (no unnecessary healing)", async () => {
+    const { autoHeal, restore } = freshAutoHealWithFakes();
+    try {
+      const driver = makeFakeDriver({ "~loginButton": { text: "Log In" } });
+      const result = await autoHeal.resolveElementWithHealing(driver, {
+        selector: "~loginButton",
+        expectedLabel: "Log In",
+      });
+      assert.strictEqual(result.healed, false);
+      assert.strictEqual(result.element.marker, "~loginButton");
+    } finally {
+      restore();
+    }
+  });
+
+  await run("trusts the original element when expectedLabel can't be verified (getText fails) rather than forcing a heal", async () => {
+    const { autoHeal, restore } = freshAutoHealWithFakes();
+    try {
+      // No `text` configured on this entry -> the fake's getText() throws.
+      const driver = makeFakeDriver({ "~loginButton": true });
+      const result = await autoHeal.resolveElementWithHealing(driver, {
+        selector: "~loginButton",
+        expectedLabel: "Log In",
+      });
+      assert.strictEqual(result.healed, false);
+      assert.strictEqual(result.element.marker, "~loginButton");
+    } finally {
+      restore();
+    }
+  });
+
+  await run("matches expectedLabel case-insensitively and as a substring either direction", async () => {
+    const { autoHeal, restore } = freshAutoHealWithFakes();
+    try {
+      const driver = makeFakeDriver({ "~loginButton": { text: "  LOG IN (tap to continue)  " } });
+      const result = await autoHeal.resolveElementWithHealing(driver, {
+        selector: "~loginButton",
+        expectedLabel: "log in",
+      });
+      assert.strictEqual(result.healed, false);
     } finally {
       restore();
     }

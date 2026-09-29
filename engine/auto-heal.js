@@ -37,11 +37,18 @@ const { buildSelector } = require("../generation/pipeline");
  *   element, ready to `.click()`/`.setValue()`/etc., or null if neither
  *   the original selector nor healing found anything.
  * @property {boolean} healed - true iff the ORIGINAL selector did not
- *   resolve and a semantic fallback found the element instead.
+ *   resolve (or resolved to the wrong element, see `mismatchReason`) and
+ *   a semantic fallback found the element instead.
  * @property {{strategy: string, value: string}} [healedSelector] -
  *   present when healed is true: what actually worked, so a caller can
  *   log/report "the recorded selector broke, this is what replaced it"
  *   rather than silently moving on.
+ * @property {string} [mismatchReason] - present when healed is true AND
+ *   the original selector DID find something, but it verified as the
+ *   wrong element (see `expectedLabel`) rather than finding nothing at
+ *   all -- distinguishes "the id changed" from "the id still resolves,
+ *   but to a different element now" (a structural/xpath path shift),
+ *   which is a meaningfully different failure to have logged.
  * @property {string} [reason] - present when element is null: why
  *   neither path found anything.
  */
@@ -61,9 +68,21 @@ const { buildSelector } = require("../generation/pipeline");
  * @param {"android"|"ios"} [params.platform] - defaults to "android",
  *   same as the rest of this layer; only affects how a healed
  *   resolution's selector is rendered back for reporting.
+ * @param {string} [params.expectedLabel] - when given, an existing
+ *   element found by `selector` isn't trusted on existence alone: its
+ *   own visible text (`element.getText()`) is compared against this
+ *   (case-insensitive, trimmed, substring match either direction) to
+ *   catch the case explicitly asked for -- "if the path changes" (an
+ *   xpath/structural selector that still matches *something* after the
+ *   tree shifted, just not the right node anymore) or "if the element
+ *   changes" (a resource-id got reused for a different control). A
+ *   mismatch is treated exactly like a missing element: healing is
+ *   attempted. Without this, only an outright missing/throwing selector
+ *   triggers healing -- a wrong-but-present match is trusted as-is,
+ *   same as before this option existed.
  * @returns {Promise<HealResult>}
  */
-async function resolveElementWithHealing(driver, { selector, description, platform } = {}) {
+async function resolveElementWithHealing(driver, { selector, description, platform, expectedLabel } = {}) {
   const resolvedPlatform = platform === "ios" ? "ios" : "android";
 
   if (!selector) {
@@ -71,10 +90,16 @@ async function resolveElementWithHealing(driver, { selector, description, platfo
   }
 
   let originalElement;
+  let mismatchReason;
   try {
     originalElement = await driver.$(selector);
     if (await originalElement.isExisting()) {
-      return { element: originalElement, healed: false };
+      const mismatch = expectedLabel ? await elementLabelMismatches(originalElement, expectedLabel) : false;
+      if (!mismatch) {
+        return { element: originalElement, healed: false };
+      }
+      mismatchReason = `selector ${JSON.stringify(selector)} resolved to an element whose text ("${mismatch}") doesn't match the expected "${expectedLabel}" -- likely a path/structural change pointing it at the wrong element`;
+      console.warn(`[engine/auto-heal] ${mismatchReason}, attempting to heal`);
     }
   } catch (err) {
     // A selector string WebdriverIO can't even evaluate (malformed
@@ -83,15 +108,20 @@ async function resolveElementWithHealing(driver, { selector, description, platfo
     console.warn(`[engine/auto-heal] original selector threw, attempting to heal: ${err.message}`);
   }
 
+  // Everything below shares one framing whether we got here via a
+  // missing/throwing selector or a verified wrong-element match --
+  // `problem` is just which of those it was, for the failure messages.
+  const problem = mismatchReason || `selector ${JSON.stringify(selector)} did not resolve`;
+
   if (!description) {
-    return { element: null, healed: false, reason: `selector ${JSON.stringify(selector)} did not resolve, and no description was given to heal from` };
+    return { element: null, healed: false, reason: `${problem}, and no description was given to heal from` };
   }
 
   let pageSource;
   try {
     pageSource = await driver.getPageSource();
   } catch (err) {
-    return { element: null, healed: false, reason: `selector ${JSON.stringify(selector)} did not resolve, and the screen couldn't be read to attempt healing: ${err.message}` };
+    return { element: null, healed: false, reason: `${problem}, and the screen couldn't be read to attempt healing: ${err.message}` };
   }
 
   const resolution = await resolveSemanticAction(pageSource, description);
@@ -99,7 +129,7 @@ async function resolveElementWithHealing(driver, { selector, description, platfo
     return {
       element: null,
       healed: false,
-      reason: `selector ${JSON.stringify(selector)} did not resolve, and healing against "${description}" also failed: ${resolution.reason}`,
+      reason: `${problem}, and healing against "${description}" also failed: ${resolution.reason}`,
     };
   }
 
@@ -114,13 +144,45 @@ async function resolveElementWithHealing(driver, { selector, description, platfo
       return {
         element: null,
         healed: false,
-        reason: `selector ${JSON.stringify(selector)} did not resolve, and healing's own resolved selector (${healedSelectorString}) also isn't on screen`,
+        reason: `${problem}, and healing's own resolved selector (${healedSelectorString}) also isn't on screen`,
       };
     }
-    return { element: healedElement, healed: true, healedSelector: resolution.selector };
+    const result = { element: healedElement, healed: true, healedSelector: resolution.selector };
+    if (mismatchReason) result.mismatchReason = mismatchReason;
+    return result;
   } catch (err) {
-    return { element: null, healed: false, reason: `selector ${JSON.stringify(selector)} did not resolve, and healing's resolved selector threw: ${err.message}` };
+    return { element: null, healed: false, reason: `${problem}, and healing's resolved selector threw: ${err.message}` };
   }
+}
+
+/**
+ * Compares an already-found element's own visible text against the
+ * label it was expected to have, to catch a selector that still
+ * resolves to SOMETHING after a structural/path change, just not the
+ * right node anymore. Case-insensitive, trimmed, substring match either
+ * direction (an element's text is often a superset or subset of the
+ * recorded label -- e.g. a row's text including extra state).
+ *
+ * @returns {Promise<string|false>} the element's actual (mismatched)
+ *   text if it doesn't match, or false if it matches (or couldn't be
+ *   read at all -- a verification that can't run doesn't block
+ *   trusting the element, it just doesn't add any extra confidence).
+ */
+async function elementLabelMismatches(element, expectedLabel) {
+  let actualText;
+  try {
+    actualText = await element.getText();
+  } catch (_err) {
+    return false; // can't verify -- don't treat that as a mismatch
+  }
+
+  const normalize = (s) => (s || "").trim().toLowerCase();
+  const actual = normalize(actualText);
+  const expected = normalize(expectedLabel);
+  if (!actual || !expected) return false;
+
+  const matches = actual.includes(expected) || expected.includes(actual);
+  return matches ? false : actualText;
 }
 
 module.exports = { resolveElementWithHealing };

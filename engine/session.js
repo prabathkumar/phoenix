@@ -9,6 +9,17 @@
  * "local" (default, a local emulator via a local Appium server) or
  * "browserstack" (BrowserStack App Automate, no local Android SDK
  * needed at all) — see remote-provider.js for what that changes.
+ *
+ * PHOENIX_APPIUM_DEVICE_NAME overrides the local-emulator device name
+ * (default "emulator-5554", ignored on BrowserStack, where the device
+ * comes from BrowserStack's own catalog instead). Needed to run two
+ * sessions against two different local emulator instances at once (one
+ * Appium server can serve multiple devices concurrently as long as
+ * each session names a different one) -- e.g. testing two accounts in
+ * parallel: `emulator -avd phoenix_stage0 -port 5554` and `emulator
+ * -avd phoenix_stage0 -port 5556` (or a second AVD) give you
+ * `emulator-5554` and `emulator-5556`, and each run-batch-executions.js
+ * invocation sets PHOENIX_APPIUM_DEVICE_NAME to target one of them.
  */
 
 const { remote } = require("webdriverio");
@@ -18,7 +29,7 @@ function buildBaseCapabilities() {
   return {
     platformName: "Android",
     "appium:automationName": "UiAutomator2",
-    "appium:deviceName": "emulator-5554", // local Android emulator; ignored on BrowserStack
+    "appium:deviceName": process.env.PHOENIX_APPIUM_DEVICE_NAME || "emulator-5554", // ignored on BrowserStack
     "appium:app": process.env.PHOENIX_STAGE0_APP_PATH, // path to a .apk on disk
   };
 }

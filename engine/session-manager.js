@@ -36,6 +36,23 @@ function isSessionActive() {
 }
 
 /**
+ * Exposes the active session's driver + platform to callers outside
+ * the guided-recording flow — specifically, an experimental semantic-
+ * action endpoint (frontend/semantic-action-endpoint.js) that lets a
+ * caller run engine/semantic-act-executor.js's executeSemanticAction()
+ * against whatever session a tester is already recording, instead of
+ * requiring its own separate session. Deliberately read-only: nothing
+ * about the guided path's own lifecycle (recorder, live-view, "stop"
+ * handling above) changes based on whether this is ever called.
+ *
+ * @returns {{platform: string, driver: import('webdriverio').Browser}|null}
+ */
+function getActiveSession() {
+  if (!active) return null;
+  return { platform: active.platform, driver: active.driver };
+}
+
+/**
  * @param {object} [options]
  * @param {"android"|"ios"} [options.platform] - defaults to
  *   PHOENIX_PLATFORM env var, then "android" — same default chain
@@ -127,4 +144,4 @@ async function finishSession({ steps, driver, wss, socket, platform, useLlm }) {
   console.log("[session-manager] done");
 }
 
-module.exports = { startRecordingSession, isSessionActive };
+module.exports = { startRecordingSession, isSessionActive, getActiveSession };

@@ -17,6 +17,14 @@
  * and run `node run-session.js` before opening this page — still works
  * unchanged; see README's "Uploading an app directly" section for how
  * the two relate.)
+ *
+ * POST /api/semantic-action (frontend/semantic-action-endpoint.js) is
+ * an EXPERIMENTAL, opt-in endpoint for Phase 2's semantic action layer
+ * (docs/PHOENIX_SPEC.md §6) — only registered when
+ * PHOENIX_ENABLE_SEMANTIC_API=1 is set, off by default. See that
+ * module's header for why it's gated: it's never been run against a
+ * real device, and dev-team adoption of the semantic layer is
+ * deliberately being held until that's proven.
  */
 
 const http = require("http");
@@ -27,10 +35,19 @@ const { handleUploadAndStart } = require("./upload-session");
 
 const PORT = Number(process.env.PHOENIX_FRONTEND_PORT) || 8091;
 const INDEX_PATH = path.join(__dirname, "index.html");
+const SEMANTIC_API_ENABLED = process.env.PHOENIX_ENABLE_SEMANTIC_API === "1";
 
 const server = http.createServer((req, res) => {
   if (req.method === "POST" && req.url === "/api/sessions") {
     handleUploadAndStart(req, res);
+    return;
+  }
+
+  if (SEMANTIC_API_ENABLED && req.method === "POST" && req.url === "/api/semantic-action") {
+    // Lazily required so the executor/session-manager/generation chain
+    // it pulls in is only loaded when this experimental path is
+    // actually turned on.
+    require("./semantic-action-endpoint").handleSemanticAction(req, res);
     return;
   }
 
@@ -50,4 +67,7 @@ server.listen(PORT, () => {
   console.log("[frontend] upload a .ipa/.apk from the page to start a session, or set");
   console.log("[frontend] PHOENIX_STAGE0_APP_PATH/PHOENIX_IOS_APP_PATH/PHOENIX_BROWSERSTACK_APP_URL");
   console.log("[frontend] and run `node run-session.js` separately, as before.");
+  if (SEMANTIC_API_ENABLED) {
+    console.log("[frontend] PHOENIX_ENABLE_SEMANTIC_API=1 set — POST /api/semantic-action is live (experimental, unproven on real hardware).");
+  }
 });

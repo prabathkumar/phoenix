@@ -10,7 +10,7 @@
  */
 
 const assert = require("assert");
-const { buildGroundedSnapshot, snapshotToText, findByRef } = require("../semantic-snapshot");
+const { buildGroundedSnapshot, snapshotToText, findByRef, buildFusedSnapshot } = require("../semantic-snapshot");
 
 const ANDROID_LOGIN_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
 <hierarchy>
@@ -120,6 +120,45 @@ test("snapshotToText omits the a11y suffix when it duplicates the label", () => 
   assert.ok(text.includes('[1] XCUIElementTypeApplication (a11y: MyApp)'));
   // button: label "Log In" differs from accessibilityId "loginButton" -> both shown.
   assert.ok(text.includes('[2] XCUIElementTypeButton "Log In" (a11y: loginButton)'));
+});
+
+test("buildGroundedSnapshot parses Android's single-string bounds into {x,y,width,height}", () => {
+  const elements = buildGroundedSnapshot(ANDROID_LOGIN_SCREEN);
+  const loginButton = elements.find((el) => el.resourceId === "com.phoenix.demo:id/login_button");
+  assert.deepStrictEqual(loginButton.bounds, { x: 100, y: 560, width: 880, height: 100 });
+});
+
+test("buildGroundedSnapshot parses iOS's x/y/width/height attributes into the same {x,y,width,height} shape", () => {
+  const iosScreen = '<XCUIElementTypeApplication name="App"><XCUIElementTypeButton name="loginButton" label="Log In" x="10" y="20" width="50" height="30" /></XCUIElementTypeApplication>';
+  const elements = buildGroundedSnapshot(iosScreen);
+  const button = elements.find((el) => el.accessibilityId === "loginButton");
+  assert.deepStrictEqual(button.bounds, { x: 10, y: 20, width: 50, height: 30 });
+});
+
+test("buildGroundedSnapshot leaves bounds undefined when neither shape is present", () => {
+  const elements = buildGroundedSnapshot('<hierarchy><Button text="No bounds here" /></hierarchy>');
+  assert.strictEqual(elements[0].bounds, undefined);
+});
+
+test("snapshotToText only includes bounds when includeBounds is true", () => {
+  const elements = buildGroundedSnapshot(ANDROID_LOGIN_SCREEN);
+  const plain = snapshotToText(elements);
+  const withBounds = snapshotToText(elements, { includeBounds: true });
+
+  assert.ok(!plain.includes("at 100,560"));
+  assert.ok(withBounds.includes('[3] android.widget.Button "Log In" (id: com.phoenix.demo:id/login_button, at 100,560 880x100)'));
+});
+
+test("buildFusedSnapshot pairs a bounds-annotated text render with the given screenshot", () => {
+  const fused = buildFusedSnapshot(ANDROID_LOGIN_SCREEN, "base64-screenshot-bytes");
+  assert.strictEqual(fused.elements.length, 3);
+  assert.ok(fused.text.includes("at 100,560 880x100"));
+  assert.strictEqual(fused.screenshotBase64, "base64-screenshot-bytes");
+});
+
+test("buildFusedSnapshot leaves screenshotBase64 undefined when none is given", () => {
+  const fused = buildFusedSnapshot(ANDROID_LOGIN_SCREEN);
+  assert.strictEqual(fused.screenshotBase64, undefined);
 });
 
 test("findByRef resolves a known ref and returns undefined for an unknown one", () => {

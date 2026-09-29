@@ -134,6 +134,41 @@ async function test(name, fn) {
     }
   });
 
+  await test("resolveSemanticAction passes the screenshot through to callOllamaJson's images option in fused mode", async () => {
+    const calls = [];
+    const { semanticAct, restore } = loadWithFakeOllama(async (prompt, options) => {
+      calls.push({ prompt, options });
+      return { ref: 3 };
+    });
+    try {
+      const result = await semanticAct.resolveSemanticAction(ANDROID_LOGIN_SCREEN, "tap the Login button", { screenshotBase64: "fake-base64-bytes" });
+      assert.strictEqual(result.resolved, true);
+      assert.strictEqual(calls.length, 1);
+      assert.deepStrictEqual(calls[0].options, { images: ["fake-base64-bytes"] });
+      // Fused mode's prompt includes bounds so the model can cross-check
+      // the text against the attached image.
+      assert.ok(calls[0].prompt.includes("at 100,560 880x100"));
+      assert.ok(calls[0].prompt.includes("screenshot"));
+    } finally {
+      restore();
+    }
+  });
+
+  await test("resolveSemanticAction calls callOllamaJson without an images option in plain text mode", async () => {
+    const calls = [];
+    const { semanticAct, restore } = loadWithFakeOllama(async (prompt, options) => {
+      calls.push({ prompt, options });
+      return { ref: 3 };
+    });
+    try {
+      await semanticAct.resolveSemanticAction(ANDROID_LOGIN_SCREEN, "tap the Login button");
+      assert.strictEqual(calls[0].options, undefined);
+      assert.ok(!calls[0].prompt.includes("at 100,560"));
+    } finally {
+      restore();
+    }
+  });
+
   await test("toSelector prefers resource-id, then accessibility-id, then label, in that order", async () => {
     const { semanticAct, restore } = loadWithFakeOllama(async () => ({ ref: 1 }));
     try {

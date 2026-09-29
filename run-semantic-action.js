@@ -19,6 +19,7 @@
  * Usage:
  *   node run-semantic-action.js "tap the Login button"
  *   node run-semantic-action.js "type into the username field" --type "prabath@example.com"
+ *   node run-semantic-action.js "tap the Login button" --visual   # fused text+screenshot resolution
  *
  * Same app/provider env vars as run-session.js:
  *   PHOENIX_PLATFORM=android|ios (default android)
@@ -34,20 +35,23 @@ function parseArgs(argv) {
   const instruction = argv[0];
   let kind = "tap";
   let text;
+  let useVisualGrounding = false;
 
   for (let i = 1; i < argv.length; i += 1) {
     if (argv[i] === "--type") {
       kind = "type";
       text = argv[i + 1];
       i += 1;
+    } else if (argv[i] === "--visual") {
+      useVisualGrounding = true;
     }
   }
 
-  return { instruction, kind, text };
+  return { instruction, kind, text, useVisualGrounding };
 }
 
 async function main() {
-  const { instruction, kind, text } = parseArgs(process.argv.slice(2));
+  const { instruction, kind, text, useVisualGrounding } = parseArgs(process.argv.slice(2));
 
   if (!instruction) {
     console.error('Usage: node run-semantic-action.js "<instruction>" [--type "<text>"]');
@@ -67,8 +71,8 @@ async function main() {
   console.log("[run-semantic-action] session started:", driver.sessionId);
 
   try {
-    console.log(`[run-semantic-action] instruction: "${instruction}"${kind === "type" ? ` (typing: "${text}")` : ""}`);
-    const result = await executeSemanticAction(driver, instruction, { kind, text, platform });
+    console.log(`[run-semantic-action] instruction: "${instruction}"${kind === "type" ? ` (typing: "${text}")` : ""}${useVisualGrounding ? " (fused text+screenshot resolution)" : ""}`);
+    const result = await executeSemanticAction(driver, instruction, { kind, text, platform, useVisualGrounding });
 
     if (result.success) {
       console.log("[run-semantic-action] SUCCESS");

@@ -53,6 +53,16 @@ const SUPPORTED_KINDS = new Set(["tap", "type"]);
  * @param {"android"|"ios"} [options.platform] - defaults to "android",
  *   same default chain session-manager.js uses -- selects selector
  *   syntax via pipeline.js's buildSelector().
+ * @param {boolean} [options.useVisualGrounding] - when true, also
+ *   captures a screenshot (`driver.takeScreenshot()`) and passes it to
+ *   `resolveSemanticAction()` for fused (text + image) resolution --
+ *   docs/PHOENIX_SPEC.md §6's "merge accessibility tree + screenshot"
+ *   bullet. Off by default: text-only resolution is cheaper, faster,
+ *   and is what's been exercised so far; this is opt-in for whenever
+ *   text alone proves ambiguous enough to be worth the extra cost. A
+ *   screenshot failure here falls back to text-only rather than
+ *   failing the whole action -- the point of the screenshot is to help
+ *   resolution, not to be a new way for it to fail.
  * @returns {Promise<SemanticActionExecutionResult>}
  */
 async function executeSemanticAction(driver, instruction, options = {}) {
@@ -73,7 +83,18 @@ async function executeSemanticAction(driver, instruction, options = {}) {
     return { success: false, reason: `couldn't read the current screen: ${err.message}` };
   }
 
-  const resolution = await resolveSemanticAction(pageSourceBefore, instruction);
+  let screenshotBase64;
+  if (options.useVisualGrounding) {
+    try {
+      screenshotBase64 = await driver.takeScreenshot();
+    } catch (err) {
+      // Fall back to text-only resolution -- see the option's doc
+      // comment above for why this doesn't fail the action outright.
+      console.warn("[engine/semantic-act-executor] couldn't capture a screenshot for fused resolution, falling back to text-only:", err.message);
+    }
+  }
+
+  const resolution = await resolveSemanticAction(pageSourceBefore, instruction, { screenshotBase64 });
   if (!resolution.resolved) {
     return { success: false, reason: resolution.reason };
   }

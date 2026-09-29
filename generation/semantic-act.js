@@ -68,34 +68,46 @@ function toSelector(element) {
  * @param {string} pageSourceXml - same input buildGroundedSnapshot() and
  *   pipeline.js's extractLabels() take.
  * @param {string} instruction - e.g. "tap the Login button".
+ * @param {Object} [options]
+ * @param {string} [options.screenshotBase64] - when given, resolves in
+ *   "fused" mode (docs/PHOENIX_SPEC.md §6): the prompt includes bounds
+ *   per element and the screenshot is sent alongside via Ollama's
+ *   `images` field (generation/llm.js), for a multimodal-capable model
+ *   to cross-check the text snapshot against what's actually visible.
+ *   Omit for the existing text-only mode, unaffected either way.
  * @returns {Promise<SemanticActionResult>}
  */
-async function resolveSemanticAction(pageSourceXml, instruction) {
+async function resolveSemanticAction(pageSourceXml, instruction, options = {}) {
   const elements = buildGroundedSnapshot(pageSourceXml);
 
   if (elements.length === 0) {
     return { resolved: false, reason: "grounded snapshot has no labeled/identified elements to act on" };
   }
 
+  const fused = Boolean(options.screenshotBase64);
+
   try {
     const prompt = [
       "You are resolving a natural-language mobile test instruction against",
       "a snapshot of the elements currently visible on screen. Each line is",
       "one candidate element: [ref] role \"label\" (identifiers).",
+      fused
+        ? "A screenshot of the current screen is attached -- use it alongside the text below to confirm your match, especially when text alone is ambiguous."
+        : undefined,
       "",
       `Instruction: "${instruction}"`,
       "",
       "Snapshot:",
-      snapshotToText(elements),
+      snapshotToText(elements, { includeBounds: fused }),
       "",
       "Respond with ONLY a JSON object. If exactly one element is a confident",
       'match for the instruction, respond {"ref": <number>}. If no element',
       "is a confident match -- the instruction is ambiguous, refers to",
       "nothing on screen, or you're not sure -- respond",
       '{"ref": null, "reason": "..."} instead of guessing.',
-    ].join("\n");
+    ].filter((line) => line !== undefined).join("\n");
 
-    const result = await callOllamaJson(prompt);
+    const result = await callOllamaJson(prompt, fused ? { images: [options.screenshotBase64] } : undefined);
 
     if (!result || (result.ref !== null && !Number.isInteger(result.ref))) {
       throw new Error("Ollama response missing expected 'ref' field");

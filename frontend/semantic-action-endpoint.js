@@ -40,7 +40,7 @@ function handleSemanticAction(req, res) {
       return;
     }
 
-    const { instruction, kind, text } = body || {};
+    const { instruction, kind, text, useVisualGrounding } = body || {};
     if (typeof instruction !== "string" || !instruction.trim()) {
       respondJson(res, 400, { error: 'Request body must include a non-empty "instruction" string.' });
       return;
@@ -58,7 +58,7 @@ function handleSemanticAction(req, res) {
       return;
     }
 
-    executeSemanticAction(session.driver, instruction, { kind, text, platform: session.platform })
+    executeSemanticAction(session.driver, instruction, { kind, text, platform: session.platform, useVisualGrounding: Boolean(useVisualGrounding) })
       .then((result) => {
         respondJson(res, result.success ? 200 : 422, result);
       })

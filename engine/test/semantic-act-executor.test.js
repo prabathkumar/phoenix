@@ -81,9 +81,9 @@ function freshExecutorWithFakes({ resolveSemanticActionImpl, diffSnapshotsImpl, 
 }
 
 /** A minimal fake WebdriverIO-shaped driver + element. */
-function makeFakeDriver({ pageSources, elementBehavior = {} } = {}) {
+function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl } = {}) {
   let pageSourceCallCount = 0;
-  const calls = { click: 0, setValue: [] };
+  const calls = { click: 0, setValue: [], takeScreenshot: 0 };
 
   const element = {
     isExisting: elementBehavior.isExisting || (async () => true),
@@ -106,6 +106,11 @@ function makeFakeDriver({ pageSources, elementBehavior = {} } = {}) {
         return value;
       },
       $: async (_selectorString) => element,
+      takeScreenshot: async () => {
+        calls.takeScreenshot += 1;
+        if (takeScreenshotImpl) return takeScreenshotImpl();
+        return "fake-base64-screenshot";
+      },
     },
   };
 }
@@ -245,6 +250,77 @@ function makeFakeDriver({ pageSources, elementBehavior = {} } = {}) {
       const result = await executor.executeSemanticAction(driver, "tap OK");
       assert.strictEqual(result.success, false);
       assert.ok(result.reason.includes("stale element reference"));
+    } finally {
+      restore();
+    }
+  });
+
+  await run("executeSemanticAction captures a screenshot and passes it to resolveSemanticAction when useVisualGrounding is set", async () => {
+    const resolveCalls = [];
+    const { executor, restore } = freshExecutorWithFakes({
+      resolveSemanticActionImpl: async (pageSource, instruction, options) => {
+        resolveCalls.push({ pageSource, instruction, options });
+        return {
+          resolved: true,
+          element: { ref: 1, role: "Button", label: "Log In" },
+          selector: { strategy: "text", value: "Log In" },
+        };
+      },
+    });
+    try {
+      const { driver, calls } = makeFakeDriver({ pageSources: ["<hierarchy>before</hierarchy>", "<hierarchy>after</hierarchy>"] });
+      const result = await executor.executeSemanticAction(driver, "tap the Login button", { useVisualGrounding: true });
+
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(calls.takeScreenshot, 1);
+      assert.deepStrictEqual(resolveCalls[0].options, { screenshotBase64: "fake-base64-screenshot" });
+    } finally {
+      restore();
+    }
+  });
+
+  await run("executeSemanticAction does not capture a screenshot when useVisualGrounding is left off", async () => {
+    const { executor, restore } = freshExecutorWithFakes({
+      resolveSemanticActionImpl: async () => ({
+        resolved: true,
+        element: { ref: 1, role: "Button", label: "Log In" },
+        selector: { strategy: "text", value: "Log In" },
+      }),
+    });
+    try {
+      const { driver, calls } = makeFakeDriver({ pageSources: ["<hierarchy>before</hierarchy>", "<hierarchy>after</hierarchy>"] });
+      await executor.executeSemanticAction(driver, "tap the Login button");
+      assert.strictEqual(calls.takeScreenshot, 0);
+    } finally {
+      restore();
+    }
+  });
+
+  await run("executeSemanticAction falls back to text-only resolution when the screenshot capture itself fails", async () => {
+    const resolveCalls = [];
+    const { executor, restore } = freshExecutorWithFakes({
+      resolveSemanticActionImpl: async (pageSource, instruction, options) => {
+        resolveCalls.push({ options });
+        return {
+          resolved: true,
+          element: { ref: 1, role: "Button", label: "Log In" },
+          selector: { strategy: "text", value: "Log In" },
+        };
+      },
+    });
+    try {
+      const { driver, calls } = makeFakeDriver({
+        pageSources: ["<hierarchy>before</hierarchy>", "<hierarchy>after</hierarchy>"],
+        takeScreenshotImpl: () => {
+          throw new Error("screenshot not supported on this device");
+        },
+      });
+      const result = await executor.executeSemanticAction(driver, "tap the Login button", { useVisualGrounding: true });
+
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(calls.click, 1);
+      // Resolution still happened, just without a screenshot.
+      assert.deepStrictEqual(resolveCalls[0].options, { screenshotBase64: undefined });
     } finally {
       restore();
     }

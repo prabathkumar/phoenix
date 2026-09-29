@@ -29,21 +29,41 @@ const TIMEOUT_MS = Number(process.env.PHOENIX_LLM_TIMEOUT_MS) || 8000;
  * timeout, non-200, unparseable response, response that isn't the
  * shape the caller expects) surfaces as a thrown error — callers here
  * always catch it and fall back, this function itself does not.
+ *
+ * @param {string} prompt
+ * @param {Object} [options]
+ * @param {string[]} [options.images] - base64-encoded image data (no
+ *   data: URI prefix), passed through to Ollama's `images` field for a
+ *   multimodal-capable model (e.g. llava, or a vision-tuned llama3.2
+ *   build) — see generation/semantic-act.js's fused (text + screenshot)
+ *   resolution, docs/PHOENIX_SPEC.md §6's "grounded screen snapshot:
+ *   merge accessibility tree + screenshot" bullet. Omitted entirely
+ *   when not given, so a plain text-only model (the existing default)
+ *   is unaffected either way — Ollama simply never sees an `images`
+ *   key it wasn't sent. Passing images to a model that can't use them
+ *   is between the caller and PHOENIX_OLLAMA_MODEL's configuration;
+ *   this function doesn't validate model capability, it only sends
+ *   what it was given.
  */
-async function callOllamaJson(prompt) {
+async function callOllamaJson(prompt, options = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
+    const requestBody = {
+      model: OLLAMA_MODEL,
+      prompt,
+      stream: false,
+      format: "json",
+    };
+    if (options.images && options.images.length > 0) {
+      requestBody.images = options.images;
+    }
+
     const response = await fetch(`${OLLAMA_HOST}/api/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: OLLAMA_MODEL,
-        prompt,
-        stream: false,
-        format: "json",
-      }),
+      body: JSON.stringify(requestBody),
       signal: controller.signal,
     });
 

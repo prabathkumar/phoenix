@@ -59,7 +59,43 @@ function clean(value) {
  *   (iOS) -- the WebDriver "accessibility id" strategy's value.
  * @property {number} depth - nesting depth from the tree root, purely
  *   for indentation when rendering; not semantically meaningful.
+ * @property {{x:number,y:number,width:number,height:number}} [bounds] -
+ *   on-screen position, when the tree carried one (Android's single
+ *   `bounds` string, or iOS's x/y/width/height attributes — same two
+ *   shapes pipeline.js's extractLabels() reads). Not used by the
+ *   text-only snapshot rendering, but is what a fused (screenshot +
+ *   snapshot) resolution needs to relate a ref to a region of the
+ *   image — see buildFusedSnapshot() below and
+ *   docs/PHOENIX_SPEC.md §6's "merge accessibility tree + screenshot"
+ *   bullet.
  */
+
+const ANDROID_BOUNDS_RE = /\[(\d+),(\d+)\]\[(\d+),(\d+)\]/;
+
+/**
+ * Parses either platform's bounds shape into one consistent
+ * {x, y, width, height} object, or undefined if neither was present.
+ */
+function parseBounds(node) {
+  const androidBounds = node.getAttribute("bounds");
+  if (androidBounds) {
+    const match = ANDROID_BOUNDS_RE.exec(androidBounds);
+    if (match) {
+      const [, x1, y1, x2, y2] = match.map(Number);
+      return { x: x1, y: y1, width: x2 - x1, height: y2 - y1 };
+    }
+  }
+
+  const x = node.getAttribute("x");
+  const y = node.getAttribute("y");
+  const width = node.getAttribute("width");
+  const height = node.getAttribute("height");
+  if (x && y && width && height) {
+    return { x: Number(x), y: Number(y), width: Number(width), height: Number(height) };
+  }
+
+  return undefined;
+}
 
 /**
  * Walks a captured accessibility tree and produces a flat, ref-indexed
@@ -99,6 +135,7 @@ function buildGroundedSnapshot(pageSourceXml) {
           resourceId,
           accessibilityId,
           depth,
+          bounds: parseBounds(node),
         });
       }
     }
@@ -124,7 +161,7 @@ function buildGroundedSnapshot(pageSourceXml) {
  * @param {SnapshotElement[]} elements
  * @returns {string}
  */
-function snapshotToText(elements) {
+function snapshotToText(elements, options = {}) {
   return elements
     .map((el) => {
       const indent = "  ".repeat(el.depth);
@@ -132,10 +169,45 @@ function snapshotToText(elements) {
       const idParts = [];
       if (el.resourceId) idParts.push(`id: ${el.resourceId}`);
       if (el.accessibilityId && el.accessibilityId !== el.label) idParts.push(`a11y: ${el.accessibilityId}`);
+      // Bounds are opt-in and left out of the default (guided-path-
+      // adjacent) rendering to keep it compact -- a fused, screenshot-
+      // accompanied resolution (buildFusedSnapshot()) turns this on so
+      // a vision-capable model can relate a ref to a region of the image.
+      if (options.includeBounds && el.bounds) {
+        idParts.push(`at ${el.bounds.x},${el.bounds.y} ${el.bounds.width}x${el.bounds.height}`);
+      }
       const idSuffix = idParts.length ? ` (${idParts.join(", ")})` : "";
       return `${indent}[${el.ref}] ${el.role}${quoted}${idSuffix}`;
     })
     .join("\n");
+}
+
+/**
+ * Phase 2's "grounded screen snapshot: merge accessibility tree +
+ * screenshot into one compact structured format an LLM reads directly"
+ * bullet (docs/PHOENIX_SPEC.md §6) — the fusion itself is deliberately
+ * simple: package the same ref-indexed element list (now carrying
+ * bounds) alongside the raw screenshot bytes, rendered WITH bounds so a
+ * multimodal model can relate "[3] Button "Log In" (at 100,560 880x100)"
+ * to the matching region of the attached image. This does not draw
+ * boxes on the image or crop it — that would need an image-processing
+ * dependency this repo doesn't have yet — the model does the visual
+ * correlation itself, the same way a person reading both the tree and
+ * a screenshot side by side would.
+ *
+ * @param {string} pageSourceXml
+ * @param {string} [screenshotBase64] - base64 PNG/JPEG data (no `data:`
+ *   URI prefix), typically `await driver.takeScreenshot()`'s return
+ *   value directly (WebdriverIO already returns base64, no prefix).
+ * @returns {{elements: SnapshotElement[], text: string, screenshotBase64: string|undefined}}
+ */
+function buildFusedSnapshot(pageSourceXml, screenshotBase64) {
+  const elements = buildGroundedSnapshot(pageSourceXml);
+  return {
+    elements,
+    text: snapshotToText(elements, { includeBounds: true }),
+    screenshotBase64: screenshotBase64 || undefined,
+  };
 }
 
 /**
@@ -153,4 +225,4 @@ function findByRef(elements, ref) {
   return elements.find((el) => el.ref === ref);
 }
 
-module.exports = { buildGroundedSnapshot, snapshotToText, findByRef };
+module.exports = { buildGroundedSnapshot, snapshotToText, findByRef, buildFusedSnapshot };

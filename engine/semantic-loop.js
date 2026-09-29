@@ -71,7 +71,7 @@ async function decideNextAction(goal, snapshotText, history) {
     ? "(none yet -- this is the first step)"
     : history.map((step, i) => `${i + 1}. ${step.instruction} -> ${step.diffSummary}`).join("\n");
 
-  const prompt = [
+  const buildPrompt = (extraReminder) => [
     "You are operating a mobile app autonomously to achieve a goal, one",
     "action at a time. You will be told the goal, the current screen (as",
     "a list of elements), and the actions taken so far with their effect.",
@@ -95,9 +95,27 @@ async function decideNextAction(goal, snapshotText, history) {
     "",
     "Never propose more than one action at a time, and never guess at an",
     "irreversible or judgment-requiring step -- stop and hand back instead.",
-  ].join("\n");
+    'A "type" action is INVALID without a non-empty "text" field -- if you',
+    "mean to type something, you must include the exact text to type.",
+    extraReminder,
+  ].filter((line) => line !== undefined).join("\n");
 
-  const result = await callOllamaJson(prompt);
+  // Found for real: the local model would occasionally decide kind
+  // "type" and simply omit "text" (most often right after a step whose
+  // goal-supplied instruction embeds a literal credential value) --
+  // reproduced on consecutive real-device runs at the exact same step,
+  // not a one-off fluke. This is a malformed response, not an ambiguous
+  // situation the model was right to hedge on, so one bounded retry with
+  // a sharper reminder is a fair chance to comply before treating it as
+  // a genuine stop -- we're not guessing the missing text ourselves,
+  // only asking the model to actually answer the question it was asked.
+  let result = await callOllamaJson(buildPrompt(undefined));
+  if (result && typeof result.instruction === "string" && result.kind === "type" && typeof result.text !== "string") {
+    result = await callOllamaJson(buildPrompt(
+      'Your previous response chose kind "type" but left out "text" -- that is invalid. ' +
+      'Either include the exact "text" to type, or choose a different decision (done/stop/tap) instead.'
+    ));
+  }
 
   if (result && result.done === true) return { decision: "done" };
   if (result && result.stop === true) {

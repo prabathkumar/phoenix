@@ -305,6 +305,43 @@ function fakeDriver(pageSource = SIMPLE_SCREEN) {
     }
   });
 
+  await run("runAutonomousLoop retries once and recovers when the model first omits 'text' on a type decision (real, reproduced flakiness)", async () => {
+    const { loop, restore } = freshLoopWithFakes({
+      decisions: [
+        { instruction: "type the Yes Number into the edit text", kind: "type" }, // malformed: no "text"
+        { instruction: "type the Yes Number into the edit text", kind: "type", text: "0183400351" }, // retry succeeds
+        { done: true },
+      ],
+      executionResults: [
+        { success: true, selector: { strategy: "resource-id", value: "edtCommon" }, diffSummary: 'Appeared: "[REDACTED]".' },
+      ],
+    });
+    try {
+      const result = await loop.runAutonomousLoop(fakeDriver(), "log in");
+      assert.strictEqual(result.stoppedBecause, "goal-achieved");
+      assert.strictEqual(result.steps.length, 1);
+      assert.strictEqual(result.steps[0].text, "0183400351");
+    } finally {
+      restore();
+    }
+  });
+
+  await run("runAutonomousLoop still reports {stoppedBecause: 'error'} when the model omits 'text' on BOTH the original and the retry", async () => {
+    const { loop, restore } = freshLoopWithFakes({
+      decisions: [
+        { instruction: "type the password into the edit text", kind: "type" },
+        { instruction: "type the password into the edit text", kind: "type" }, // retry, still malformed
+      ],
+    });
+    try {
+      const result = await loop.runAutonomousLoop(fakeDriver(), "log in");
+      assert.strictEqual(result.stoppedBecause, "error");
+      assert.ok(result.reason.includes('without "text"'));
+    } finally {
+      restore();
+    }
+  });
+
   if (process.exitCode) {
     console.error("\nengine/semantic-loop tests FAILED");
     process.exit(1);

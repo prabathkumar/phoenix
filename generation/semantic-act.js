@@ -59,6 +59,10 @@ function toSelector(element) {
   if (element.resourceId) return { strategy: "resource-id", value: element.resourceId };
   if (element.accessibilityId) return { strategy: "accessibility-id", value: element.accessibilityId };
   if (element.label) return { strategy: "text", value: element.label };
+  // A blank input field (see semantic-snapshot.js's INPUT_ROLE_RE) has
+  // none of the above -- xpath is the only locator available for it,
+  // same last-resort tier the guided path already uses.
+  if (element.xpath) return { strategy: "xpath", value: element.xpath };
   return undefined;
 }
 
@@ -75,6 +79,13 @@ function toSelector(element) {
  *   `images` field (generation/llm.js), for a multimodal-capable model
  *   to cross-check the text snapshot against what's actually visible.
  *   Omit for the existing text-only mode, unaffected either way.
+ * @param {"tap"|"type"} [options.kind] - the action this resolution is
+ *   for. Found necessary from a real device run: without this, the
+ *   model had no signal that a "type into X" instruction needs an
+ *   actual editable input, and would confidently match the nearby
+ *   label text instead (which then fails at execution time -- text
+ *   isn't editable). Optional and defaults to no hint at all, so
+ *   existing callers that don't pass it are unaffected.
  * @returns {Promise<SemanticActionResult>}
  */
 async function resolveSemanticAction(pageSourceXml, instruction, options = {}) {
@@ -90,7 +101,13 @@ async function resolveSemanticAction(pageSourceXml, instruction, options = {}) {
     const prompt = [
       "You are resolving a natural-language mobile test instruction against",
       "a snapshot of the elements currently visible on screen. Each line is",
-      "one candidate element: [ref] role \"label\" (identifiers).",
+      "one candidate element: [ref] role \"label\" (identifiers). An entry",
+      'marked (empty input near: "...") is a blank, editable text field with',
+      "no label of its own -- the quoted text is just the nearby caption, not",
+      "this element's own value.",
+      options.kind === "type"
+        ? "This instruction is a TEXT-ENTRY action: only match an actual editable input field (an entry marked \"empty input near\", or an EditText/TextField-like role). Never match a plain label or button, even if its text matches the instruction closely -- it cannot be typed into."
+        : undefined,
       fused
         ? "A screenshot of the current screen is attached -- use it alongside the text below to confirm your match, especially when text alone is ambiguous."
         : undefined,

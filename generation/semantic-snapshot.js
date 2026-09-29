@@ -68,6 +68,15 @@ function clean(value) {
  *   image — see buildFusedSnapshot() below and
  *   docs/PHOENIX_SPEC.md §6's "merge accessibility tree + screenshot"
  *   bullet.
+ * @property {string} [nearbyLabel] - only set on a blank editable input
+ *   (see INPUT_ROLE_RE) that has none of label/resourceId/accessibilityId
+ *   of its own: the most recent labeled text seen before it in document
+ *   order, as a best-effort hint of which field this is (e.g. "Yes
+ *   Number"). Found necessary from a real device run where a Compose UI
+ *   left every input field itself unlabeled.
+ * @property {string} [xpath] - only set on a blank editable input (same
+ *   condition as nearbyLabel) -- a structural locator, since that's the
+ *   only kind available when there's no id/label to select on.
  */
 
 const ANDROID_BOUNDS_RE = /\[(\d+),(\d+)\]\[(\d+),(\d+)\]/;
@@ -97,13 +106,53 @@ function parseBounds(node) {
   return undefined;
 }
 
+// Editable-input roles across both platforms. Found from a real device
+// run (MyYes app): a Compose-rendered text field is commonly left with
+// NO resource-id/content-desc/text of its own -- only a separate
+// sibling TextView carries the human-readable label ("Yes Number").
+// Without this, buildGroundedSnapshot() would drop the actual input
+// field entirely and the model would be left to (wrongly) target the
+// label text instead, which then fails at execution time with a
+// WebDriver "cannot set value" error since a label isn't editable.
+// These roles are therefore included even when blank -- see the
+// `nearbyLabel` heuristic below for how the model still gets a hint of
+// which field it is.
+const INPUT_ROLE_RE = /EditText|TextField|SecureTextField|SearchField/i;
+
+/**
+ * Computes a structural xpath for a node, identical in shape to
+ * capture/recorder.js's buildXPath() (kept as a separate copy rather
+ * than a shared import -- this module stays independent of the guided
+ * path's capture layer by design, see this file's header). Used only
+ * as a last-resort selector for a blank input field that has no
+ * resource-id/accessibility-id/label of its own.
+ */
+function buildXPath(element) {
+  const segments = [];
+  let node = element;
+  while (node && node.nodeType === 1 && node.tagName) {
+    const tagName = node.tagName;
+    let position = 1;
+    let sibling = node.previousSibling;
+    while (sibling) {
+      if (sibling.nodeType === 1 && sibling.tagName === tagName) position += 1;
+      sibling = sibling.previousSibling;
+    }
+    segments.unshift(`${tagName}[${position}]`);
+    node = node.parentNode;
+  }
+  return "/" + segments.join("/");
+}
+
 /**
  * Walks a captured accessibility tree and produces a flat, ref-indexed
  * list of every element that carries a usable label and/or identifier
- * -- the elements a semantic action could plausibly target. Purely
- * structural containers with no label/id of their own are walked
- * (their children still appear) but not included as their own entry;
- * they add noise without adding anything an LLM could act on.
+ * -- the elements a semantic action could plausibly target -- plus any
+ * blank editable input field (see INPUT_ROLE_RE above), since those are
+ * legitimate "type into this" targets even with nothing to label them.
+ * Purely structural containers with no label/id/input-role of their own
+ * are walked (their children still appear) but not included as their
+ * own entry; they add noise without adding anything an LLM could act on.
  *
  * @param {string} pageSourceXml
  * @returns {SnapshotElement[]}
@@ -117,6 +166,11 @@ function buildGroundedSnapshot(pageSourceXml) {
 
   const elements = [];
   let nextRef = 1;
+  // The most recent non-blank label seen in document order -- a rough
+  // but effective proxy for "the caption sitting next to this field",
+  // since a label TextView is typically walked immediately before the
+  // input it describes in both Android's and iOS's layout trees.
+  let lastLabelSeen;
 
   const walk = (node, depth) => {
     if (node.nodeType === 1 && node.getAttribute) {
@@ -126,8 +180,9 @@ function buildGroundedSnapshot(pageSourceXml) {
 
       const label = (!isBlank(text) && clean(text)) || undefined;
       const accessibilityId = (!isBlank(contentDesc) && clean(contentDesc)) || undefined;
+      const isBlankInput = !label && !accessibilityId && !resourceId && INPUT_ROLE_RE.test(node.tagName);
 
-      if (label || accessibilityId || resourceId) {
+      if (label || accessibilityId || resourceId || isBlankInput) {
         elements.push({
           ref: nextRef++,
           role: node.tagName,
@@ -136,8 +191,12 @@ function buildGroundedSnapshot(pageSourceXml) {
           accessibilityId,
           depth,
           bounds: parseBounds(node),
+          ...(isBlankInput && lastLabelSeen ? { nearbyLabel: lastLabelSeen } : {}),
+          ...(isBlankInput ? { xpath: buildXPath(node) } : {}),
         });
       }
+
+      if (label) lastLabelSeen = label;
     }
     const children = node.childNodes || [];
     for (let i = 0; i < children.length; i += 1) walk(children[i], depth + 1);
@@ -169,6 +228,10 @@ function snapshotToText(elements, options = {}) {
       const idParts = [];
       if (el.resourceId) idParts.push(`id: ${el.resourceId}`);
       if (el.accessibilityId && el.accessibilityId !== el.label) idParts.push(`a11y: ${el.accessibilityId}`);
+      // See INPUT_ROLE_RE/nearbyLabel above -- a blank input field
+      // still gets SOME identifying context in the rendered text, even
+      // with no label of its own.
+      if (el.nearbyLabel) idParts.push(`empty input near: "${el.nearbyLabel}"`);
       // Bounds are opt-in and left out of the default (guided-path-
       // adjacent) rendering to keep it compact -- a fused, screenshot-
       // accompanied resolution (buildFusedSnapshot()) turns this on so

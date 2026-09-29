@@ -274,7 +274,7 @@ function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl 
 
       assert.strictEqual(result.success, true);
       assert.strictEqual(calls.takeScreenshot, 1);
-      assert.deepStrictEqual(resolveCalls[0].options, { screenshotBase64: "fake-base64-screenshot" });
+      assert.deepStrictEqual(resolveCalls[0].options, { screenshotBase64: "fake-base64-screenshot", kind: "tap" });
     } finally {
       restore();
     }
@@ -321,7 +321,7 @@ function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl 
       assert.strictEqual(result.success, true);
       assert.strictEqual(calls.click, 1);
       // Resolution still happened, just without a screenshot.
-      assert.deepStrictEqual(resolveCalls[0].options, { screenshotBase64: undefined });
+      assert.deepStrictEqual(resolveCalls[0].options, { screenshotBase64: undefined, kind: "tap" });
     } finally {
       restore();
     }

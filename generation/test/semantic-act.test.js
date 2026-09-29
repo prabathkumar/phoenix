@@ -190,6 +190,51 @@ async function test(name, fn) {
     }
   });
 
+  await test("toSelector falls back to xpath for a blank input with no other identifier", async () => {
+    const { semanticAct, restore } = loadWithFakeOllama(async () => ({ ref: 1 }));
+    try {
+      assert.deepStrictEqual(
+        semanticAct.toSelector({ xpath: "/hierarchy/EditText[1]" }),
+        { strategy: "xpath", value: "/hierarchy/EditText[1]" }
+      );
+      // resourceId/accessibilityId/label still win over xpath when present.
+      assert.deepStrictEqual(
+        semanticAct.toSelector({ label: "Label1", xpath: "/hierarchy/EditText[1]" }),
+        { strategy: "text", value: "Label1" }
+      );
+    } finally {
+      restore();
+    }
+  });
+
+  await test("resolveSemanticAction tells the model to prefer an editable input when kind is \"type\"", async () => {
+    const calls = [];
+    const { semanticAct, restore } = loadWithFakeOllama(async (prompt, options) => {
+      calls.push({ prompt, options });
+      return { ref: 2 };
+    });
+    try {
+      await semanticAct.resolveSemanticAction(ANDROID_LOGIN_SCREEN, "type the username", { kind: "type" });
+      assert.ok(calls[0].prompt.includes("TEXT-ENTRY action"));
+    } finally {
+      restore();
+    }
+  });
+
+  await test("resolveSemanticAction does not add the text-entry hint when kind is \"tap\" or omitted", async () => {
+    const calls = [];
+    const { semanticAct, restore } = loadWithFakeOllama(async (prompt, options) => {
+      calls.push({ prompt, options });
+      return { ref: 3 };
+    });
+    try {
+      await semanticAct.resolveSemanticAction(ANDROID_LOGIN_SCREEN, "tap the Login button");
+      assert.ok(!calls[0].prompt.includes("TEXT-ENTRY action"));
+    } finally {
+      restore();
+    }
+  });
+
   if (process.exitCode) {
     console.error("\ngeneration/semantic-act tests FAILED");
     process.exit(1);

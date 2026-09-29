@@ -98,7 +98,7 @@ async function executeSemanticAction(driver, instruction, options = {}) {
     }
   }
 
-  const resolution = await resolveSemanticAction(pageSourceBefore, instruction, { screenshotBase64 });
+  const resolution = await resolveSemanticAction(pageSourceBefore, instruction, { screenshotBase64, kind });
   if (!resolution.resolved) {
     return { success: false, reason: resolution.reason };
   }

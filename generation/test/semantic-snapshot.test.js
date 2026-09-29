@@ -30,6 +30,21 @@ const IOS_SCREEN_WITH_BLANK_LABEL = `<XCUIElementTypeApplication name="MyApp">
   <XCUIElementTypeOther />
 </XCUIElementTypeApplication>`;
 
+// A Compose-style screen where the input field itself carries no
+// resource-id/content-desc/text -- only a sibling label does. Modeled
+// directly on the real MyYes app screen that surfaced this (a real
+// device run, not a synthetic guess): the field would previously be
+// invisible to the snapshot entirely.
+const BLANK_INPUT_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy>
+  <android.view.View bounds="[0,0][1080,2400]">
+    <android.widget.TextView text="Yes Number" bounds="[277,1400][803,1450]" />
+    <android.widget.EditText bounds="[277,1460][803,1560]" />
+    <android.widget.TextView text="Log In" bounds="[100,1600][300,1660]" />
+    <android.widget.Button bounds="[100,1600][300,1660]" />
+  </android.view.View>
+</hierarchy>`;
+
 function test(name, fn) {
   try {
     fn();
@@ -166,6 +181,40 @@ test("findByRef resolves a known ref and returns undefined for an unknown one", 
   assert.strictEqual(findByRef(elements, 3).resourceId, "com.phoenix.demo:id/login_button");
   assert.strictEqual(findByRef(elements, 99), undefined);
   assert.strictEqual(findByRef([], 1), undefined);
+});
+
+test("buildGroundedSnapshot includes a blank EditText even with no label/id of its own", () => {
+  const elements = buildGroundedSnapshot(BLANK_INPUT_SCREEN);
+  const input = elements.find((el) => el.role === "android.widget.EditText");
+  assert.ok(input, "expected the blank EditText to be included as a candidate");
+  assert.strictEqual(input.label, undefined);
+  assert.strictEqual(input.resourceId, undefined);
+  assert.strictEqual(input.accessibilityId, undefined);
+});
+
+test("buildGroundedSnapshot attaches the nearest preceding label as nearbyLabel for a blank input", () => {
+  const elements = buildGroundedSnapshot(BLANK_INPUT_SCREEN);
+  const input = elements.find((el) => el.role === "android.widget.EditText");
+  assert.strictEqual(input.nearbyLabel, "Yes Number");
+});
+
+test("buildGroundedSnapshot gives a blank input an xpath since it has no other selector", () => {
+  const elements = buildGroundedSnapshot(BLANK_INPUT_SCREEN);
+  const input = elements.find((el) => el.role === "android.widget.EditText");
+  assert.ok(input.xpath && input.xpath.includes("EditText"));
+});
+
+test("buildGroundedSnapshot does not attach nearbyLabel/xpath to a normal labeled element", () => {
+  const elements = buildGroundedSnapshot(BLANK_INPUT_SCREEN);
+  const loginLabel = elements.find((el) => el.label === "Log In");
+  assert.strictEqual(loginLabel.nearbyLabel, undefined);
+  assert.strictEqual(loginLabel.xpath, undefined);
+});
+
+test("snapshotToText renders a blank input's nearbyLabel as an 'empty input near' hint", () => {
+  const elements = buildGroundedSnapshot(BLANK_INPUT_SCREEN);
+  const text = snapshotToText(elements);
+  assert.ok(text.includes('empty input near: "Yes Number"'));
 });
 
 setImmediate(() => {

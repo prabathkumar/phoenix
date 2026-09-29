@@ -58,6 +58,58 @@ const { runAutonomousLoop } = require("./engine/semantic-loop");
 
 const OUTPUT_DIR = path.join(__dirname, "batch-results");
 
+// Optional login credentials, read from the environment only -- never
+// hardcoded, never accepted as a CLI arg (which would land in shell
+// history the same way), and never written verbatim into this script,
+// a commit, or the repo. Used to let the "loop" mode actually complete
+// a real login instead of stopping at the login screen. If unset, loop
+// iterations behave exactly as before (goal text unchanged).
+const LOGIN_PHONE = process.env.PHOENIX_BATCH_LOGIN_PHONE;
+const LOGIN_PASSWORD = process.env.PHOENIX_BATCH_LOGIN_PASSWORD;
+const SECRETS = [LOGIN_PHONE, LOGIN_PASSWORD].filter((v) => typeof v === "string" && v.length > 0);
+
+/**
+ * Appends a credential-fulfillment instruction to a goal string, IN
+ * MEMORY ONLY -- the caller must keep using the original `goal` for
+ * anything printed to the console or written to the JSON report (see
+ * redactSecrets below for the belt-and-suspenders case where a
+ * credential leaks into an error/diff message instead of the goal
+ * text itself, e.g. a failed setValue echoing back what it tried to
+ * type). Pure function, unit-tested.
+ *
+ * @param {string} goal
+ * @returns {string}
+ */
+function buildEffectiveGoal(goal) {
+  if (!LOGIN_PHONE && !LOGIN_PASSWORD) return goal;
+  const parts = [goal, "When the app asks you to log in, use these exact credentials:"];
+  if (LOGIN_PHONE) parts.push(`phone/account number "${LOGIN_PHONE}"`);
+  if (LOGIN_PASSWORD) parts.push(`password "${LOGIN_PASSWORD}"`);
+  return parts.join(" ");
+}
+
+/**
+ * Replaces any configured secret value found in `text` with
+ * "[REDACTED]" before it's logged to the console or written to the
+ * JSON report. Belt-and-suspenders: even though buildEffectiveGoal()
+ * keeps the raw goal out of logs, a failed WebDriver action can still
+ * echo back the literal text it tried to type (e.g. "Cannot set the
+ * element to '<value>'") in its own error message -- this catches that
+ * case too, not just the goal string itself. A no-op when no
+ * credentials are configured. Pure function, unit-tested.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+function redactSecrets(text) {
+  if (typeof text !== "string" || SECRETS.length === 0) return text;
+  let redacted = text;
+  for (const secret of SECRETS) {
+    redacted = redacted.split(secret).join("[REDACTED]");
+  }
+  return redacted;
+}
+
 /**
  * Splits `total` into three counts (guided/semantic/loop) as evenly as
  * possible, putting any remainder into `guided` (the cheapest, least
@@ -168,18 +220,20 @@ async function runIteration(mode, index, { platform, instruction, goal, maxSteps
   const startedAt = Date.now();
   console.log(`[run-batch-executions] [${mode} ${index}] starting...`);
   try {
-    const { success, detail } = await (mode === "guided"
+    const { success, detail: rawDetail } = await (mode === "guided"
       ? runOneGuidedIteration(platform)
       : mode === "semantic"
       ? runOneSemanticIteration(platform, instruction)
-      : runOneLoopIteration(platform, goal, maxSteps));
+      : runOneLoopIteration(platform, buildEffectiveGoal(goal), maxSteps));
+    const detail = redactSecrets(rawDetail);
     const durationMs = Date.now() - startedAt;
     console.log(`[run-batch-executions] [${mode} ${index}] ${success ? "OK" : "FAILED"} (${durationMs}ms) - ${detail}`);
     return { mode, index, success, durationMs, detail };
   } catch (err) {
     const durationMs = Date.now() - startedAt;
-    console.error(`[run-batch-executions] [${mode} ${index}] ERROR (${durationMs}ms):`, err.message);
-    return { mode, index, success: false, durationMs, detail: err.message };
+    const detail = redactSecrets(err.message);
+    console.error(`[run-batch-executions] [${mode} ${index}] ERROR (${durationMs}ms):`, detail);
+    return { mode, index, success: false, durationMs, detail };
   }
 }
 
@@ -200,6 +254,9 @@ async function main() {
   const counts = splitBatchCounts(total);
   console.log(`[run-batch-executions] plan: ${counts.guided} guided, ${counts.semantic} semantic, ${counts.loop} loop (total ${total})`);
   console.log(`[run-batch-executions] platform: ${platform}, instruction: "${instruction}", goal: "${goal}"`);
+  if (SECRETS.length > 0) {
+    console.log("[run-batch-executions] login credentials supplied via env for loop mode (not logged, not written to the report)");
+  }
 
   const results = [];
 
@@ -234,4 +291,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { splitBatchCounts, summarizeBatchResults };
+module.exports = { splitBatchCounts, summarizeBatchResults, buildEffectiveGoal, redactSecrets };

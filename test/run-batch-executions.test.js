@@ -1,6 +1,8 @@
 const assert = require("assert");
 const { splitBatchCounts, summarizeBatchResults } = require("../run-batch-executions");
 
+const modulePath = require.resolve("../run-batch-executions");
+
 let passed = 0;
 let failed = 0;
 
@@ -13,6 +15,34 @@ function test(name, fn) {
     console.error(`FAIL - ${name}`);
     console.error(err);
     failed += 1;
+  }
+}
+
+/**
+ * buildEffectiveGoal/redactSecrets read PHOENIX_BATCH_LOGIN_PHONE/
+ * PASSWORD once, at module load time (see run-batch-executions.js's
+ * header comment on why: never re-read per call, so nothing about a
+ * running batch's behavior can change mid-run from a stray env
+ * mutation). Tests therefore need to set the env vars and force a
+ * fresh require, then restore both afterward -- same require.cache
+ * technique used throughout this repo's other tests.
+ */
+function withEnvAndFreshModule(env, fn) {
+  const previous = {};
+  for (const key of Object.keys(env)) {
+    previous[key] = process.env[key];
+    if (env[key] === undefined) delete process.env[key];
+    else process.env[key] = env[key];
+  }
+  delete require.cache[modulePath];
+  try {
+    fn(require(modulePath));
+  } finally {
+    for (const key of Object.keys(previous)) {
+      if (previous[key] === undefined) delete process.env[key];
+      else process.env[key] = previous[key];
+    }
+    delete require.cache[modulePath];
   }
 }
 
@@ -75,6 +105,59 @@ test("summarizeBatchResults handles empty results", () => {
   assert.strictEqual(summary.succeeded, 0);
   assert.strictEqual(summary.failed, 0);
   assert.deepStrictEqual(summary.byMode, {});
+});
+
+test("buildEffectiveGoal leaves the goal unchanged when no credentials are configured", () => {
+  withEnvAndFreshModule({ PHOENIX_BATCH_LOGIN_PHONE: undefined, PHOENIX_BATCH_LOGIN_PASSWORD: undefined }, (mod) => {
+    assert.strictEqual(mod.buildEffectiveGoal("reach the login screen"), "reach the login screen");
+  });
+});
+
+test("buildEffectiveGoal appends both credentials when both are configured", () => {
+  withEnvAndFreshModule(
+    { PHOENIX_BATCH_LOGIN_PHONE: "0183400351", PHOENIX_BATCH_LOGIN_PASSWORD: "p@P1B@6vbu" },
+    (mod) => {
+      const goal = mod.buildEffectiveGoal("log in");
+      assert.ok(goal.includes("0183400351"));
+      assert.ok(goal.includes("p@P1B@6vbu"));
+      assert.ok(goal.startsWith("log in"));
+    }
+  );
+});
+
+test("buildEffectiveGoal appends only the credential that's actually set", () => {
+  withEnvAndFreshModule(
+    { PHOENIX_BATCH_LOGIN_PHONE: "0183400351", PHOENIX_BATCH_LOGIN_PASSWORD: undefined },
+    (mod) => {
+      const goal = mod.buildEffectiveGoal("log in");
+      assert.ok(goal.includes("0183400351"));
+      assert.ok(!goal.includes("password"));
+    }
+  );
+});
+
+test("redactSecrets is a no-op when no credentials are configured", () => {
+  withEnvAndFreshModule({ PHOENIX_BATCH_LOGIN_PHONE: undefined, PHOENIX_BATCH_LOGIN_PASSWORD: undefined }, (mod) => {
+    assert.strictEqual(mod.redactSecrets("Cannot set the element to 'p@P1B@6vbu'"), "Cannot set the element to 'p@P1B@6vbu'");
+  });
+});
+
+test("redactSecrets replaces a leaked credential in an error/diff message", () => {
+  withEnvAndFreshModule(
+    { PHOENIX_BATCH_LOGIN_PHONE: "0183400351", PHOENIX_BATCH_LOGIN_PASSWORD: "p@P1B@6vbu" },
+    (mod) => {
+      const redacted = mod.redactSecrets("Cannot set the element to 'p@P1B@6vbu'. Did you interact with the correct element?");
+      assert.ok(!redacted.includes("p@P1B@6vbu"));
+      assert.ok(redacted.includes("[REDACTED]"));
+    }
+  );
+});
+
+test("redactSecrets passes non-string values through unchanged", () => {
+  withEnvAndFreshModule({ PHOENIX_BATCH_LOGIN_PHONE: "0183400351", PHOENIX_BATCH_LOGIN_PASSWORD: undefined }, (mod) => {
+    assert.strictEqual(mod.redactSecrets(undefined), undefined);
+    assert.strictEqual(mod.redactSecrets(42), 42);
+  });
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

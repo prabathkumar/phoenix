@@ -60,9 +60,17 @@ function freshLoopWithFakes({ decisions = [], executionResults = [] } = {}) {
     filename: EXECUTOR_PATH,
     loaded: true,
     exports: {
-      executeSemanticAction: async () => {
+      // Mirrors the real executor's contract: honors options.beforeAct
+      // as a veto hook before "acting", so tests can exercise the
+      // loop's own beforeAct wiring (the same-element-different-text
+      // guard) without a live session.
+      executeSemanticAction: async (driver, instruction, options = {}) => {
         const result = executionResults[Math.min(executionIndex, executionResults.length - 1)];
         executionIndex += 1;
+        if (result && result.selector && typeof options.beforeAct === "function") {
+          const vetoReason = options.beforeAct({ selector: result.selector, kind: options.kind, text: options.text });
+          if (vetoReason) return { success: false, reason: vetoReason };
+        }
         return result;
       },
     },
@@ -247,6 +255,51 @@ function fakeDriver(pageSource = SIMPLE_SCREEN) {
       assert.strictEqual(result.stoppedBecause, "action-failed");
       assert.ok(result.reason.includes("session terminated"));
       assert.strictEqual(result.steps.length, 1); // the one successful step is preserved
+    } finally {
+      restore();
+    }
+  });
+
+  await run("runAutonomousLoop refuses a second 'type' into the same element with different text (real bug: password overwrote Yes Number)", async () => {
+    const { loop, restore } = freshLoopWithFakes({
+      decisions: [
+        { instruction: "type the Yes Number into the edit text", kind: "type", text: "0183400351" },
+        { instruction: "type the password into the edit text", kind: "type", text: "p@P1B@6vbu" },
+      ],
+      executionResults: [
+        { success: true, selector: { strategy: "resource-id", value: "edtCommon" }, diffSummary: 'Appeared: "[REDACTED]".' },
+        { success: true, selector: { strategy: "resource-id", value: "edtCommon" }, diffSummary: "No visible change." },
+      ],
+    });
+    try {
+      const result = await loop.runAutonomousLoop(fakeDriver(), "log in");
+      assert.strictEqual(result.stoppedBecause, "action-failed");
+      assert.ok(result.reason.includes("edtCommon"));
+      assert.ok(result.reason.includes("previous step already typed a different value"));
+      // The first (good) step is preserved; the clobbering second step never happened.
+      assert.strictEqual(result.steps.length, 1);
+      assert.strictEqual(result.steps[0].text, "0183400351");
+    } finally {
+      restore();
+    }
+  });
+
+  await run("runAutonomousLoop allows re-typing the SAME text into the same element (not a clobber)", async () => {
+    const { loop, restore } = freshLoopWithFakes({
+      decisions: [
+        { instruction: "type the code into the edit text", kind: "type", text: "1234" },
+        { instruction: "type the code into the edit text", kind: "type", text: "1234" },
+        { done: true },
+      ],
+      executionResults: [
+        { success: true, selector: { strategy: "resource-id", value: "edtCommon" }, diffSummary: 'Appeared: "[REDACTED]".' },
+        { success: true, selector: { strategy: "resource-id", value: "edtCommon" }, diffSummary: "No visible change." },
+      ],
+    });
+    try {
+      const result = await loop.runAutonomousLoop(fakeDriver(), "enter the code twice");
+      assert.strictEqual(result.stoppedBecause, "goal-achieved");
+      assert.strictEqual(result.steps.length, 2);
     } finally {
       restore();
     }

@@ -112,6 +112,24 @@ async function executeSemanticAction(driver, instruction, options = {}) {
     return { success: false, reason: `couldn't build a selector for ${JSON.stringify(resolution.selector)}` };
   }
 
+  // Give a caller with step history (the autonomous loop) a chance to
+  // veto this resolution before anything happens on the device. Found
+  // for real: a "type the password" instruction with no visible
+  // password field on screen resolved to the SAME element an earlier
+  // "type the Yes Number" step had already filled, silently
+  // overwriting it and making the subsequent "tap Login" a no-op. A
+  // resolver picking the only field it can see is "confident" in the
+  // sense resolveSemanticAction() checks for, but reusing a field a
+  // prior step already set is exactly the kind of wrong-but-confident
+  // guess spec §2 argues an unattended run must not make -- so this
+  // hook lets the loop refuse it and stop instead of clobbering.
+  if (typeof options.beforeAct === "function") {
+    const vetoReason = options.beforeAct({ selector: resolution.selector, selectorString, kind, text: options.text });
+    if (vetoReason) {
+      return { success: false, reason: vetoReason };
+    }
+  }
+
   try {
     const element = await driver.$(selectorString);
     // Confirm the element is actually there before acting on it -- the

@@ -346,6 +346,59 @@ function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl 
     }
   });
 
+  await run("executeSemanticAction calls options.beforeAct with the resolved selector/kind/text before acting", async () => {
+    const { executor, restore } = freshExecutorWithFakes({
+      resolveSemanticActionImpl: async () => ({
+        resolved: true,
+        element: { ref: 1, role: "EditText", resourceId: "com.phoenix.demo:id/edtCommon" },
+        selector: { strategy: "resource-id", value: "com.phoenix.demo:id/edtCommon" },
+      }),
+    });
+    try {
+      const { driver, calls } = makeFakeDriver({ pageSources: ["<hierarchy>before</hierarchy>", "<hierarchy>before</hierarchy>"] });
+      let seen;
+      const result = await executor.executeSemanticAction(driver, "type the password", {
+        kind: "type",
+        text: "hunter2",
+        beforeAct: (info) => {
+          seen = info;
+          return undefined;
+        },
+      });
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(calls.setValue.length, 1);
+      assert.deepStrictEqual(seen.selector, { strategy: "resource-id", value: "com.phoenix.demo:id/edtCommon" });
+      assert.strictEqual(seen.kind, "type");
+      assert.strictEqual(seen.text, "hunter2");
+    } finally {
+      restore();
+    }
+  });
+
+  await run("executeSemanticAction fails without acting when options.beforeAct vetoes the resolution", async () => {
+    const { executor, restore } = freshExecutorWithFakes({
+      resolveSemanticActionImpl: async () => ({
+        resolved: true,
+        element: { ref: 1, role: "EditText", resourceId: "com.phoenix.demo:id/edtCommon" },
+        selector: { strategy: "resource-id", value: "com.phoenix.demo:id/edtCommon" },
+      }),
+    });
+    try {
+      const { driver, calls } = makeFakeDriver({ pageSources: ["<hierarchy>before</hierarchy>"] });
+      const result = await executor.executeSemanticAction(driver, "type the password", {
+        kind: "type",
+        text: "hunter2",
+        beforeAct: () => "refusing to overwrite a field a previous step already set",
+      });
+      assert.strictEqual(result.success, false);
+      assert.strictEqual(result.reason, "refusing to overwrite a field a previous step already set");
+      assert.strictEqual(calls.setValue.length, 0);
+      assert.strictEqual(calls.click, 0);
+    } finally {
+      restore();
+    }
+  });
+
   if (process.exitCode) {
     console.error("\nengine/semantic-act-executor tests FAILED");
     process.exit(1);

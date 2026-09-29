@@ -154,6 +154,23 @@ async function runAutonomousLoop(driver, goal, options = {}) {
         kind: decision.kind,
         text: decision.text,
         platform,
+        // Refuse to silently overwrite a field an earlier "type" step
+        // in THIS run already set with different text -- see the
+        // comment in semantic-act-executor.js for the real failure
+        // this guards against (password instruction resolving to the
+        // Yes Number field because no password input was visible yet,
+        // clobbering it and turning "tap Login" into a no-op).
+        beforeAct: ({ selector, kind: actKind, text }) => {
+          if (actKind !== "type") return undefined;
+          const selectorKey = `${selector.strategy}:${selector.value}`;
+          const priorTypeStep = steps.find(
+            (s) => s.kind === "type" && s.selector && `${s.selector.strategy}:${s.selector.value}` === selectorKey
+          );
+          if (priorTypeStep && priorTypeStep.text !== text) {
+            return `refusing to type into the same element a previous step already typed a different value into (${selectorKey}) -- the intended target field is likely not visible yet (e.g. behind a tab/toggle that needs tapping first)`;
+          }
+          return undefined;
+        },
       });
 
       if (!result.success) {

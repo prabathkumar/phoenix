@@ -84,8 +84,8 @@ This split alone removes most of the friction testers feel today waiting on clou
 **Still open in Phase 2:** `run-semantic-action.js` is a standalone CLI entry point that calls `executeSemanticAction()` against a real session (same env-var conventions as `run-session.js`), but nobody has run it against real hardware yet — it's proven only by the executor's own unit tests against a faked driver, not by an actual device run. No TestOps-facing entry point exists (only the CLI). Fusing the screenshot into the grounded snapshot (still text/accessibility-tree-only) and feeding `semantic-diff.js`'s output into assertion inference are both also still open. Phase 3's autonomous loop (goal → next action → stop condition) is unbuilt.
 
 **Phase 3 — autonomous exploration (R&D track, not customer-facing until proven):**
-- An agent that takes a goal in plain language, reads the grounded snapshot, decides the next action, executes it, and knows when to stop and hand back to a human.
-- Build and test this against your messiest internal apps (logins, OTP, payment flows) before it touches a real customer app.
+- An agent that takes a goal in plain language, reads the grounded snapshot, decides the next action, executes it, and knows when to stop and hand back to a human. **First skeleton built:** `engine/semantic-loop.js`'s `runAutonomousLoop()` — decide-one-action → execute via `semantic-act-executor.js` → feed the diff back in as context → repeat, stopping on the model saying the goal is done, the model asking to stop (its own judgment-call safety valve), an action failing/being unresolved, or a hard step cap. Every stop reason is explicit and returned to the caller; nothing retries silently. Unit-tested against fakes only — **no real device run, no internal app has actually been walked by this yet.**
+- Build and test this against your messiest internal apps (logins, OTP, payment flows) before it touches a real customer app. **Not started** — this is the next real step, and it needs `run-semantic-action.js`'s real-hardware proof to land first (still outstanding) before a multi-step loop is worth trusting on a device at all.
 
 ---
 

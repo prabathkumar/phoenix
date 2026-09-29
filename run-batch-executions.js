@@ -122,10 +122,26 @@ async function runOneGuidedIteration(platform) {
   }
 }
 
+// A freshly launched app is typically still on a splash screen (a
+// progress bar, no real controls yet) the instant the session comes up
+// -- acting immediately against that snapshot isn't a timing bug in the
+// semantic layer, it's the semantic layer correctly refusing to guess
+// against a screen that genuinely doesn't have what was asked for yet.
+// Real device/CI runs of a guided recording have a human naturally
+// providing this gap by looking at the screen before tapping; batch/
+// unattended runs need it made explicit instead. Configurable because
+// splash duration varies a lot by app.
+const STARTUP_DELAY_MS = Number(process.env.PHOENIX_BATCH_STARTUP_DELAY_MS) || 5000;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function runOneSemanticIteration(platform, instruction) {
   const { startSession } = require(platform === "ios" ? "./engine/ios-session" : "./engine/session");
   const driver = await startSession();
   try {
+    await sleep(STARTUP_DELAY_MS);
     const result = await executeSemanticAction(driver, instruction, { platform });
     return { success: result.success, detail: result.success ? result.diffSummary : result.reason };
   } finally {
@@ -137,6 +153,7 @@ async function runOneLoopIteration(platform, goal, maxSteps) {
   const { startSession } = require(platform === "ios" ? "./engine/ios-session" : "./engine/session");
   const driver = await startSession();
   try {
+    await sleep(STARTUP_DELAY_MS);
     const result = await runAutonomousLoop(driver, goal, { platform, maxSteps });
     return {
       success: result.stoppedBecause === "goal-achieved",

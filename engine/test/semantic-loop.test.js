@@ -284,6 +284,92 @@ function fakeDriver(pageSource = SIMPLE_SCREEN) {
     }
   });
 
+  await run("runAutonomousLoop retries after a veto instead of failing immediately, and recovers if the model corrects itself (real bug: a plain prompt reminder alone did NOT stop the model repeating the same refused action 3/3 on a live run)", async () => {
+    const { loop, restore } = freshLoopWithFakes({
+      decisions: [
+        { instruction: "type the Yes Number into the edit text", kind: "type", text: "0185824587" },
+        // Wrongly repeats the same clobbering attempt once (as the real
+        // model did) -- this should now be RETRIED, not fail the loop.
+        { instruction: "type the password into the edit text", kind: "type", text: "8whEu0N" },
+        // Having been told exactly why that was refused, the model
+        // course-corrects: taps the PASSWORD tab first.
+        { instruction: "tap the PASSWORD tab", kind: "tap" },
+        // Now typing the password resolves to a different element and succeeds.
+        { instruction: "type the password into the password field", kind: "type", text: "8whEu0N" },
+        { done: true },
+      ],
+      executionResults: [
+        { success: true, selector: { strategy: "resource-id", value: "edtCommon" }, diffSummary: 'Appeared: "[REDACTED]".' },
+        { success: true, selector: { strategy: "resource-id", value: "edtCommon" }, diffSummary: "No visible change." },
+        { success: true, selector: { strategy: "xpath", value: "/hierarchy/View[2]" }, diffSummary: 'Appeared: "PASSWORD selected".' },
+        { success: true, selector: { strategy: "resource-id", value: "edtPassword" }, diffSummary: 'Appeared: "[REDACTED]".' },
+      ],
+    });
+    try {
+      const result = await loop.runAutonomousLoop(fakeDriver(), "log in with phone 0185824587 and password 8whEu0N");
+      assert.strictEqual(result.stoppedBecause, "goal-achieved");
+      // The clobbering attempt never became a recorded step; only the
+      // three genuinely successful actions did.
+      assert.strictEqual(result.steps.length, 3);
+      assert.strictEqual(result.steps[1].instruction, "tap the PASSWORD tab");
+      assert.strictEqual(result.steps[2].selector.value, "edtPassword");
+    } finally {
+      restore();
+    }
+  });
+
+  await run("runAutonomousLoop gives up (action-failed) after exhausting veto retries on a model that never corrects itself", async () => {
+    const { loop, restore } = freshLoopWithFakes({
+      decisions: [
+        { instruction: "type the Yes Number into the edit text", kind: "type", text: "0185824587" },
+        { instruction: "type the password into the edit text", kind: "type", text: "8whEu0N" },
+      ],
+      executionResults: [
+        { success: true, selector: { strategy: "resource-id", value: "edtCommon" }, diffSummary: 'Appeared: "[REDACTED]".' },
+        { success: true, selector: { strategy: "resource-id", value: "edtCommon" }, diffSummary: "No visible change." },
+      ],
+    });
+    try {
+      const result = await loop.runAutonomousLoop(fakeDriver(), "log in");
+      assert.strictEqual(result.stoppedBecause, "action-failed");
+      assert.ok(result.reason.includes("previous step already typed a different value"));
+      assert.strictEqual(result.steps.length, 1);
+    } finally {
+      restore();
+    }
+  });
+
+  await run("decideNextAction includes the previous refused attempt and its reason when given one, telling the model not to repeat it", async () => {
+    let capturedPrompt;
+    for (const p of [LOOP_PATH, LLM_PATH]) delete require.cache[p];
+    require.cache[LLM_PATH] = {
+      id: LLM_PATH,
+      filename: LLM_PATH,
+      loaded: true,
+      exports: {
+        callOllamaJson: async (prompt) => {
+          capturedPrompt = prompt;
+          return { done: true };
+        },
+      },
+    };
+    const loop = require(LOOP_PATH);
+    try {
+      await loop.decideNextAction("log in", '[1] EditText "0185824587"\n[2] View "PASSWORD"', [], {
+        instruction: "type the password into the edit text",
+        kind: "type",
+        reason: "refusing to type into the same element a previous step already typed a different value into (resource-id:edtCommon)",
+      });
+      assert.ok(capturedPrompt.includes("your last proposed action was rejected"));
+      assert.ok(capturedPrompt.includes("type the password into the edit text"));
+      assert.ok(capturedPrompt.includes("resource-id:edtCommon"));
+      assert.ok(capturedPrompt.includes("Do not propose that same action again"));
+    } finally {
+      delete require.cache[LOOP_PATH];
+      delete require.cache[LLM_PATH];
+    }
+  });
+
   await run("runAutonomousLoop allows re-typing the SAME text into the same element (not a clobber)", async () => {
     const { loop, restore } = freshLoopWithFakes({
       decisions: [

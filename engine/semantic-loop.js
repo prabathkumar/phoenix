@@ -66,7 +66,7 @@ const DEFAULT_MAX_STEPS = 10;
  *
  * @returns {Promise<{decision: "done"}|{decision: "stop", reason: string}|{decision: "act", instruction: string, kind: "tap"|"type", text?: string}>}
  */
-async function decideNextAction(goal, snapshotText, history) {
+async function decideNextAction(goal, snapshotText, history, refusedAttempt) {
   const historyLines = history.length === 0
     ? "(none yet -- this is the first step)"
     : history.map((step, i) => `${i + 1}. ${step.instruction} -> ${step.diffSummary}`).join("\n");
@@ -81,6 +81,27 @@ async function decideNextAction(goal, snapshotText, history) {
     "Actions taken so far:",
     historyLines,
     "",
+    // Found for real, and enough on its own to matter: a written
+    // reminder in the instructions below ("tap a matching tab before
+    // typing over an already-filled field") did NOT reliably change
+    // what the model actually chose -- it still picked the same wrong
+    // action 3/3 on a live run. Telling it, after the fact, exactly
+    // which specific action it just tried and why THIS device refused
+    // it is a much stronger, situated signal than a general instruction
+    // -- the same reason `decideNextAction`'s "type" without "text"
+    // case already gets one bounded retry with pointed feedback rather
+    // than just a better general reminder up front.
+    ...(refusedAttempt
+      ? [
+          "IMPORTANT -- your last proposed action was rejected before it",
+          `reached the device: you proposed {"instruction": ${JSON.stringify(refusedAttempt.instruction)}, "kind": ${JSON.stringify(refusedAttempt.kind)}}, `
+            + `and it was refused because: ${refusedAttempt.reason}`,
+          "Do not propose that same action again. Choose a genuinely",
+          "different action instead -- if the refusal mentions a field",
+          "likely being hidden behind a tab/toggle, tap that tab/toggle now.",
+          "",
+        ]
+      : []),
     "Current screen:",
     snapshotText || "(no labeled/identified elements on screen)",
     "",
@@ -214,6 +235,19 @@ async function runAutonomousLoop(driver, goal, options = {}) {
   const maxSteps = options.maxSteps || DEFAULT_MAX_STEPS;
   const platform = options.platform === "ios" ? "ios" : "android";
   const steps = [];
+  // Found for real: a plain prompt reminder telling the model to tap a
+  // tab/toggle before typing over an already-filled field did NOT
+  // change its behavior -- it repeated the exact same refused action
+  // 3/3 on a live run. Rather than fail the whole loop on the FIRST
+  // veto, give the model a bounded number of chances to course-correct
+  // once it's told, concretely, which action it tried and why the
+  // device refused it (see decideNextAction's refusedAttempt param).
+  // Capped (not unlimited) so a model that never adapts still fails
+  // fast rather than burning the entire maxSteps budget retrying the
+  // same mistake.
+  const MAX_VETO_RETRIES = 2;
+  let vetoRetries = 0;
+  let refusedAttempt;
 
   try {
     for (let i = 0; i < maxSteps; i += 1) {
@@ -225,7 +259,7 @@ async function runAutonomousLoop(driver, goal, options = {}) {
       }
 
       const snapshot = buildGroundedSnapshot(pageSource);
-      const decision = await decideNextAction(goal, snapshotToText(snapshot), steps);
+      const decision = await decideNextAction(goal, snapshotToText(snapshot), steps, refusedAttempt);
 
       if (decision.decision === "done") {
         return { stoppedBecause: "goal-achieved", steps };
@@ -258,8 +292,14 @@ async function runAutonomousLoop(driver, goal, options = {}) {
       });
 
       if (!result.success) {
+        if (vetoRetries < MAX_VETO_RETRIES) {
+          vetoRetries += 1;
+          refusedAttempt = { instruction: decision.instruction, kind: decision.kind, reason: result.reason };
+          continue;
+        }
         return { stoppedBecause: "action-failed", reason: result.reason, steps };
       }
+      refusedAttempt = undefined;
 
       const stepIndex = steps.length;
       steps.push({

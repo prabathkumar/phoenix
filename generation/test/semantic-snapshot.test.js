@@ -62,6 +62,31 @@ const DUPLICATE_RESOURCE_ID_SCREEN = `<?xml version='1.0' encoding='UTF-8' stand
   </android.view.View>
 </hierarchy>`;
 
+// The exact real-bug screen, 2nd-order case: same shared resource-id as
+// DUPLICATE_RESOURCE_ID_SCREEN above, but each EditText's OWN `text`
+// attribute is populated with its Android hint/placeholder ("Yes
+// Number", "Password") rather than being empty -- this is exactly what
+// UiAutomator2 reports for a real empty EditText that has a hint set,
+// and is indistinguishable, attribute-wise, from an element that carries
+// a genuine label. Found for real, reproduced 3/3 batch-loop runs
+// against my.yes.yes4g: the original ambiguity check required `!el.label`
+// before flagging an element ambiguous, so both hint-bearing fields were
+// wrongly treated as "labeled, therefore not ambiguous" and both
+// resolved to the plain (ambiguous) resource-id -- the second `type`
+// step ("type the password") then produced the exact same
+// `resource-id:edtCommon` selector step 1 ("type the yes number") had
+// already used, tripping engine/semantic-loop.js's anti-clobber veto and
+// permanently failing the loop before it ever reached LOGIN.
+const HINT_TEXT_DUPLICATE_RESOURCE_ID_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy>
+  <android.view.View bounds="[0,0][1080,2400]">
+    <android.widget.EditText resource-id="my.yes.yes4g:id/edtCommon" text="Yes Number" bounds="[102,645][978,782]" />
+    <android.widget.EditText resource-id="my.yes.yes4g:id/edtCommon" text="Password" password="true" bounds="[102,917][978,1054]" />
+    <android.widget.TextView text="Log In" bounds="[363,1234][718,1336]" />
+    <android.widget.Button bounds="[363,1234][718,1336]" />
+  </android.view.View>
+</hierarchy>`;
+
 // The exact real-bug screen: a Compose tab control whose visible label
 // ("PASSWORD") sits on a non-clickable TextView, with a non-clickable
 // sibling Button, but a clickable wrapper View (no label/id of its own)
@@ -266,6 +291,16 @@ test("buildGroundedSnapshot gives each ambiguous-resourceId input its own distin
   assert.strictEqual(passwordInput.nearbyLabel, "Password");
   assert.ok(yesNumberInput.xpath && passwordInput.xpath);
   assert.notStrictEqual(yesNumberInput.xpath, passwordInput.xpath);
+});
+
+test("buildGroundedSnapshot flags a shared resourceId as ambiguous even when each element's own text is its Android hint (not a genuine label)", () => {
+  const elements = buildGroundedSnapshot(HINT_TEXT_DUPLICATE_RESOURCE_ID_SCREEN);
+  const inputs = elements.filter((el) => el.role === "android.widget.EditText");
+  assert.strictEqual(inputs.length, 2);
+  assert.ok(
+    inputs.every((el) => el.ambiguousResourceId === true),
+    "both hint-bearing EditTexts sharing a resource-id must still be flagged ambiguous"
+  );
 });
 
 test("buildGroundedSnapshot does NOT flag a resourceId that's actually unique on screen", () => {

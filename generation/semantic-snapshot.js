@@ -269,10 +269,30 @@ function buildGroundedSnapshot(pageSourceXml) {
   // returns whichever matches first), so a "type the password"
   // instruction that resolves to this resource-id can silently act on
   // the Yes Number field instead. For any input-role element whose
-  // resource-id isn't unique on this screen and that has no label/
-  // accessibility-id of its own, attach the same nearbyLabel/xpath
-  // fallback blank inputs already get, so toSelector() (semantic-act.js)
-  // can prefer the disambiguating xpath over the ambiguous resource-id.
+  // resource-id isn't unique on this screen, attach the same
+  // nearbyLabel/xpath fallback blank inputs already get, so toSelector()
+  // (semantic-act.js) can prefer the disambiguating text/xpath over the
+  // ambiguous resource-id.
+  //
+  // This used to additionally require `!el.label` before flagging an
+  // element ambiguous, on the assumption that only a genuinely blank
+  // input (no text of its own) could collide this way. Found for real,
+  // reproduced 3/3 runs: an empty Android EditText's *hint* text (e.g.
+  // "Yes Number", "Password") is exposed via the exact same `text`
+  // attribute a filled-in value would use, so `el.label` was already
+  // truthy for BOTH fields even before either had been typed into --
+  // both got excluded from ambiguity detection, both fell through to
+  // the plain (ambiguous) resource-id selector at toSelector()'s first
+  // branch, and the second `type` step then resolved to the identical
+  // `resource-id:edtCommon` selector step 1 had already used, tripping
+  // engine/semantic-loop.js's anti-clobber veto and permanently failing
+  // the loop before it ever reached LOGIN. A shared resource-id is
+  // ambiguous to WebDriver's `$` regardless of whether the node also
+  // happens to carry hint/placeholder text, so ambiguity here is judged
+  // purely by resource-id uniqueness now; toSelector() still prefers
+  // accessibility-id, then this element's own label/hint text (usually
+  // unique per field even when the resource-id isn't), before falling
+  // back to xpath.
   const resourceIdCounts = new Map();
   for (const el of elements) {
     if (el.resourceId) resourceIdCounts.set(el.resourceId, (resourceIdCounts.get(el.resourceId) || 0) + 1);
@@ -281,8 +301,6 @@ function buildGroundedSnapshot(pageSourceXml) {
     const isAmbiguousInput =
       el.resourceId &&
       resourceIdCounts.get(el.resourceId) > 1 &&
-      !el.label &&
-      !el.accessibilityId &&
       INPUT_ROLE_RE.test(el.role);
     if (isAmbiguousInput) {
       el.ambiguousResourceId = true;

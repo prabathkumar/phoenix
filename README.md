@@ -9,7 +9,7 @@ Testers record a flow once, inside TestOps — no Appium Inspector, no local ins
 
 Built on a fork of Appium's core engine (Apache 2.0), extended with an AI-native layer Appium doesn't have.
 
-See [`docs/PHOENIX_SPEC.md`](docs/PHOENIX_SPEC.md) for the full architecture and roadmap, [`docs/SETUP.md`](docs/SETUP.md) if you're infra standing this up, or [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) if you just want to record a flow and get a script.
+See [`docs/PHOENIX_SPEC.md`](docs/PHOENIX_SPEC.md) for the full architecture and roadmap, [`docs/SETUP.md`](docs/SETUP.md) if you're infra standing this up, [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) if you just want to record a flow and get a script, or [`docs/REAL_DEVICE_BATCH_TESTING.md`](docs/REAL_DEVICE_BATCH_TESTING.md) for the `run-batch-executions.js` runbook (start-from-scratch checklist, env vars, and known non-bugs).
 
 **Live: [prabathkumar.github.io/phoenix](https://prabathkumar.github.io/phoenix/)** — the actual recording UI, connecting to a Phoenix backend running against a real device.
 

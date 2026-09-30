@@ -86,12 +86,27 @@ async function decideNextAction(goal, snapshotText, history) {
     "",
     "Decide ONE of the following and respond with ONLY that JSON object:",
     '  - Goal already achieved: {"done": true}',
-    '  - You should not continue (goal is unclear, you\'re stuck in a loop,',
+    "  - You should not continue (goal is unclear, you're stuck in a loop,",
     "    or this requires a human judgment call -- e.g. an OTP screen, a",
-    '    payment confirmation, anything irreversible): {"stop": true, "reason": "..."}',
-    '  - The next single action to take: {"instruction": "tap the ... button",',
-    '    "kind": "tap"} or {"instruction": "type ... into ...", "kind": "type",',
-    '    "text": "..."}',
+    '    payment confirmation, anything irreversible): {"stop": true, "reason":',
+    '    "waiting for OTP screen, needs a human"}',
+    '  - The next single action to take: {"instruction": "tap the Login button",',
+    '    "kind": "tap"} or {"instruction": "type the phone number into the Yes',
+    '    Number field", "kind": "type", "text": "0123456789"}',
+    "",
+    // Found for real on a live BrowserStack run: the model's own
+    // "instruction" field came back as the literal strings "type ... into
+    // ..." and "type ... into [18]" -- not garbled output, but the
+    // EXAMPLE FORMAT above (which used to show literal "..." placeholders)
+    // and the snapshot's own "[18]"-style ref bracket copied verbatim,
+    // instead of a real description being written. The examples above are
+    // now concrete rather than "..."-shaped for exactly this reason; this
+    // reminder is the second line of defense.
+    "The two examples above are illustrations, not templates -- write your",
+    'own real instruction and text; never output literal "..." or copy a',
+    'snapshot ref like "[18]" into your instruction text. Describe the',
+    "element in plain words instead (e.g. \"the empty input near 'Yes",
+    "Number'\", not its ref number).",
     "",
     "Never propose more than one action at a time, and never guess at an",
     "irreversible or judgment-requiring step -- stop and hand back instead.",

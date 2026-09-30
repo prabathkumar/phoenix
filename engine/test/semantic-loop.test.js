@@ -378,6 +378,39 @@ function fakeDriver(pageSource = SIMPLE_SCREEN) {
     }
   });
 
+  await run("decideNextAction's prompt uses concrete examples, never literal \"...\" placeholders (real bug: model echoed the example's own \"...\" and a snapshot ref \"[18]\" as its answer)", async () => {
+    let capturedPrompt;
+    for (const p of [LOOP_PATH, LLM_PATH]) delete require.cache[p];
+    require.cache[LLM_PATH] = {
+      id: LLM_PATH,
+      filename: LLM_PATH,
+      loaded: true,
+      exports: {
+        callOllamaJson: async (prompt) => {
+          capturedPrompt = prompt;
+          return { done: true };
+        },
+      },
+    };
+    const loop = require(LOOP_PATH);
+    try {
+      await loop.decideNextAction("log in", "[18] android.widget.EditText", []);
+      // The example format itself must no longer contain a literal "..."
+      // action/text value -- the real failure was the model copying
+      // exactly this from an earlier version of this prompt.
+      assert.ok(!capturedPrompt.includes('"instruction": "tap the ... button"'));
+      assert.ok(!capturedPrompt.includes('"instruction": "type ... into ..."'));
+      assert.ok(!capturedPrompt.includes('"text": "..."'));
+      // The explicit reminder against copying template/ref syntax must be present.
+      assert.ok(capturedPrompt.includes("illustrations, not templates"));
+      assert.ok(capturedPrompt.toLowerCase().includes('never output literal "..."'));
+      assert.ok(capturedPrompt.includes("copy a"));
+    } finally {
+      delete require.cache[LOOP_PATH];
+      delete require.cache[LLM_PATH];
+    }
+  });
+
   if (process.exitCode) {
     console.error("\nengine/semantic-loop tests FAILED");
     process.exit(1);

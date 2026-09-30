@@ -27,9 +27,26 @@
  *   PHOENIX_STAGE0_APP_PATH / PHOENIX_IOS_APP_PATH / PHOENIX_IOS_BUNDLE_ID
  *     (local provider) or PHOENIX_BROWSERSTACK_APP_URL (browserstack
  *     provider) — see remote-provider.js / docs/SETUP.md.
+ *
+ * PHOENIX_STARTUP_DELAY_MS (default 5000): a freshly launched app is
+ * typically still on a splash screen (a progress bar, no real controls
+ * yet) the instant the session comes up. Found for real on this CLI's
+ * first-ever run against a live BrowserStack session: it read the
+ * screen immediately and correctly refused to guess ("every element is
+ * a known non-clickable dead end") rather than tap something on the
+ * my.yes.yes4g splash screen -- not a bug in the semantic layer, just
+ * this CLI acting before the app had actually reached the target
+ * screen. run-batch-executions.js already accounts for this
+ * (STARTUP_DELAY_MS there); this CLI didn't, so it's the same fix here.
  */
 
 const { executeSemanticAction } = require("./engine/semantic-act-executor");
+
+const STARTUP_DELAY_MS = Number(process.env.PHOENIX_STARTUP_DELAY_MS) || 5000;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function parseArgs(argv) {
   const instruction = argv[0];
@@ -71,6 +88,9 @@ async function main() {
   console.log("[run-semantic-action] session started:", driver.sessionId);
 
   try {
+    console.log(`[run-semantic-action] waiting ${STARTUP_DELAY_MS}ms for the app to get past its splash screen (set PHOENIX_STARTUP_DELAY_MS to change)...`);
+    await sleep(STARTUP_DELAY_MS);
+
     console.log(`[run-semantic-action] instruction: "${instruction}"${kind === "type" ? ` (typing: "${text}")` : ""}${useVisualGrounding ? " (fused text+screenshot resolution)" : ""}`);
     const result = await executeSemanticAction(driver, instruction, { kind, text, platform, useVisualGrounding });
 

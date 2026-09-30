@@ -437,6 +437,37 @@ function fakeDriver(pageSource = SIMPLE_SCREEN) {
     }
   });
 
+  await run("decideNextAction's prompt tells the model to tap a login-method tab (e.g. \"PASSWORD\") before typing into a field that already holds a different value (real bug: model tried to type the password straight into the already-filled Yes Number field, with no password field or tab-tap step in between)", async () => {
+    let capturedPrompt;
+    for (const p of [LOOP_PATH, LLM_PATH]) delete require.cache[p];
+    require.cache[LLM_PATH] = {
+      id: LLM_PATH,
+      filename: LLM_PATH,
+      loaded: true,
+      exports: {
+        callOllamaJson: async (prompt) => {
+          capturedPrompt = prompt;
+          return { done: true };
+        },
+      },
+    };
+    const loop = require(LOOP_PATH);
+    try {
+      await loop.decideNextAction(
+        "log in with phone 0185824587 and password 8whEu0N",
+        '[1] EditText "0185824587" (id: edtCommon)\n[2] View "PASSWORD"\n[3] View "USE TAC"',
+        [{ instruction: "type the phone number into the Yes Number field", diffSummary: 'Appeared: "0185824587".' }]
+      );
+      assert.ok(capturedPrompt.includes("make sure a field for it is actually visible"));
+      assert.ok(capturedPrompt.includes("that is a sign"));
+      assert.ok(capturedPrompt.includes("the field you need isn't showing yet"));
+      assert.ok(capturedPrompt.includes('"PASSWORD" tab before typing a password'));
+    } finally {
+      delete require.cache[LOOP_PATH];
+      delete require.cache[LLM_PATH];
+    }
+  });
+
   if (process.exitCode) {
     console.error("\nengine/semantic-loop tests FAILED");
     process.exit(1);

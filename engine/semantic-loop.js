@@ -144,6 +144,25 @@ async function decideNextAction(goal, snapshotText, history) {
     "step failure) -- stop and report that exact message as the reason,",
     "rather than guessing another action against fields that are no",
     "longer on screen.",
+    // Found for real on a live BrowserStack run: a login screen showed
+    // one phone-number input (already filled in by the previous step)
+    // plus two unlabeled-looking tabs, "PASSWORD" and "USE TAC", for
+    // choosing how to log in -- no password input field existed on
+    // screen at all until one of those tabs was tapped. The model went
+    // straight from "type the phone number" to "type the password"
+    // without ever tapping "PASSWORD" first, so resolution had nothing
+    // to bind "type the password" to except the one field that already
+    // existed (the phone number field) -- correctly refused by the
+    // anti-clobber check above, but the loop still failed because the
+    // right prior action (tap the tab) was never taken.
+    "Before typing a value, make sure a field for it is actually visible",
+    "and empty (or otherwise appropriate to overwrite) on the CURRENT",
+    "screen. If the only editable field you can see already holds a",
+    "different value you already typed for something else, that is a sign",
+    "the field you need isn't showing yet -- look for a tab, toggle, or",
+    "button whose label matches what you're about to type (e.g. a",
+    '"PASSWORD" tab before typing a password) and tap that first, rather',
+    "than typing over a field that belongs to something else.",
     extraReminder,
   ].filter((line) => line !== undefined).join("\n");
 

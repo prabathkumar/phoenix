@@ -411,6 +411,32 @@ function fakeDriver(pageSource = SIMPLE_SCREEN) {
     }
   });
 
+  await run("decideNextAction's prompt tells the model to handle an error dialog instead of guessing another type/tap (real bug: model tried to \"type\" against an Invalid-username/password OK dialog with no input field, failing with \"No editable input field found\")", async () => {
+    let capturedPrompt;
+    for (const p of [LOOP_PATH, LLM_PATH]) delete require.cache[p];
+    require.cache[LLM_PATH] = {
+      id: LLM_PATH,
+      filename: LLM_PATH,
+      loaded: true,
+      exports: {
+        callOllamaJson: async (prompt) => {
+          capturedPrompt = prompt;
+          return { done: true };
+        },
+      },
+    };
+    const loop = require(LOOP_PATH);
+    try {
+      await loop.decideNextAction("log in", '[1] TextView "Invalid username/password entered"\n[2] Button "OK"', []);
+      assert.ok(capturedPrompt.includes("dialog/alert reporting an error"));
+      assert.ok(capturedPrompt.includes("dismiss/OK button"));
+      assert.ok(capturedPrompt.includes("stop and report that exact message as the reason"));
+    } finally {
+      delete require.cache[LOOP_PATH];
+      delete require.cache[LLM_PATH];
+    }
+  });
+
   if (process.exitCode) {
     console.error("\nengine/semantic-loop tests FAILED");
     process.exit(1);

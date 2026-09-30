@@ -126,6 +126,24 @@ async function decideNextAction(goal, snapshotText, history) {
     'field\'s own label, placeholder, or its "(empty input near: ...)"',
     "hint text as the value to type -- that hint identifies WHICH field",
     "is empty, it is not something to type INTO it.",
+    // Found for real on a live BrowserStack run: after a correct tap on
+    // LOGIN with correct credentials already typed, the app showed an
+    // "Invalid username/password entered" dialog (an OK button, no
+    // input field). The model's next decision was still "type" -- but
+    // the only thing on screen was a dismiss button, so resolution
+    // correctly refused with "No editable input field found" and the
+    // loop stopped on that failure instead of ever considering the
+    // dialog itself. The model needs to actually look at what just
+    // happened, not keep pursuing the original plan blindly.
+    "If the current screen shows a dialog/alert reporting an error or",
+    "validation failure (e.g. an \"Invalid username/password\" message,",
+    "with only a dismiss/OK button and no input field), typing further is",
+    "not possible there. Either tap that dialog's own button to dismiss",
+    "it, or -- if the message indicates the goal cannot succeed as given",
+    "(e.g. the credentials themselves were rejected, not just an ordinary",
+    "step failure) -- stop and report that exact message as the reason,",
+    "rather than guessing another action against fields that are no",
+    "longer on screen.",
     extraReminder,
   ].filter((line) => line !== undefined).join("\n");
 

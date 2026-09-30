@@ -107,10 +107,34 @@ function toSelector(element, options = {}) {
  * @returns {Promise<SemanticActionResult>}
  */
 async function resolveSemanticAction(pageSourceXml, instruction, options = {}) {
-  const elements = buildGroundedSnapshot(pageSourceXml);
+  const allElements = buildGroundedSnapshot(pageSourceXml);
+
+  if (allElements.length === 0) {
+    return { resolved: false, reason: "grounded snapshot has no labeled/identified elements to act on" };
+  }
+
+  // Found for real on a live BrowserStack run: a Compose tab control's
+  // container (a ComposeView carrying its own resource-id, itself
+  // non-clickable, with no clickable ancestor either -- its clickable
+  // tab Views sit BELOW it in the tree, which clickableAncestorXPath
+  // doesn't reach) sat in the same candidate list as the correctly
+  // redirectable "PASSWORD" label and the model picked the container
+  // instead. A real click on it is a guaranteed no-op (confirmed: the
+  // page source was byte-identical before and after), which silently
+  // wasted a step and, two steps later, made the loop try to type the
+  // password into the still-visible Yes Number field a second time.
+  // Rather than hope the model always avoids a dead-end candidate,
+  // remove any element that a "tap" is certain to do nothing to --
+  // explicitly non-clickable (clickable === false) with no
+  // clickableAncestorXPath to redirect to -- before it's ever offered.
+  // clickable === undefined (iOS, or Android simply didn't set the
+  // attribute) is NOT filtered: that means "unknown", not "known no-op".
+  const elements = options.kind === "tap"
+    ? allElements.filter((el) => !(el.clickable === false && !el.clickableAncestorXPath))
+    : allElements;
 
   if (elements.length === 0) {
-    return { resolved: false, reason: "grounded snapshot has no labeled/identified elements to act on" };
+    return { resolved: false, reason: "grounded snapshot has elements, but every one is a known non-clickable dead end for a tap" };
   }
 
   const fused = Boolean(options.screenshotBase64);

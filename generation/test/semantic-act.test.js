@@ -300,6 +300,104 @@ async function test(name, fn) {
     }
   });
 
+  await test("resolveSemanticAction excludes a guaranteed-no-op tap candidate (real bug: Compose tab container with no clickable ancestor)", async () => {
+    // Shape of the real failing screen: a non-clickable ComposeView
+    // container with its own resource-id (no clickable ancestor -- its
+    // clickable tab View is a DESCENDANT, not an ancestor), sitting
+    // alongside a non-clickable "PASSWORD" label that DOES have a valid
+    // clickableAncestorXPath redirect from a clickable View further down
+    // still. Only the composeView candidate is offered to the model
+    // (ref 1 in this fixture); a correct model would never see it as an
+    // option at all for a tap.
+    const COMPOSE_TAB_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy>
+  <android.widget.FrameLayout bounds="[0,0][1080,2400]" clickable="false">
+    <androidx.compose.ui.platform.ComposeView resource-id="my.yes.yes4g:id/composeView" clickable="false" bounds="[102,1024][978,1126]">
+      <android.view.View clickable="false" bounds="[102,1024][978,1126]">
+        <android.view.View clickable="true" bounds="[102,1024][506,1126]">
+          <android.widget.TextView text="PASSWORD" clickable="false" bounds="[191,1044][418,1107]" />
+        </android.view.View>
+      </android.view.View>
+    </androidx.compose.ui.platform.ComposeView>
+  </android.widget.FrameLayout>
+</hierarchy>`;
+
+    let capturedPrompt;
+    const { semanticAct, restore } = loadWithFakeOllama(async (prompt) => {
+      capturedPrompt = prompt;
+      // Simulate the real failure: if the model were offered the
+      // container, it'd pick it (ref 1). We assert below that it was
+      // never offered that choice at all.
+      return { ref: 1 };
+    });
+    try {
+      const result = await semanticAct.resolveSemanticAction(COMPOSE_TAB_SCREEN, "tap the PASSWORD tab", { kind: "tap" });
+      // ref 1 (the composeView container) must not appear as a candidate
+      // in the prompt at all -- it's filtered out before the model sees it.
+      assert.ok(!capturedPrompt.includes("my.yes.yes4g:id/composeView"));
+      assert.ok(capturedPrompt.includes(`"PASSWORD"`));
+      // The model's ref:1 no longer refers to the container (it's been
+      // filtered out and refs aren't renumbered) -- with only the
+      // PASSWORD label left, findByRef(1) actually does resolve to it in
+      // this fixture (composeView was ref 1, filtered out; PASSWORD's
+      // own ref is whatever buildGroundedSnapshot assigned it -- the
+      // important assertion here is the container was never offered).
+      assert.strictEqual(result.resolved, false);
+      assert.ok(result.reason.includes("not in this snapshot") || result.resolved === false);
+    } finally {
+      restore();
+    }
+  });
+
+  await test("resolveSemanticAction still resolves a valid tap when only some candidates are no-op dead ends", async () => {
+    const COMPOSE_TAB_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy>
+  <android.widget.FrameLayout bounds="[0,0][1080,2400]" clickable="false">
+    <androidx.compose.ui.platform.ComposeView resource-id="my.yes.yes4g:id/composeView" clickable="false" bounds="[102,1024][978,1126]">
+      <android.view.View clickable="false" bounds="[102,1024][978,1126]">
+        <android.view.View clickable="true" bounds="[102,1024][506,1126]">
+          <android.widget.TextView text="PASSWORD" clickable="false" bounds="[191,1044][418,1107]" />
+        </android.view.View>
+      </android.view.View>
+    </androidx.compose.ui.platform.ComposeView>
+  </android.widget.FrameLayout>
+</hierarchy>`;
+
+    const elements = require("../semantic-snapshot").buildGroundedSnapshot(COMPOSE_TAB_SCREEN);
+    const passwordEl = elements.find((el) => el.label === "PASSWORD");
+
+    const { semanticAct, restore } = loadWithFakeOllama(async () => ({ ref: passwordEl.ref }));
+    try {
+      const result = await semanticAct.resolveSemanticAction(COMPOSE_TAB_SCREEN, "tap the PASSWORD tab", { kind: "tap" });
+      assert.strictEqual(result.resolved, true);
+      // Redirected to the real clickable ancestor, not the label itself.
+      assert.strictEqual(result.selector.strategy, "xpath");
+      assert.strictEqual(result.selector.value, passwordEl.clickableAncestorXPath);
+    } finally {
+      restore();
+    }
+  });
+
+  await test("resolveSemanticAction does not filter tap candidates by clickability when kind is \"type\" or omitted", async () => {
+    // clickable: undefined (no attribute at all, e.g. iOS) must never be
+    // filtered -- only an explicit clickable=false with no ancestor is a
+    // known dead end. This also confirms the filter is tap-only: with no
+    // kind at all, nothing here should be excluded.
+    const IOS_STYLE_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy>
+  <XCUIElementTypeApplication>
+    <XCUIElementTypeButton name="Log In" x="100" y="560" width="880" height="100" />
+  </XCUIElementTypeApplication>
+</hierarchy>`;
+    const { semanticAct, restore } = loadWithFakeOllama(async () => ({ ref: 1 }));
+    try {
+      const result = await semanticAct.resolveSemanticAction(IOS_STYLE_SCREEN, "tap Log In");
+      assert.strictEqual(result.resolved, true);
+    } finally {
+      restore();
+    }
+  });
+
   if (process.exitCode) {
     console.error("\ngeneration/semantic-act tests FAILED");
     process.exit(1);

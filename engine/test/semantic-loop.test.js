@@ -342,6 +342,42 @@ function fakeDriver(pageSource = SIMPLE_SCREEN) {
     }
   });
 
+  await run("decideNextAction's prompt warns against typing a field's own nearby-label hint as the value (real bug: model typed \"Yes Number\" instead of the actual phone number)", async () => {
+    let capturedPrompt;
+    for (const p of [LOOP_PATH, LLM_PATH]) delete require.cache[p];
+    require.cache[LLM_PATH] = {
+      id: LLM_PATH,
+      filename: LLM_PATH,
+      loaded: true,
+      exports: {
+        callOllamaJson: async (prompt) => {
+          capturedPrompt = prompt;
+          return { done: true };
+        },
+      },
+    };
+    const loop = require(LOOP_PATH);
+    try {
+      const snapshotText = '[1] EditText (empty input near: "Yes Number")';
+      await loop.decideNextAction(
+        'type the Yes Number, then tap Login. When the app asks you to log in, use these exact credentials: phone/account number "0183400351"',
+        snapshotText,
+        []
+      );
+      assert.ok(capturedPrompt.includes("empty input near"));
+      // The real failure: given this exact snapshot shape and a goal that
+      // states the real phone number, the model typed the literal string
+      // "Yes Number" (the hint text) instead of "0183400351" (the actual
+      // credential). The prompt must explicitly warn against that.
+      assert.ok(capturedPrompt.includes('an actual value to enter'));
+      assert.ok(capturedPrompt.includes('Never use a'));
+      assert.ok(capturedPrompt.includes('is not something to type INTO it'));
+    } finally {
+      delete require.cache[LOOP_PATH];
+      delete require.cache[LLM_PATH];
+    }
+  });
+
   if (process.exitCode) {
     console.error("\nengine/semantic-loop tests FAILED");
     process.exit(1);

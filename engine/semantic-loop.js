@@ -97,6 +97,20 @@ async function decideNextAction(goal, snapshotText, history) {
     "irreversible or judgment-requiring step -- stop and hand back instead.",
     'A "type" action is INVALID without a non-empty "text" field -- if you',
     "mean to type something, you must include the exact text to type.",
+    // Found for real on a live BrowserStack run: given a goal that
+    // explicitly stated the phone number to log in with, the model typed
+    // the literal string "Yes Number" into the (correctly resolved,
+    // genuinely empty) Yes Number field -- copying the screen's own
+    // "(empty input near: \"Yes Number\")" annotation instead of reading
+    // the actual credential value out of the goal text above it. The
+    // field-targeting was correct; only the chosen text was wrong. Spell
+    // out the distinction explicitly rather than relying on the model to
+    // infer it.
+    'The "text" for a "type" action must be an actual value to enter --',
+    'e.g. a credential explicitly given in the goal above. Never use a',
+    'field\'s own label, placeholder, or its "(empty input near: ...)"',
+    "hint text as the value to type -- that hint identifies WHICH field",
+    "is empty, it is not something to type INTO it.",
     extraReminder,
   ].filter((line) => line !== undefined).join("\n");
 

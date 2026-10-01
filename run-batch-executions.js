@@ -450,6 +450,21 @@ async function main() {
   if (counts["test-case"] > 0) {
     console.log(`[run-batch-executions] test-case file: ${testCaseFile || "(none set -- PHOENIX_TEST_CASE_FILE is required)"}`);
   }
+  // `loop` is R&D-only exploration (see this file's header and
+  // docs/STATUS.md's "Data-driven test cases" section): it's for a goal
+  // whose exact step sequence isn't known ahead of time, never for
+  // authoring an actual repeatable test, even a first draft of one --
+  // that's what `test-case` mode is for. Printed whenever `loop` is
+  // requested (not just the default split, which already includes a
+  // small loop share for exploration) so running it for test authoring
+  // by habit doesn't go unnoticed.
+  if (counts.loop > 0) {
+    console.log(
+      "[run-batch-executions] NOTE: \"loop\" mode is R&D/exploration only -- a model decides each step live and has repeatedly " +
+        "failed to reliably finish a known, fixed sequence (docs/STATUS.md bug 18). To write or run an actual test case, use " +
+        "\"test-case\" mode (PHOENIX_BATCH_MODES=test-case, PHOENIX_TEST_CASE_FILE=<path>) instead."
+    );
+  }
   if (SECRETS.length > 0) {
     console.log("[run-batch-executions] login credentials supplied via env for loop/login-script mode (not logged, not written to the report)");
   }

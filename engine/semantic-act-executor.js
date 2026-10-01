@@ -32,7 +32,7 @@ const { diffSnapshots, diffToText } = require("../generation/semantic-diff");
 const { inferSemanticAssertions } = require("../generation/semantic-assertions");
 const { buildSelector } = require("../generation/pipeline");
 
-const SUPPORTED_KINDS = new Set(["tap", "type"]);
+const SUPPORTED_KINDS = new Set(["tap", "type", "scroll"]);
 
 /**
  * @typedef {Object} SemanticActionExecutionResult
@@ -74,7 +74,7 @@ async function executeSemanticAction(driver, instruction, options = {}) {
   const platform = options.platform === "ios" ? "ios" : "android";
 
   if (!SUPPORTED_KINDS.has(kind)) {
-    return { success: false, reason: `unsupported action kind "${kind}" (expected "tap" or "type")` };
+    return { success: false, reason: `unsupported action kind "${kind}" (expected "tap", "type", or "scroll")` };
   }
   if (kind === "type" && typeof options.text !== "string") {
     return { success: false, reason: 'kind "type" requires options.text' };
@@ -85,6 +85,17 @@ async function executeSemanticAction(driver, instruction, options = {}) {
     pageSourceBefore = await driver.getPageSource();
   } catch (err) {
     return { success: false, reason: `couldn't read the current screen: ${err.message}` };
+  }
+
+  // "scroll" has no instruction to resolve against the screen -- there
+  // is no single target element, just "move the viewport" -- so it
+  // skips resolveSemanticAction/buildSelector entirely and goes
+  // straight to a native scroll gesture. Added for a real gap found on
+  // real hardware (docs/STATUS.md: addons.json's Logout button sits
+  // below the fold in a ScrollView on the Profile screen, and nothing
+  // in this layer could move the viewport to reach it).
+  if (kind === "scroll") {
+    return performScroll(driver, pageSourceBefore, options, platform);
   }
 
   let screenshotBase64;
@@ -172,6 +183,75 @@ async function executeSemanticAction(driver, instruction, options = {}) {
     // inference step directly" -- see generation/semantic-assertions.js.
     // Always computed (cheap, pure) so a caller building up a test case
     // or a report doesn't need its own separate call for it.
+    assertions: inferSemanticAssertions(diff),
+  };
+}
+
+/**
+ * Performs a native scroll/swipe gesture and reports the before/after
+ * diff, the same shape a tap/type success returns (minus `selector`,
+ * since there is no single resolved element). Direction defaults to
+ * "down" (the common case: revealing more of a list below the fold).
+ * Window size is read defensively -- not every driver/mock implements
+ * `getWindowSize()`, and a reasonable default rect is still far better
+ * than failing the step outright over a missing viewport size.
+ *
+ * @param {import('webdriverio').Browser} driver
+ * @param {string} pageSourceBefore - already captured by the caller.
+ * @param {Object} options
+ * @param {"up"|"down"} [options.direction] - defaults to "down".
+ * @param {"android"|"ios"} platform
+ * @returns {Promise<SemanticActionExecutionResult>}
+ */
+async function performScroll(driver, pageSourceBefore, options, platform) {
+  const direction = options.direction === "up" ? "up" : "down";
+
+  let width = 1080;
+  let height = 2200;
+  try {
+    const size = await driver.getWindowSize();
+    if (size && Number.isFinite(size.width) && Number.isFinite(size.height)) {
+      width = size.width;
+      height = size.height;
+    }
+  } catch (err) {
+    // Fall back to the defaults above -- see doc comment.
+  }
+
+  try {
+    if (platform === "ios") {
+      await driver.execute("mobile: scroll", { direction });
+    } else {
+      // UiAutomator2's scrollGesture: swipe within a rect comfortably
+      // inside the screen edges (avoids system nav/status bars and
+      // edge-swipe gestures that could trigger back navigation).
+      await driver.execute("mobile: scrollGesture", {
+        left: Math.round(width * 0.1),
+        top: Math.round(height * 0.2),
+        width: Math.round(width * 0.8),
+        height: Math.round(height * 0.6),
+        direction,
+        percent: 0.75,
+      });
+    }
+  } catch (err) {
+    return { success: false, reason: `scroll failed: ${err.message}` };
+  }
+
+  let pageSourceAfter;
+  try {
+    pageSourceAfter = await driver.getPageSource();
+  } catch (err) {
+    // The gesture itself succeeded; only the post-action read failed --
+    // same reasoning as the tap/type path above.
+    return { success: true };
+  }
+
+  const diff = diffSnapshots(pageSourceBefore, pageSourceAfter);
+  return {
+    success: true,
+    diff,
+    diffSummary: diffToText(diff),
     assertions: inferSemanticAssertions(diff),
   };
 }

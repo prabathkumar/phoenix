@@ -137,10 +137,11 @@ Write a test case as a JSON file with a `steps` array:
 }
 ```
 
-- `kind`: `"tap"` or `"type"`.
-- `instruction`: plain language, resolved exactly the way a standalone `executeSemanticAction` call already is — no selector, no element reference.
+- `kind`: `"tap"`, `"type"`, or `"scroll"`.
+- `instruction`: plain language, resolved exactly the way a standalone `executeSemanticAction` call already is — no selector, no element reference. For a `"scroll"` step this is still required (for readability/logging) but isn't resolved against anything on screen — a scroll has no single target element, it just moves the viewport.
 - `text` (type steps only): a literal string, or a whole-string `"${ENV_VAR_NAME}"` placeholder resolved from the environment at run time — never commit a real credential into a test-case file; reference it by env var name instead, the same way `test-cases/login.json` does for `PHOENIX_BATCH_LOGIN_PHONE`/`PHOENIX_BATCH_LOGIN_PASSWORD`. Partial interpolation (`"prefix-${VAR}"`) is deliberately not supported, to keep a half-written credential from ever looking like it belongs in a committed file.
-- `optional` (either kind): `true` if the step is allowed to not match anything on screen without failing the run (a system dialog that doesn't always appear, say).
+- `direction` (scroll steps only): `"down"` (default) or `"up"`. Issues a native `mobile: scrollGesture` (Android) / `mobile: scroll` (iOS) gesture — no element resolution involved. Added after a real run found an element (Logout, in `test-cases/addons.json`) sitting below the fold in a scrollable screen, which nothing in the engine could previously reach.
+- `optional` (any kind): `true` if the step is allowed to not match/do anything without failing the run (a system dialog that doesn't always appear, or a scroll that's a no-op when the target is already on screen).
 
 Run it:
 

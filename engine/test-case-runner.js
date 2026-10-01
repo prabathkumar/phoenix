@@ -59,8 +59,8 @@ function loadTestCaseSteps(filePath) {
   }
   steps.forEach((step, i) => {
     if (!step || typeof step !== "object") throw new Error(`test case file "${filePath}": step ${i} is not an object`);
-    if (step.kind !== "tap" && step.kind !== "type") {
-      throw new Error(`test case file "${filePath}": step ${i} has invalid "kind" (must be "tap" or "type"): ${step.kind}`);
+    if (step.kind !== "tap" && step.kind !== "type" && step.kind !== "scroll") {
+      throw new Error(`test case file "${filePath}": step ${i} has invalid "kind" (must be "tap", "type", or "scroll"): ${step.kind}`);
     }
     if (typeof step.instruction !== "string" || !step.instruction) {
       throw new Error(`test case file "${filePath}": step ${i} is missing a non-empty "instruction"`);
@@ -121,7 +121,7 @@ function requiredEnvVars(steps) {
  * this must happen synchronously, before the caller's first `await`,
  * rather than lazily during the step loop.
  *
- * @param {Array<{kind: string, instruction: string, text?: string, optional?: boolean}>} steps
+ * @param {Array<{kind: string, instruction: string, text?: string, direction?: string, optional?: boolean}>} steps
  * @returns {Array<{kind: string, instruction: string, text?: string, optional?: boolean}>}
  */
 function resolveSteps(steps) {
@@ -151,7 +151,7 @@ function resolveSteps(steps) {
  * effectively had) avoids that race entirely.
  *
  * @param {Object} driver - a started WebdriverIO session
- * @param {Array<{kind: string, instruction: string, text?: string, optional?: boolean}>} steps
+ * @param {Array<{kind: string, instruction: string, text?: string, direction?: string, optional?: boolean}>} steps
  * @param {{platform: string, executeSemanticAction: Function}} options -
  *   `executeSemanticAction` is injected (not required() here) so
  *   callers/tests can fake it the same way existing tests already do
@@ -162,7 +162,7 @@ async function runScriptSteps(driver, steps, { platform, executeSemanticAction }
   const resolvedSteps = steps.map((step) => ({ ...step, text: resolveStepText(step) }));
   let lastResult;
   for (const step of resolvedSteps) {
-    const result = await executeSemanticAction(driver, step.instruction, { kind: step.kind, text: step.text, platform });
+    const result = await executeSemanticAction(driver, step.instruction, { kind: step.kind, text: step.text, platform, direction: step.direction });
     if (!result.success) {
       if (step.optional) continue;
       return { success: false, detail: `step "${step.instruction}" failed: ${result.reason}` };

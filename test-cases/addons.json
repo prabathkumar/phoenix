@@ -116,12 +116,19 @@
       "kind": "tap",
       "instruction": "tap the Profile or Account menu to find the logout option",
       "optional": true,
-      "note": "GUESS: logout may be directly visible on the Add-ons/home screen, or may require first opening a Profile/Account/More menu -- unconfirmed. Marked optional so a run where logout is already visible doesn't fail here. Still unverified past the coach-mark blocker above -- addons-run-android-2.log failed on the step after this one, so it's unclear yet whether this step itself resolved to anything real or simply found no match and was (correctly) skipped as optional."
+      "note": "CONFIRMED working on addons-run-android-4.log: the coach-mark/carousel fix got the run all the way past Add-ons into the Profile tab (bottom-nav item, resource-id ivProfile/tvProfile), landing on a menu screen (Billing Info, E-Bills, FAQs, General, Get Help, Settings, etc.). The run then failed on the Logout tap below -- see that step's note."
+    },
+    {
+      "kind": "scroll",
+      "instruction": "scroll down on the Profile screen to reveal the Logout option",
+      "optional": true,
+      "note": "CONFIRMED real bug/gap on addons-run-android-4.log: the Logout tap failed with 'No LOGOUT or Log Out button found' even though the Profile menu resolved correctly one step earlier. The page-source dump at the point of failure shows the Profile screen's menu items (Billing Info, Coverage Map, E-Bills, FAQs, General, Get Help, IDD Rates, Network Status, Plan Details, Purchase History, Settings, YesCare, Ajak & Earn) sitting inside an android.widget.ScrollView, with no 'Logout'/'Log Out' text anywhere in the captured hierarchy at all -- i.e. it is off-screen below the fold, not merely unlabeled or mis-resolved like the earlier bugs in this file. This was a genuine engine gap, not a wording problem: executeSemanticAction only supported 'tap'/'type' until now, with no way to move the viewport at all. Fixed at the engine level (engine/semantic-act-executor.js: new 'scroll' action kind, a native mobile:scrollGesture/mobile:scroll gesture with no element resolution involved) and wired in here as one scroll-down step right before the Logout tap. Optional so it's a harmless no-op on a device/build where Logout happens to already be on screen."
     },
     {
       "kind": "tap",
       "instruction": "tap the LOGOUT or Log Out button to sign out of the app",
-      "optional": false
+      "optional": false,
+      "note": "CONFIRMED real bug on addons-run-android-4.log: failed with 'No LOGOUT or Log Out button found on the screen' -- the button exists but is below the fold in the Profile screen's ScrollView (see the new scroll step above's note for the full page-source evidence). Not a wording or sequencing bug like the others in this file; needed a new 'scroll' capability in the engine itself, since one never existed before this fix."
     }
   ]
 }

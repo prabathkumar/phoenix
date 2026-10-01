@@ -81,9 +81,9 @@ function freshExecutorWithFakes({ resolveSemanticActionImpl, diffSnapshotsImpl, 
 }
 
 /** A minimal fake WebdriverIO-shaped driver + element. */
-function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl } = {}) {
+function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl, executeImpl, getWindowSizeImpl } = {}) {
   let pageSourceCallCount = 0;
-  const calls = { click: 0, setValue: [], takeScreenshot: 0 };
+  const calls = { click: 0, setValue: [], takeScreenshot: 0, execute: [] };
 
   const element = {
     isExisting: elementBehavior.isExisting || (async () => true),
@@ -110,6 +110,15 @@ function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl 
         calls.takeScreenshot += 1;
         if (takeScreenshotImpl) return takeScreenshotImpl();
         return "fake-base64-screenshot";
+      },
+      execute: async (command, params) => {
+        calls.execute.push({ command, params });
+        if (executeImpl) return executeImpl(command, params);
+        return null;
+      },
+      getWindowSize: async () => {
+        if (getWindowSizeImpl) return getWindowSizeImpl();
+        return { width: 1080, height: 2200 };
       },
     },
   };
@@ -181,6 +190,80 @@ function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl 
       assert.strictEqual(result.success, false);
       assert.ok(result.reason.includes("swipe"));
       assert.strictEqual(calls.click, 0);
+    } finally {
+      restore();
+    }
+  });
+
+  await run("executeSemanticAction scrolls (android) via mobile: scrollGesture, with no element resolution involved, and reports the diff", async () => {
+    const { executor, restore } = freshExecutorWithFakes({
+      resolveSemanticActionImpl: async () => {
+        throw new Error("resolveSemanticAction should never be called for a scroll step");
+      },
+      diffSnapshotsImpl: () => ({ appeared: [{ label: "Logout" }], disappeared: [], changed: true }),
+    });
+    try {
+      const { driver, calls } = makeFakeDriver({ pageSources: ["<hierarchy>before</hierarchy>", "<hierarchy>after</hierarchy>"] });
+      const result = await executor.executeSemanticAction(driver, "scroll down to find the Logout button", { kind: "scroll" });
+
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(result.diffSummary, "changed");
+      assert.strictEqual(calls.click, 0);
+      assert.strictEqual(calls.execute.length, 1);
+      assert.strictEqual(calls.execute[0].command, "mobile: scrollGesture");
+      assert.strictEqual(calls.execute[0].params.direction, "down");
+    } finally {
+      restore();
+    }
+  });
+
+  await run("executeSemanticAction scrolls (ios) via mobile: scroll", async () => {
+    const { executor, restore } = freshExecutorWithFakes();
+    try {
+      const { driver, calls } = makeFakeDriver({ pageSources: ["<hierarchy>before</hierarchy>", "<hierarchy>after</hierarchy>"] });
+      const result = await executor.executeSemanticAction(driver, "scroll up", { kind: "scroll", direction: "up", platform: "ios" });
+
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(calls.execute.length, 1);
+      assert.strictEqual(calls.execute[0].command, "mobile: scroll");
+      assert.strictEqual(calls.execute[0].params.direction, "up");
+    } finally {
+      restore();
+    }
+  });
+
+  await run("executeSemanticAction reports a scroll gesture failure cleanly instead of throwing", async () => {
+    const { executor, restore } = freshExecutorWithFakes();
+    try {
+      const { driver } = makeFakeDriver({
+        pageSources: ["<hierarchy />"],
+        executeImpl: () => {
+          throw new Error("driver disconnected");
+        },
+      });
+      const result = await executor.executeSemanticAction(driver, "scroll down", { kind: "scroll" });
+
+      assert.strictEqual(result.success, false);
+      assert.ok(result.reason.includes("scroll"));
+    } finally {
+      restore();
+    }
+  });
+
+  await run("executeSemanticAction falls back to default viewport dimensions when getWindowSize() fails", async () => {
+    const { executor, restore } = freshExecutorWithFakes();
+    try {
+      const { driver, calls } = makeFakeDriver({
+        pageSources: ["<hierarchy>before</hierarchy>", "<hierarchy>after</hierarchy>"],
+        getWindowSizeImpl: () => {
+          throw new Error("not supported by this driver");
+        },
+      });
+      const result = await executor.executeSemanticAction(driver, "scroll down", { kind: "scroll" });
+
+      assert.strictEqual(result.success, true);
+      assert.ok(calls.execute[0].params.width > 0);
+      assert.ok(calls.execute[0].params.height > 0);
     } finally {
       restore();
     }

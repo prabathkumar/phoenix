@@ -60,8 +60,15 @@ function writeTempJson(content) {
   });
 
   await run("loadTestCaseSteps rejects a step with an invalid kind", async () => {
-    const file = writeTempJson([{ kind: "scroll", instruction: "do something" }]);
+    const file = writeTempJson([{ kind: "swipe", instruction: "do something" }]);
     assert.throws(() => loadTestCaseSteps(file), /invalid "kind"/);
+  });
+
+  await run("loadTestCaseSteps accepts a \"scroll\" step with no text", async () => {
+    const file = writeTempJson([{ kind: "scroll", instruction: "scroll down to find the Logout button" }]);
+    const steps = loadTestCaseSteps(file);
+    assert.strictEqual(steps.length, 1);
+    assert.strictEqual(steps[0].kind, "scroll");
   });
 
   await run("loadTestCaseSteps rejects a \"type\" step with no text", async () => {

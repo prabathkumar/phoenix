@@ -80,7 +80,7 @@ node run-batch-executions.js
 | Var | Default | Purpose |
 |---|---|---|
 | `PHOENIX_BATCH_TOTAL` | `100` | how many iterations total |
-| `PHOENIX_BATCH_MODES` | all three | comma-separated subset of `guided,semantic,loop` — use this instead of `PHOENIX_BATCH_TOTAL=1` alone to force a single mode; with all three modes requested, `PHOENIX_BATCH_TOTAL=1` still runs `guided` only (see `computeModeCounts()`'s docstring for why) |
+| `PHOENIX_BATCH_MODES` | all three | comma-separated subset of `guided,semantic,loop` — use this instead of `PHOENIX_BATCH_TOTAL=1` alone to force a single mode; with all three modes requested, `PHOENIX_BATCH_TOTAL=1` still runs `guided` only (see `computeModeCounts()`'s docstring for why). A fourth mode, `login-script`, is opt-in only — it's never included by `all three` and must be named explicitly. |
 | `PHOENIX_BATCH_INSTRUCTION` | `"tap the first visible button"` | the single instruction `semantic`/`guided` iterations act on |
 | `PHOENIX_BATCH_GOAL` | `"explore the app's first screen"` | the plain-language goal `loop` iterations pursue |
 | `PHOENIX_BATCH_LOOP_MAX_STEPS` | `3` | hard step cap per `loop` iteration |
@@ -101,6 +101,22 @@ PHOENIX_BATCH_INSTRUCTION="tap the Login button" \
 PHOENIX_BATCH_GOAL="type the Yes Number, then tap the PASSWORD tab, then type the password into the field that appears, then tap Login" \
 node run-batch-executions.js
 ```
+
+### `login-script` mode: the proven, deterministic path for an actual login (recommended over `loop`)
+
+`loop`'s per-step model planning is a poor fit for a known, fixed sequence like login — it can get every step right and still fail to recognize "both fields are now correct, submit" as a terminal condition (see `docs/STATUS.md`, bug 18). `login-script` mode runs a hardcoded step order instead (dismiss an optional system dialog → tap LOGIN to open the form → type phone → tap the PASSWORD tab → tap the password field to focus it → type password → tap LOGIN to submit), with each individual step still going through the same proven per-instruction resolver. This is the mode that closed out login automation end to end on real hardware for both Android and iOS:
+
+```bash
+export PHOENIX_BATCH_LOGIN_PHONE="<phone>"
+export PHOENIX_BATCH_LOGIN_PASSWORD="<password>"
+
+PHOENIX_BATCH_TOTAL=1 \
+PHOENIX_BATCH_MODES=login-script \
+PHOENIX_PLATFORM=ios \
+node run-batch-executions.js
+```
+
+Set `PHOENIX_PLATFORM=android` (or omit it, since `android` is the default) for the Android path. A successful run's report line reads `OK (...) - Appeared: "...", "Home", "Rewards", "Profile", ... Disappeared: "...", "LOGIN", "LOGIN", ...` — the login screen's own elements disappearing and the post-login home screen's elements appearing in the same diff is the confirmation the submit tap actually landed, not just that no WebDriver error was thrown.
 
 The plan line printed at the top should read
 `plan: 0 guided, 0 semantic, 1 loop (total 1)` — if it doesn't, the

@@ -271,16 +271,37 @@ function buildGroundedSnapshot(pageSourceXml) {
       // clickable="false".
       const clickableAttr = node.getAttribute("clickable");
       const isClickable = !clickableAttr ? undefined : clickableAttr === "true";
-      // Android only -- iOS trees don't carry this attribute either, so
-      // `secure` stays undefined there (SecureTextField is identified by
-      // role/tagName instead, which toSelector() can check separately if
-      // ever needed; not required for the Android bug this was added for).
+      // Android signals a masked field via password="true". iOS carries
+      // no such attribute -- it signals the same thing through the
+      // element's own tag name (XCUIElementTypeSecureTextField) instead.
+      // Originally only the Android attribute was checked here (the
+      // comment used to say iOS "doesn't need it yet"); found for real
+      // on a live BrowserStack iOS run (ios5) that it very much does:
+      // without this, an iOS password field's masked display text
+      // ("•••••••••") was treated as a normal label the same way bug 8
+      // found on Android, toSelector() built a live `text`/predicate-
+      // string selector from those dots, and the very next action
+      // against that field failed with "element wasn't found" the
+      // instant the mask's dot-count changed. Same bug, same fix,
+      // second platform.
       const passwordAttr = node.getAttribute("password");
-      const isSecure = passwordAttr === "true" || undefined;
+      const isSecure = passwordAttr === "true" || node.tagName === "XCUIElementTypeSecureTextField" || undefined;
 
       const label = (!isBlank(text) && clean(text)) || undefined;
       const accessibilityId = (!isBlank(contentDesc) && clean(contentDesc)) || undefined;
       const isBlankInput = !label && !accessibilityId && !resourceId && INPUT_ROLE_RE.test(node.tagName);
+      // iOS has no resource-id to fall back on at all (always undefined
+      // there), so a SecureTextField's positional locator can ONLY come
+      // from this classChain/nearbyLabel computation -- but once a
+      // password field has anything typed into it, its masked text
+      // becomes its `label` (see the `isSecure` comment above), which
+      // makes `isBlankInput` false and would otherwise skip computing
+      // one entirely, at exactly the moment toSelector() most needs it
+      // (the live-text/predicate-string strategy is the one being
+      // avoided for secure fields in the first place). Android doesn't
+      // need this: its secure fields always carry a resource-id
+      // (unique, or ambiguous and handled by the post-pass below).
+      const needsIosPositionalLocator = isSecure && isIosRole(node.tagName);
 
       if (label || accessibilityId || resourceId || isBlankInput) {
         elements.push({
@@ -293,8 +314,8 @@ function buildGroundedSnapshot(pageSourceXml) {
           bounds: parseBounds(node),
           ...(isClickable !== undefined ? { clickable: isClickable } : {}),
           ...(isSecure ? { secure: true } : {}),
-          ...(isBlankInput && lastLabelSeen ? { nearbyLabel: lastLabelSeen } : {}),
-          ...(isBlankInput
+          ...((isBlankInput || needsIosPositionalLocator) && lastLabelSeen ? { nearbyLabel: lastLabelSeen } : {}),
+          ...(isBlankInput || needsIosPositionalLocator
             ? isIosRole(node.tagName)
               ? { classChain: buildIosClassChain(node) }
               : { xpath: buildXPath(node) }

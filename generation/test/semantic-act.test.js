@@ -207,6 +207,22 @@ async function test(name, fn) {
     }
   });
 
+  await test("toSelector skips the live-text strategy for an iOS secure field with a masked label and falls back to classChain, not xpath (real bug: ios5 -- a SecureTextField has no resource-id to fall back on the way Android's equivalent bug 8 did)", async () => {
+    const { semanticAct, restore } = loadWithFakeOllama(async () => ({ ref: 1 }));
+    try {
+      assert.deepStrictEqual(
+        semanticAct.toSelector({
+          secure: true,
+          label: "•••••••••",
+          classChain: "**/XCUIElementTypeSecureTextField[1]",
+        }),
+        { strategy: "class-chain", value: "**/XCUIElementTypeSecureTextField[1]" }
+      );
+    } finally {
+      restore();
+    }
+  });
+
   await test("toSelector prefers classChain over xpath for an iOS element that has both (real bug: XCUITestDriver's native xpath finder couldn't resolve a position-based path that resolved fine on Android)", async () => {
     const { semanticAct, restore } = loadWithFakeOllama(async () => ({ ref: 1 }));
     try {

@@ -416,6 +416,36 @@ test("buildGroundedSnapshot gives a blank iOS TextField a classChain, not a stru
   assert.strictEqual(fields[1].xpath, undefined);
 });
 
+// Real bug found on a live BrowserStack iOS run (ios5): once the model
+// typed into the password field, its masked display text ("•••••••••")
+// became its `label` the same way Android's does -- but the original
+// `isSecure` check only ever looked for Android's `password="true"`
+// attribute, so this iOS SecureTextField was never flagged `secure` at
+// all, toSelector() built a live predicate-string selector from the
+// masked dots, and the very next action against it failed the instant
+// the dot count changed. iOS also has no resource-id to fall back on
+// (unlike Android's equivalent bug 8, where the field still had a
+// usable resource-id) -- without a classChain computed too, this field
+// would have been unresolvable after being flagged secure.
+const IOS_FILLED_SECURE_TEXT_FIELD_SCREEN = `<AppiumAUT><XCUIElementTypeApplication name="MyYes">
+  <XCUIElementTypeStaticText value="Password" name="Password" />
+  <XCUIElementTypeSecureTextField label="•••••••••" />
+</XCUIElementTypeApplication></AppiumAUT>`;
+
+test("buildGroundedSnapshot flags an iOS SecureTextField as secure purely from its tag name, even with no password attribute (real bug: only Android's password=\"true\" attribute was checked)", () => {
+  const elements = buildGroundedSnapshot(IOS_FILLED_SECURE_TEXT_FIELD_SCREEN);
+  const passwordField = elements.find((el) => el.role === "XCUIElementTypeSecureTextField");
+  assert.strictEqual(passwordField.secure, true);
+});
+
+test("buildGroundedSnapshot still computes a classChain for an iOS SecureTextField even once its masked text makes it look like a normal labeled element (real bug: isBlankInput goes false the moment the mask has any text, which would otherwise skip computing one entirely)", () => {
+  const elements = buildGroundedSnapshot(IOS_FILLED_SECURE_TEXT_FIELD_SCREEN);
+  const passwordField = elements.find((el) => el.role === "XCUIElementTypeSecureTextField");
+  assert.strictEqual(passwordField.label, "•••••••••");
+  assert.strictEqual(passwordField.classChain, "**/XCUIElementTypeSecureTextField[1]");
+  assert.strictEqual(passwordField.nearbyLabel, "Password");
+});
+
 test("buildGroundedSnapshot still uses a structural xpath (not classChain) for Android's equivalent blank-input case", () => {
   const androidBlankInput = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
 <hierarchy>

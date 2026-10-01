@@ -460,6 +460,45 @@ test("buildGroundedSnapshot still uses a structural xpath (not classChain) for A
   assert.strictEqual(field.classChain, undefined);
 });
 
+// Real bug found on a live BrowserStack iOS run (ios14): the home
+// screen's "LOGIN" button (opens the login form) and the login form's
+// own submit "LOGIN" button report the exact same accessibilityId.
+// `$("~LOGIN")`/`findElement("accessibility id", "LOGIN")` just
+// returns whichever matches first -- confirmed in the real run's log
+// that the SAME WebDriver element id was returned for both "open the
+// form" (early in the run) and "submit the form" (at the very end),
+// so the final submit tap silently re-clicked the original, by-then-
+// hidden home-screen button instead of the real, visible submit
+// button. Both fields stayed correctly filled in, the tap "succeeded"
+// with no WebDriver error, and the screen simply never changed.
+const IOS_DUPLICATE_LOGIN_BUTTON_SCREEN = `<AppiumAUT><XCUIElementTypeApplication name="MyYes">
+  <XCUIElementTypeButton name="LOGIN" visible="false" />
+  <XCUIElementTypeStaticText value="Phone Number" name="Phone Number" />
+  <XCUIElementTypeTextField label="01166114421" />
+  <XCUIElementTypeButton name="LOGIN" visible="true" />
+</XCUIElementTypeApplication></AppiumAUT>`;
+
+test("buildGroundedSnapshot flags a duplicate iOS accessibilityId as ambiguous and builds a visibility-predicate classChain (real bug: home screen's LOGIN button and the form's submit LOGIN button share one accessibility id)", () => {
+  const elements = buildGroundedSnapshot(IOS_DUPLICATE_LOGIN_BUTTON_SCREEN);
+  const loginButtons = elements.filter((el) => el.accessibilityId === "LOGIN");
+  assert.strictEqual(loginButtons.length, 2);
+  assert.ok(
+    loginButtons.every((el) => el.ambiguousAccessibilityId === true),
+    "both same-named LOGIN buttons must be flagged ambiguous"
+  );
+  assert.ok(
+    loginButtons.every((el) => el.classChain === '**/XCUIElementTypeButton[`name == "LOGIN" AND visible == 1`]'),
+    "every ambiguous LOGIN button should get the same visibility-predicate classChain, so WebDriverAgent picks whichever one is actually on screen"
+  );
+});
+
+test("buildGroundedSnapshot does NOT flag an accessibilityId that's actually unique on an iOS screen", () => {
+  const elements = buildGroundedSnapshot(IOS_LOGIN_SCREEN_WITH_BLANK_TEXT_FIELD);
+  const passwordTab = elements.find((el) => el.accessibilityId === "PASSWORD");
+  assert.strictEqual(passwordTab.ambiguousAccessibilityId, undefined);
+  assert.strictEqual(passwordTab.classChain, undefined, "a uniquely-named button needs no classChain fallback at all");
+});
+
 setImmediate(() => {
   if (process.exitCode) {
     console.error("\ngeneration/semantic-snapshot tests FAILED");

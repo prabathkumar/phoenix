@@ -207,6 +207,31 @@ function buildIosClassChain(element) {
 }
 
 /**
+ * Builds a WebDriverAgent "class chain" locator with an explicit
+ * predicate, for an iOS element whose accessibility id is NOT unique on
+ * screen -- found for real on a live BrowserStack run: this app's home
+ * screen has a "LOGIN" button that opens the login form, and the form's
+ * own submit button is ALSO named "LOGIN" (both report
+ * `accessibilityId: "LOGIN"`). `$("~LOGIN")`/`findElement("accessibility
+ * id", "LOGIN")` just returns whichever matches first -- here, that was
+ * the SAME WebDriver element id both times (confirmed in a real run's
+ * log), meaning the "submit" tap silently re-clicked the original
+ * (now-hidden) home-screen button instead of the real, visible submit
+ * button: both fields stayed correctly filled in, the tap "succeeded"
+ * with no WebDriver error, and the screen simply never changed. Unlike
+ * `buildIosClassChain()`'s plain occurrence-index (which only
+ * disambiguates elements with NO name at all), this builds a
+ * WebDriverAgent class-chain *predicate* -- documented, native syntax --
+ * that matches on name AND visibility together, so it reliably picks
+ * the one actually on screen right now rather than whichever instance
+ * happens to come first in document order.
+ */
+function buildIosAmbiguousAccessibilityClassChain(element, name) {
+  const escapedName = name.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  return `**/${element.tagName}[\`name == "${escapedName}" AND visible == 1\`]`;
+}
+
+/**
  * Walks a captured accessibility tree and produces a flat, ref-indexed
  * list of every element that carries a usable label and/or identifier
  * -- the elements a semantic action could plausibly target -- plus any
@@ -388,6 +413,25 @@ function buildGroundedSnapshot(pageSourceXml) {
   for (const el of elements) {
     if (el.resourceId) resourceIdCounts.set(el.resourceId, (resourceIdCounts.get(el.resourceId) || 0) + 1);
   }
+  // Found for real on a live BrowserStack iOS run: a home screen's
+  // "LOGIN" button (opens the login form) and the form's own submit
+  // button can both report the exact same accessibility id -- unlike
+  // the resource-id ambiguity above (Android input fields only),
+  // nothing restricts this to input roles, so it's checked for every
+  // element with an accessibility id, not just INPUT_ROLE_RE matches.
+  // Confirmed in a real run's log: `$("~LOGIN")` returned the SAME
+  // WebDriver element id both times it was used, so a later "submit"
+  // tap silently re-clicked the original (by-then-hidden) button
+  // instead of the real, visible one -- both fields stayed correctly
+  // filled in, the tap reported success, and the screen just never
+  // changed. See buildIosAmbiguousAccessibilityClassChain()'s own
+  // comment for why a name+visibility predicate (not a plain occurrence
+  // index) is what actually disambiguates this, and why it's iOS-only
+  // (Android has no classChain fallback to offer here at all).
+  const accessibilityIdCounts = new Map();
+  for (const el of elements) {
+    if (el.accessibilityId) accessibilityIdCounts.set(el.accessibilityId, (accessibilityIdCounts.get(el.accessibilityId) || 0) + 1);
+  }
   for (const el of elements) {
     const isAmbiguousInput =
       el.resourceId &&
@@ -397,6 +441,10 @@ function buildGroundedSnapshot(pageSourceXml) {
       el.ambiguousResourceId = true;
       if (el.__nearbyLabelAtTime) el.nearbyLabel = el.__nearbyLabelAtTime;
       el.xpath = buildXPath(el.__node);
+    }
+    if (el.accessibilityId && accessibilityIdCounts.get(el.accessibilityId) > 1 && isIosRole(el.role)) {
+      el.ambiguousAccessibilityId = true;
+      el.classChain = buildIosAmbiguousAccessibilityClassChain(el.__node, el.accessibilityId);
     }
     delete el.__node;
     delete el.__nearbyLabelAtTime;

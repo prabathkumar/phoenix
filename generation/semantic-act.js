@@ -90,7 +90,18 @@ function toSelector(element, options = {}) {
   // secure fields have no classChain and their accessibility id IS
   // stable (bug 8 was only ever about Android's live masked *text*),
   // so this must not touch the existing, already-correct Android path.
-  if (element.accessibilityId && !(element.secure && element.classChain)) {
+  // Found for real on a live BrowserStack iOS run: a home screen's
+  // "LOGIN" button (opens the login form) and the form's own submit
+  // button can share the exact same accessibility id -- WebDriver's
+  // `$("~LOGIN")` then just returns whichever matches first, which a
+  // real run's log confirmed was the SAME element both times, so a
+  // "submit" tap silently re-clicked the original, by-then-hidden
+  // button instead of the real one. semantic-snapshot.js flags this as
+  // `ambiguousAccessibilityId` and computes a classChain predicate
+  // (name + visibility together) to disambiguate -- prefer that the
+  // same way the two guards above already prefer classChain/xpath over
+  // a plain accessibility-id for their own ambiguous cases.
+  if (element.accessibilityId && !element.ambiguousAccessibilityId && !(element.secure && element.classChain)) {
     return { strategy: "accessibility-id", value: element.accessibilityId };
   }
   // Found for real on a live BrowserStack run: a password field's

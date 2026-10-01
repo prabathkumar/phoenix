@@ -250,6 +250,29 @@ async function test(name, fn) {
     }
   });
 
+  await test("toSelector prefers a visibility-predicate classChain over accessibility-id for a duplicate iOS accessibility id (real bug, ios14: the home screen's LOGIN button and the login form's own submit LOGIN button share the same accessibility id, so `~LOGIN` always resolved to whichever matched first -- the same, by-then-hidden home-screen button -- instead of the real, visible submit button)", async () => {
+    const { semanticAct, restore } = loadWithFakeOllama(async () => ({ ref: 1 }));
+    try {
+      assert.deepStrictEqual(
+        semanticAct.toSelector({
+          accessibilityId: "LOGIN",
+          ambiguousAccessibilityId: true,
+          classChain: '**/XCUIElementTypeButton[`name == "LOGIN" AND visible == 1`]',
+        }),
+        { strategy: "class-chain", value: '**/XCUIElementTypeButton[`name == "LOGIN" AND visible == 1`]' }
+      );
+      // A non-ambiguous accessibility id must still win over xpath exactly
+      // as before -- this fix only skips accessibility-id when the id is
+      // actually flagged ambiguous.
+      assert.deepStrictEqual(
+        semanticAct.toSelector({ accessibilityId: "a11y1", ambiguousAccessibilityId: undefined }),
+        { strategy: "accessibility-id", value: "a11y1" }
+      );
+    } finally {
+      restore();
+    }
+  });
+
   await test("toSelector prefers classChain over xpath for an iOS element that has both (real bug: XCUITestDriver's native xpath finder couldn't resolve a position-based path that resolved fine on Android)", async () => {
     const { semanticAct, restore } = loadWithFakeOllama(async () => ({ ref: 1 }));
     try {

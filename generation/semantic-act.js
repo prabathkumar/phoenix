@@ -74,7 +74,16 @@ function toSelector(element, options = {}) {
   // an xpath for it; prefer that over the ambiguous resource-id.
   if (element.resourceId && !element.ambiguousResourceId) return { strategy: "resource-id", value: element.resourceId };
   if (element.accessibilityId) return { strategy: "accessibility-id", value: element.accessibilityId };
-  if (element.label) return { strategy: "text", value: element.label };
+  // Found for real on a live BrowserStack run: a password field's
+  // `label` is populated from its own masked display text (e.g.
+  // "•••••••") once something has been typed into it -- that text
+  // changes (different dot count, briefly empty) every time the field
+  // is cleared and retyped, so a "text" selector built from it goes
+  // stale the moment it's used, and WebDriver can never find that exact
+  // element again. Skip the live-text strategy entirely for a secure
+  // field (semantic-snapshot.js's `secure` flag) and fall through to
+  // the stable xpath/resource-id below instead.
+  if (element.label && !element.secure) return { strategy: "text", value: element.label };
   // A blank input field, or one with an ambiguous resource-id (see
   // semantic-snapshot.js's INPUT_ROLE_RE/ambiguousResourceId), has none
   // of the above -- xpath is the last-resort locator for it, same tier

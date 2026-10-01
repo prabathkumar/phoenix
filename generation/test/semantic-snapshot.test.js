@@ -87,6 +87,37 @@ const HINT_TEXT_DUPLICATE_RESOURCE_ID_SCREEN = `<?xml version='1.0' encoding='UT
   </android.view.View>
 </hierarchy>`;
 
+// Real bug #8, reproduced on a live BrowserStack run: after the password
+// field has been typed into, UiAutomator2 reports its `text` as the
+// masked placeholder ("•••••••"), which looks exactly like a genuine
+// label/value to buildGroundedSnapshot. toSelector() used to treat that
+// as this element's `label` and build a live "text" selector from it --
+// which goes stale the instant the field is cleared and retyped (the
+// dot-mask content changes), permanently losing the element. This
+// fixture is the shared-resource-id screen, but captured AFTER typing,
+// i.e. with the password EditText's `text` already masked.
+const FILLED_PASSWORD_DUPLICATE_RESOURCE_ID_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy>
+  <android.view.View bounds="[0,0][1080,2400]">
+    <android.widget.EditText resource-id="my.yes.yes4g:id/edtCommon" text="0185824587" bounds="[102,645][978,782]" />
+    <android.widget.EditText resource-id="my.yes.yes4g:id/edtCommon" text="•••••••" password="true" bounds="[102,917][978,1054]" />
+    <android.widget.TextView text="Log In" bounds="[363,1234][718,1336]" />
+    <android.widget.Button bounds="[363,1234][718,1336]" />
+  </android.view.View>
+</hierarchy>`;
+
+// A password field with a resource-id that's unique on screen (no
+// collision), still filled with masked text -- confirms `secure` is
+// recorded independent of ambiguity, since toSelector() must skip the
+// live-text strategy here too even though the resource-id alone would
+// otherwise have been a perfectly fine (non-ambiguous) selector.
+const FILLED_UNIQUE_PASSWORD_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy>
+  <android.view.View bounds="[0,0][1080,2400]">
+    <android.widget.EditText resource-id="com.phoenix.demo:id/password_input" text="••••" password="true" bounds="[102,917][978,1054]" />
+  </android.view.View>
+</hierarchy>`;
+
 // The exact real-bug screen: a Compose tab control whose visible label
 // ("PASSWORD") sits on a non-clickable TextView, with a non-clickable
 // sibling Button, but a clickable wrapper View (no label/id of its own)
@@ -327,6 +358,26 @@ test("buildGroundedSnapshot does not set clickableAncestorXPath on an element th
   const loginLabel = elements.find((el) => el.label === "Log In");
   assert.strictEqual(loginLabel.clickable, true);
   assert.strictEqual(loginLabel.clickableAncestorXPath, undefined);
+});
+
+test("buildGroundedSnapshot flags a filled password EditText as secure, even though its masked text looks like a real label", () => {
+  const elements = buildGroundedSnapshot(FILLED_PASSWORD_DUPLICATE_RESOURCE_ID_SCREEN);
+  const passwordField = elements.find((el) => el.label === "•••••••");
+  assert.ok(passwordField, "expected to find the masked password EditText by its own displayed text");
+  assert.strictEqual(passwordField.secure, true);
+});
+
+test("buildGroundedSnapshot does not mark the non-secure sibling field as secure", () => {
+  const elements = buildGroundedSnapshot(FILLED_PASSWORD_DUPLICATE_RESOURCE_ID_SCREEN);
+  const phoneField = elements.find((el) => el.label === "0185824587");
+  assert.strictEqual(phoneField.secure, undefined);
+});
+
+test("buildGroundedSnapshot flags a secure field as secure even when its resourceId is unique (not ambiguous)", () => {
+  const elements = buildGroundedSnapshot(FILLED_UNIQUE_PASSWORD_SCREEN);
+  const passwordField = elements.find((el) => el.resourceId === "com.phoenix.demo:id/password_input");
+  assert.strictEqual(passwordField.secure, true);
+  assert.strictEqual(passwordField.ambiguousResourceId, undefined, "a unique resourceId must not be flagged ambiguous");
 });
 
 test("buildGroundedSnapshot leaves clickable undefined on a tree with no clickable attribute at all (e.g. iOS)", () => {

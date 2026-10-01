@@ -102,6 +102,18 @@ function clean(value) {
  *   (WebDriver's click() doesn't error) but silently did nothing.
  *   semantic-act.js's toSelector() uses this, for "tap" actions only, to
  *   redirect to the element that actually responds.
+ * @property {boolean} [secure] - Android's `password="true"`/iOS's
+ *   SecureTextField role: this element's `text` is a masked placeholder
+ *   (e.g. "•••••••"), not real content. Found for real on a live
+ *   BrowserStack run: the password field's `label` is populated from
+ *   that same masked text once something has been typed into it, and
+ *   semantic-act.js's toSelector() was using `label` as a live
+ *   WebDriver "text" selector -- which broke the instant the field was
+ *   cleared and retyped (the dot-mask content changes), permanently
+ *   losing the element and burning the rest of the loop's step budget
+ *   on a selector that could never match again. toSelector() checks
+ *   this flag to skip the live-text strategy for secure fields and use
+ *   the stable xpath/resource-id instead.
  */
 
 const ANDROID_BOUNDS_RE = /\[(\d+),(\d+)\]\[(\d+),(\d+)\]/;
@@ -212,6 +224,12 @@ function buildGroundedSnapshot(pageSourceXml) {
       // clickable="false".
       const clickableAttr = node.getAttribute("clickable");
       const isClickable = !clickableAttr ? undefined : clickableAttr === "true";
+      // Android only -- iOS trees don't carry this attribute either, so
+      // `secure` stays undefined there (SecureTextField is identified by
+      // role/tagName instead, which toSelector() can check separately if
+      // ever needed; not required for the Android bug this was added for).
+      const passwordAttr = node.getAttribute("password");
+      const isSecure = passwordAttr === "true" || undefined;
 
       const label = (!isBlank(text) && clean(text)) || undefined;
       const accessibilityId = (!isBlank(contentDesc) && clean(contentDesc)) || undefined;
@@ -227,6 +245,7 @@ function buildGroundedSnapshot(pageSourceXml) {
           depth,
           bounds: parseBounds(node),
           ...(isClickable !== undefined ? { clickable: isClickable } : {}),
+          ...(isSecure ? { secure: true } : {}),
           ...(isBlankInput && lastLabelSeen ? { nearbyLabel: lastLabelSeen } : {}),
           ...(isBlankInput ? { xpath: buildXPath(node) } : {}),
           // Kept only for the post-passes below, never part of the

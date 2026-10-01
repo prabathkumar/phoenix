@@ -230,6 +230,48 @@ async function test(name, fn) {
     }
   });
 
+  await test("toSelector skips the live-text strategy for a secure field and falls back to xpath (real bug #8: masked password text goes stale)", async () => {
+    const { semanticAct, restore } = loadWithFakeOllama(async () => ({ ref: 1 }));
+    try {
+      // The exact real-bug shape: an ambiguous-resource-id password field
+      // whose `label` is its own masked display text ("•••••••"). Using
+      // that as a "text" selector breaks the instant the field is cleared
+      // and retyped (the mask content changes) -- must use xpath instead.
+      assert.deepStrictEqual(
+        semanticAct.toSelector({
+          resourceId: "edtCommon",
+          ambiguousResourceId: true,
+          secure: true,
+          label: "•••••••",
+          xpath: "/hierarchy/EditText[2]",
+        }),
+        { strategy: "xpath", value: "/hierarchy/EditText[2]" }
+      );
+      // accessibility-id still wins over a secure field's own text, same
+      // as the ordinary ambiguous case.
+      assert.deepStrictEqual(
+        semanticAct.toSelector({ secure: true, label: "•••••••", accessibilityId: "a11y1" }),
+        { strategy: "accessibility-id", value: "a11y1" }
+      );
+      // No xpath computed and no other identifier at all -- still falls
+      // back to the (non-ambiguous) resource-id rather than ever using
+      // the live masked text.
+      assert.deepStrictEqual(
+        semanticAct.toSelector({ resourceId: "password_input", secure: true, label: "••••" }),
+        { strategy: "resource-id", value: "password_input" }
+      );
+      // A non-secure field with the exact same shape is unaffected --
+      // this is purely about the secure flag, not a general xpath
+      // preference change.
+      assert.deepStrictEqual(
+        semanticAct.toSelector({ label: "Yes Number" }),
+        { strategy: "text", value: "Yes Number" }
+      );
+    } finally {
+      restore();
+    }
+  });
+
   await test("toSelector redirects a tap on a non-clickable element to its clickable ancestor (real bug: Compose tab label)", async () => {
     const { semanticAct, restore } = loadWithFakeOllama(async () => ({ ref: 1 }));
     try {

@@ -50,13 +50,19 @@
       "kind": "tap",
       "instruction": "tap the Add-ons tab or menu item",
       "optional": false,
-      "note": "GUESS: exact label/position unconfirmed -- docs/REAL_DEVICE_BATCH_TESTING.md's own test-case example already guesses \"tap the Add-ons tab\", reused here, but it has never been run against this app's real screen either."
+      "note": "CONFIRMED working on addons-run-android-2.log -- the guessed instruction resolved and clicked correctly; the run got past this step to the next (new) failure."
+    },
+    {
+      "kind": "tap",
+      "instruction": "tap the X button to close the coach mark tutorial popup",
+      "optional": true,
+      "note": "CONFIRMED real bug on addons-run-android-2.log: after reaching the Add-ons/Account area, a coach-mark tutorial overlay appears (\"Your Account overview is easily accessible in the middle of the screen.\", with a close icon at resource-id ivClose and a NEXT button at btnNext) sitting on top of the screen -- this was never guessed in the original draft, so it silently blocked every tap step after it, including the Profile/Logout ones below, each of which quietly failed to resolve against the real screen underneath. Fixed per direct confirmation of the real element (ivClose) by adding this step to tap it."
     },
     {
       "kind": "tap",
       "instruction": "tap the Profile or Account menu to find the logout option",
       "optional": true,
-      "note": "GUESS: logout may be directly visible on the Add-ons/home screen, or may require first opening a Profile/Account/More menu -- unconfirmed. Marked optional so a run where logout is already visible doesn't fail here."
+      "note": "GUESS: logout may be directly visible on the Add-ons/home screen, or may require first opening a Profile/Account/More menu -- unconfirmed. Marked optional so a run where logout is already visible doesn't fail here. Still unverified past the coach-mark blocker above -- addons-run-android-2.log failed on the step after this one, so it's unclear yet whether this step itself resolved to anything real or simply found no match and was (correctly) skipped as optional."
     },
     {
       "kind": "tap",

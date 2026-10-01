@@ -318,6 +318,19 @@ test("buildSelector maps each locator strategy to a WebdriverIO selector", () =>
   assert.strictEqual(buildSelector({ strategy: "coordinate", value: "1,2" }), null);
 });
 
+// Real bug found on a live BrowserStack iOS run: a structural xpath for
+// a blank iOS TextField resolved fine via plain getPageSource() parsing
+// but XCUITestDriver's native "xpath" locator strategy couldn't find it
+// -- "class chain" is WebDriverAgent's own natively-supported locator
+// for exactly this case (see semantic-snapshot.js's buildIosClassChain
+// and semantic-act.js's toSelector()).
+test("buildSelector formats a class-chain selector as WebdriverIO's '-ios class chain:' locator string", () => {
+  assert.strictEqual(
+    buildSelector({ strategy: "class-chain", value: "**/XCUIElementTypeTextField[1]" }),
+    "-ios class chain:**/XCUIElementTypeTextField[1]"
+  );
+});
+
 test("buildSelector combines resource-id with text for a resource-id match that also has text", () => {
   // Regression test: a real device run against ApiDemos hit this exact
   // case — every row in a ListView shares "android:id/text1" as its

@@ -182,6 +182,31 @@ function buildXPath(element) {
 }
 
 /**
+ * True for an iOS (XCUITest) tag name -- iOS's getPageSource() dump
+ * tags every node `XCUIElementType<Kind>` (`XCUIElementTypeTextField`,
+ * `XCUIElementTypeButton`, ...), where Android's uses either a
+ * `android.widget.<Kind>`/`android.view.<Kind>` or a bare Compose
+ * `View`/`ComposeView` -- never the `XCUIElementType` prefix.
+ */
+function isIosRole(tagName) {
+  return typeof tagName === "string" && tagName.startsWith("XCUIElementType");
+}
+
+/**
+ * Builds a WebDriverAgent "class chain" locator for an iOS element that
+ * has no resource-id/accessibility-id/label of its own -- see the
+ * `iosTagOccurrenceCounts` comment above for why this replaces
+ * buildXPath() on iOS rather than just reusing it. `**` means "anywhere
+ * in the tree" (no ancestor path to go stale), and the trailing
+ * `[N]` is this element's 1-based occurrence index among same-tag
+ * elements in document order, computed during the walk and stashed on
+ * the node as `__iosClassChainIndex`.
+ */
+function buildIosClassChain(element) {
+  return `**/${element.tagName}[${element.__iosClassChainIndex || 1}]`;
+}
+
+/**
  * Walks a captured accessibility tree and produces a flat, ref-indexed
  * list of every element that carries a usable label and/or identifier
  * -- the elements a semantic action could plausibly target -- plus any
@@ -208,10 +233,32 @@ function buildGroundedSnapshot(pageSourceXml) {
   // since a label TextView is typically walked immediately before the
   // input it describes in both Android's and iOS's layout trees.
   let lastLabelSeen;
+  // Found for real on a live BrowserStack iOS run: a structural xpath
+  // built the same way as Android's (ancestor tag[position] chain, see
+  // buildXPath below) was byte-for-byte reproducible across many
+  // getPageSource() polls spanning 20+ seconds of a visibly UNCHANGED
+  // screen, yet Appium's XCUITestDriver still returned "no such
+  // element" for it every time ("doNativeFind" -- i.e. not a timing/
+  // staleness issue, the native xpath engine just doesn't reliably
+  // resolve a path built from the textual page-source dump the way
+  // Android's UiAutomator2 driver does). WebDriverAgent's own "class
+  // chain" locator (`**/XCUIElementTypeTextField[2]` -- the Nth element
+  // of that type anywhere in the tree, in document order, no ancestor
+  // path at all) is the natively-supported, documented alternative for
+  // exactly this situation. Tracks, per iOS tag name, how many of that
+  // tag have been seen so far in this same document-order walk, so any
+  // iOS element that needs a last-resort positional selector can use
+  // its 1-based occurrence index instead of an ancestor xpath.
+  const iosTagOccurrenceCounts = new Map();
 
   const walk = (node, depth, nearestClickableAncestor) => {
     let clickableAncestorForChildren = nearestClickableAncestor;
     if (node.nodeType === 1 && node.getAttribute) {
+      if (isIosRole(node.tagName)) {
+        const count = (iosTagOccurrenceCounts.get(node.tagName) || 0) + 1;
+        iosTagOccurrenceCounts.set(node.tagName, count);
+        node.__iosClassChainIndex = count;
+      }
       const text = node.getAttribute("text") || node.getAttribute("label") || node.getAttribute("value");
       const contentDesc = node.getAttribute("content-desc") || node.getAttribute("name");
       const resourceId = node.getAttribute("resource-id") || undefined; // Android only
@@ -247,7 +294,11 @@ function buildGroundedSnapshot(pageSourceXml) {
           ...(isClickable !== undefined ? { clickable: isClickable } : {}),
           ...(isSecure ? { secure: true } : {}),
           ...(isBlankInput && lastLabelSeen ? { nearbyLabel: lastLabelSeen } : {}),
-          ...(isBlankInput ? { xpath: buildXPath(node) } : {}),
+          ...(isBlankInput
+            ? isIosRole(node.tagName)
+              ? { classChain: buildIosClassChain(node) }
+              : { xpath: buildXPath(node) }
+            : {}),
           // Kept only for the post-passes below, never part of the
           // returned SnapshotElement shape.
           __node: node,

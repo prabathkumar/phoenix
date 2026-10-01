@@ -86,8 +86,19 @@ function toSelector(element, options = {}) {
   if (element.label && !element.secure) return { strategy: "text", value: element.label };
   // A blank input field, or one with an ambiguous resource-id (see
   // semantic-snapshot.js's INPUT_ROLE_RE/ambiguousResourceId), has none
-  // of the above -- xpath is the last-resort locator for it, same tier
-  // the guided path already uses.
+  // of the above -- a positional locator is the last-resort for it,
+  // same tier the guided path already uses. Found for real on a live
+  // BrowserStack iOS run: a structural xpath built the same way as
+  // Android's was reproducible across 20+ seconds of polling an
+  // unchanged screen, yet XCUITestDriver's native xpath finder still
+  // returned "no such element" for it every time -- not a staleness
+  // bug, the native engine just doesn't reliably resolve that shape of
+  // path. `classChain` (set only for iOS elements, see
+  // semantic-snapshot.js's buildIosClassChain) uses WebDriverAgent's
+  // own natively-supported "class chain" locator instead, which has no
+  // ancestor path to go stale in the first place -- prefer it over
+  // `xpath` whenever both could apply.
+  if (element.classChain) return { strategy: "class-chain", value: element.classChain };
   if (element.xpath) return { strategy: "xpath", value: element.xpath };
   if (element.resourceId) return { strategy: "resource-id", value: element.resourceId };
   return undefined;

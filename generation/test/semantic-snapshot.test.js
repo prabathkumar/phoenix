@@ -387,6 +387,49 @@ test("buildGroundedSnapshot leaves clickable undefined on a tree with no clickab
   assert.strictEqual(button.clickableAncestorXPath, undefined);
 });
 
+// Real bug found on a live BrowserStack iOS run (ios2/ios3): a blank
+// XCUITestTextField with no name/label of its own got a structural
+// xpath built the same way Android's blank EditTexts do -- byte-for-
+// byte reproducible across 20+ seconds of polling a visibly unchanged
+// screen, yet XCUITestDriver's native xpath finder returned "no such
+// element" for it every single time (not a staleness bug -- the native
+// engine just doesn't reliably resolve that shape of path). See
+// semantic-snapshot.js's buildIosClassChain()/isIosRole() and
+// semantic-act.js's toSelector() for the fix: a "class chain" locator
+// instead, which WebDriverAgent natively supports and which has no
+// ancestor path to go stale in the first place.
+const IOS_LOGIN_SCREEN_WITH_BLANK_TEXT_FIELD = `<AppiumAUT><XCUIElementTypeApplication name="MyYes">
+  <XCUIElementTypeStaticText value="Yes Number" name="Yes Number" />
+  <XCUIElementTypeTextField label="" />
+  <XCUIElementTypeButton name="PASSWORD" />
+  <XCUIElementTypeStaticText value="Another Field" name="Another Field" />
+  <XCUIElementTypeTextField label="" />
+</XCUIElementTypeApplication></AppiumAUT>`;
+
+test("buildGroundedSnapshot gives a blank iOS TextField a classChain, not a structural xpath (real bug: XCUITestDriver's native xpath finder couldn't resolve a position-based path that resolved fine on Android)", () => {
+  const elements = buildGroundedSnapshot(IOS_LOGIN_SCREEN_WITH_BLANK_TEXT_FIELD);
+  const fields = elements.filter((el) => el.role === "XCUIElementTypeTextField");
+  assert.strictEqual(fields.length, 2);
+  assert.strictEqual(fields[0].classChain, "**/XCUIElementTypeTextField[1]");
+  assert.strictEqual(fields[1].classChain, "**/XCUIElementTypeTextField[2]");
+  assert.strictEqual(fields[0].xpath, undefined, "iOS elements should get classChain, never xpath");
+  assert.strictEqual(fields[1].xpath, undefined);
+});
+
+test("buildGroundedSnapshot still uses a structural xpath (not classChain) for Android's equivalent blank-input case", () => {
+  const androidBlankInput = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy>
+  <android.widget.FrameLayout>
+    <android.widget.TextView text="Yes Number" />
+    <android.widget.EditText text="" />
+  </android.widget.FrameLayout>
+</hierarchy>`;
+  const elements = buildGroundedSnapshot(androidBlankInput);
+  const field = elements.find((el) => el.role === "android.widget.EditText");
+  assert.ok(field.xpath, "Android's blank input should still get a structural xpath");
+  assert.strictEqual(field.classChain, undefined);
+});
+
 setImmediate(() => {
   if (process.exitCode) {
     console.error("\ngeneration/semantic-snapshot tests FAILED");

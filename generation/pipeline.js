@@ -390,6 +390,15 @@ function buildSelector(resolvedElement, platform = "android") {
         : `android=new UiSelector().text("${escapeForSelector(resolvedElement.value)}")`;
     case "xpath":
       return resolvedElement.value;
+    case "class-chain":
+      // WebDriverAgent/XCUITestDriver's natively-supported locator for
+      // an iOS element with no resource-id/accessibility-id/label of
+      // its own -- see semantic-snapshot.js's buildIosClassChain() and
+      // semantic-act.js's toSelector() for why this replaces a plain
+      // structural xpath on iOS (a real BrowserStack run found the
+      // native xpath finder unreliable for that shape of path, even
+      // against an unchanged screen).
+      return `-ios class chain:${resolvedElement.value}`;
     default:
       return null; // coordinate — handled separately, see synthesizeCode
   }

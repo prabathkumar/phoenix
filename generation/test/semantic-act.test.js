@@ -207,6 +207,28 @@ async function test(name, fn) {
     }
   });
 
+  await test("toSelector prefers classChain over xpath for an iOS element that has both (real bug: XCUITestDriver's native xpath finder couldn't resolve a position-based path that resolved fine on Android)", async () => {
+    const { semanticAct, restore } = loadWithFakeOllama(async () => ({ ref: 1 }));
+    try {
+      assert.deepStrictEqual(
+        semanticAct.toSelector({ classChain: "**/XCUIElementTypeTextField[1]", xpath: "/AppiumAUT/.../TextField[1]" }),
+        { strategy: "class-chain", value: "**/XCUIElementTypeTextField[1]" }
+      );
+      // No classChain computed (the Android case) -- still falls back to xpath.
+      assert.deepStrictEqual(
+        semanticAct.toSelector({ xpath: "/hierarchy/EditText[1]" }),
+        { strategy: "xpath", value: "/hierarchy/EditText[1]" }
+      );
+      // resourceId/accessibilityId/label still win over classChain when present.
+      assert.deepStrictEqual(
+        semanticAct.toSelector({ label: "Label1", classChain: "**/XCUIElementTypeTextField[1]" }),
+        { strategy: "text", value: "Label1" }
+      );
+    } finally {
+      restore();
+    }
+  });
+
   await test("toSelector prefers xpath over an ambiguousResourceId (real bug: two fields shared one resource-id)", async () => {
     const { semanticAct, restore } = loadWithFakeOllama(async () => ({ ref: 1 }));
     try {

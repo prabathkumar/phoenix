@@ -10,6 +10,12 @@
     },
     {
       "kind": "tap",
+      "instruction": "tap the CLOSE button to dismiss a popup asking to update the app to access a feature",
+      "optional": true,
+      "note": "CONFIRMED real bug on addons-run-android-6.log: the step above (\"tap Allow\", with no actual Allow dialog present yet on a freshly-loaded home screen) resolved confidently to the wrong element anyway -- the ACTIVATE SIM container -- instead of correctly returning unresolved, a worse case than bug #3's near-identical-pair confusion since \"Allow\" doesn't even textually resemble \"ACTIVATE SIM\". This is model overconfidence (guessing instead of declining), not something a test case can prevent at the source. Added defensively: the same CLOSE-recovery step already used after the LOGIN tap below, placed here too so a mis-tap anywhere on the home screen gets cleaned up before the required LOGIN step runs against a screen it can't see through a dialog. The prior run's actual failure reason was unhelpfully just \"...\" -- fixed separately at the resolver level (generation/semantic-act.js: the prompt's own example reason was a literal \"...\" placeholder the model sometimes echoed back verbatim instead of writing a real explanation)."
+    },
+    {
+      "kind": "tap",
       "instruction": "tap the LOGIN button on the home screen to open the login form"
     },
     {

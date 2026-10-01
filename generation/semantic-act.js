@@ -222,7 +222,10 @@ async function resolveSemanticAction(pageSourceXml, instruction, options = {}) {
       'match for the instruction, respond {"ref": <number>}. If no element',
       "is a confident match -- the instruction is ambiguous, refers to",
       "nothing on screen, or you're not sure -- respond",
-      '{"ref": null, "reason": "..."} instead of guessing.',
+      '{"ref": null, "reason": "<your own brief, specific explanation of',
+      'why nothing matches>"} instead of guessing. Write a real sentence',
+      "for \"reason\" -- never literally copy the words \"<your own brief...\"",
+      "from this instruction itself.",
     ].filter((line) => line !== undefined).join("\n");
 
     const result = await callOllamaJson(prompt, fused ? { images: [options.screenshotBase64] } : undefined);
@@ -232,8 +235,22 @@ async function resolveSemanticAction(pageSourceXml, instruction, options = {}) {
     }
 
     if (result.ref === null) {
-      const reason = typeof result.reason === "string" && result.reason.trim()
-        ? result.reason.trim()
+      // Real bug found on real hardware (docs/STATUS.md: addons.json,
+      // addons-run-android-6.log): the prompt's own JSON-shape example
+      // for an unresolved match showed a literal placeholder in the
+      // "reason" field, and the model sometimes echoed that placeholder
+      // back verbatim instead of writing an actual explanation --
+      // "prompt-template echoing", the same failure class already seen
+      // once before in the autonomous loop (spec's bug list). A bare
+      // echo is non-empty and passes a plain truthiness/trim() check,
+      // so it would otherwise surface as a useless reason like "...".
+      // Reworded the prompt to make the placeholder harder to copy
+      // verbatim, and treat a known-echo value the same as "no reason
+      // given" here as a second line of defense.
+      const rawReason = typeof result.reason === "string" ? result.reason.trim() : "";
+      const isPlaceholderEcho = rawReason === "..." || /^<.*>$/.test(rawReason);
+      const reason = rawReason && !isPlaceholderEcho
+        ? rawReason
         : "model did not find a confident match";
       return { resolved: false, reason };
     }

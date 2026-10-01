@@ -85,6 +85,28 @@ async function test(name, fn) {
     }
   });
 
+  await test("resolveSemanticAction falls back to a real message instead of echoing the prompt's own \"...\" placeholder (real bug: addons-run-android-6.log)", async () => {
+    const { semanticAct, restore } = loadWithFakeOllama(async () => ({ ref: null, reason: "..." }));
+    try {
+      const result = await semanticAct.resolveSemanticAction(ANDROID_LOGIN_SCREEN, "tap the checkout button");
+      assert.strictEqual(result.resolved, false);
+      assert.strictEqual(result.reason, "model did not find a confident match");
+    } finally {
+      restore();
+    }
+  });
+
+  await test("resolveSemanticAction falls back to a real message instead of echoing a <placeholder>-shaped reason", async () => {
+    const { semanticAct, restore } = loadWithFakeOllama(async () => ({ ref: null, reason: "<your own brief, specific explanation of why nothing matches>" }));
+    try {
+      const result = await semanticAct.resolveSemanticAction(ANDROID_LOGIN_SCREEN, "tap the checkout button");
+      assert.strictEqual(result.resolved, false);
+      assert.strictEqual(result.reason, "model did not find a confident match");
+    } finally {
+      restore();
+    }
+  });
+
   await test("resolveSemanticAction stays unresolved rather than trusting a hallucinated ref outside the snapshot", async () => {
     const { semanticAct, restore } = loadWithFakeOllama(async () => ({ ref: 999 }));
     try {

@@ -31,6 +31,30 @@ const { buildGroundedSnapshot, snapshotToText } = require("../generation/semanti
 
 const DEFAULT_MAX_STEPS = 10;
 
+// Found for real on a live BrowserStack iOS run (ios2): right after
+// tapping "LOGIN" on the home screen, the very next getPageSource()
+// captured a tree that still had the OLD home screen's elements
+// ("EN", "ACTIVATE SIM", "NEW TO YES?", the app-version button) AND
+// the NEW login form's elements (the "Yes Number" field, the
+// PASSWORD/USE TAC tabs) AND an already-open numeric keyboard, all at
+// once -- a snapshot taken mid-transition-animation, before the home
+// screen had finished being torn down. XCUITest's xpath is
+// index-based (iOS text fields commonly have no accessibility id of
+// their own to resolve by name/resource-id the way Android's do), so
+// the selector built from that transient tree pointed at an index
+// that no longer existed once the animation settled a moment later:
+// the next 3 attempts (the full MAX_VETO_RETRIES budget) all failed
+// with "resolved element ... is no longer on screen", using the exact
+// same now-stale xpath each time, and the loop gave up having never
+// typed anything. A brief pause after a screen-changing "tap" --
+// before the NEXT getPageSource() that any subsequent decision is
+// built from -- gives the transition a chance to finish first, so the
+// selector that gets built matches the tree the action will actually
+// run against moments later. Not needed after "type" (typing a
+// character doesn't trigger a full-screen transition the way
+// navigating to a new screen does).
+const DEFAULT_TAP_SETTLE_DELAY_MS = 800;
+
 /**
  * @typedef {Object} LoopStep
  * @property {string} instruction - the instruction the model chose for this step.
@@ -234,6 +258,10 @@ async function decideNextAction(goal, snapshotText, history, refusedAttempt) {
 async function runAutonomousLoop(driver, goal, options = {}) {
   const maxSteps = options.maxSteps || DEFAULT_MAX_STEPS;
   const platform = options.platform === "ios" ? "ios" : "android";
+  // options.sleep lets tests substitute a no-op/instant fake so the
+  // suite doesn't actually wait; defaults to a real timer otherwise.
+  const sleep = options.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const tapSettleDelayMs = options.tapSettleDelayMs ?? DEFAULT_TAP_SETTLE_DELAY_MS;
   const steps = [];
   // Found for real: a plain prompt reminder telling the model to tap a
   // tab/toggle before typing over an already-filled field did NOT
@@ -346,6 +374,14 @@ async function runAutonomousLoop(driver, goal, options = {}) {
         }
       } else {
         consecutiveNoOpSteps = 0;
+      }
+
+      // See DEFAULT_TAP_SETTLE_DELAY_MS's comment: let a screen
+      // transition a successful tap just triggered finish settling
+      // before the NEXT iteration reads the page source any further
+      // decision/resolution will be built from.
+      if (decision.kind === "tap" && tapSettleDelayMs > 0) {
+        await sleep(tapSettleDelayMs);
       }
     }
 

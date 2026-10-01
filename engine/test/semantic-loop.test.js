@@ -76,7 +76,17 @@ function freshLoopWithFakes({ decisions = [], executionResults = [] } = {}) {
     },
   };
 
-  const loop = require(LOOP_PATH);
+  const realLoop = require(LOOP_PATH);
+  // Tests don't care about the real post-tap settle delay (added for
+  // the real ios2 stale-element bug -- see semantic-loop.js's
+  // DEFAULT_TAP_SETTLE_DELAY_MS) and shouldn't have to actually wait
+  // 800ms per tap decision; default it to 0 here unless a test
+  // explicitly asks to exercise the delay itself.
+  const loop = {
+    ...realLoop,
+    runAutonomousLoop: (driver, goal, options = {}) =>
+      realLoop.runAutonomousLoop(driver, goal, { tapSettleDelayMs: 0, ...options }),
+  };
   return {
     loop,
     restore: () => {
@@ -615,6 +625,41 @@ function fakeDriver(pageSource = SIMPLE_SCREEN) {
       const result = await loop.runAutonomousLoop(fakeDriver(), "log in");
       assert.strictEqual(result.stoppedBecause, "goal-achieved");
       assert.strictEqual(result.steps.length, 4);
+    } finally {
+      restore();
+    }
+  });
+
+  await run("runAutonomousLoop pauses (tapSettleDelayMs) after a successful tap but not after a successful type (real bug: ios2 captured a mid-transition-animation snapshot right after tapping LOGIN, built a selector from it, and the element was gone by the time the next step tried to act on it)", async () => {
+    const { loop: wrappedLoop, restore } = freshLoopWithFakes({
+      decisions: [
+        { instruction: "tap the Login button", kind: "tap" },
+        { instruction: "type the Yes Number into the edit text", kind: "type", text: "01166114421" },
+        { done: true },
+      ],
+      executionResults: [
+        { success: true, selector: { strategy: "accessibility-id", value: "LOGIN" }, diffSummary: 'Appeared: "Yes Number".' },
+        { success: true, selector: { strategy: "xpath", value: "/hierarchy/TextField[1]" }, diffSummary: 'Appeared: "[REDACTED]".' },
+      ],
+    });
+    // freshLoopWithFakes' wrapper defaults tapSettleDelayMs to 0 for
+    // every other test -- bypass it here to exercise the real delay
+    // logic, with a fake `sleep` so the test doesn't actually wait.
+    const realLoop = require(LOOP_PATH);
+    const sleepCalls = [];
+    const fakeSleep = (ms) => {
+      sleepCalls.push(ms);
+      return Promise.resolve();
+    };
+    try {
+      const result = await realLoop.runAutonomousLoop(fakeDriver(), "log in", {
+        tapSettleDelayMs: 800,
+        sleep: fakeSleep,
+      });
+      assert.strictEqual(result.stoppedBecause, "goal-achieved");
+      // One tap, one type, then "done" -- the pause should fire exactly
+      // once (after the tap), not after the type and not after "done".
+      assert.deepStrictEqual(sleepCalls, [800]);
     } finally {
       restore();
     }

@@ -113,7 +113,16 @@ function toSelector(element, options = {}) {
   // element again. Skip the live-text strategy entirely for a secure
   // field (semantic-snapshot.js's `secure` flag) and fall through to
   // the stable xpath/resource-id below instead.
-  if (element.label && !element.secure) return { strategy: "text", value: element.label };
+  // Found for real on a live BrowserStack iOS run (ios15): the
+  // ambiguous-accessibility-id guard above correctly skips
+  // `accessibility-id` for a duplicate-named element like the LOGIN
+  // button, but the element's `label` is exactly as duplicated as its
+  // accessibility id (both come from the same "LOGIN" name) -- this
+  // block had no ambiguity check of its own, so it caught the skip and
+  // built a `label == "LOGIN" OR value == "LOGIN"` predicate that was
+  // just as ambiguous, resolving to the same first-matching (hidden)
+  // element every time. Must also fall through to classChain here.
+  if (element.label && !element.secure && !element.ambiguousAccessibilityId) return { strategy: "text", value: element.label };
   // A blank input field, or one with an ambiguous resource-id (see
   // semantic-snapshot.js's INPUT_ROLE_RE/ambiguousResourceId), has none
   // of the above -- a positional locator is the last-resort for it,

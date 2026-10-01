@@ -273,6 +273,23 @@ async function test(name, fn) {
     }
   });
 
+  await test("toSelector prefers classChain over the label/text strategy for a duplicate iOS accessibility id, not just over accessibility-id itself (real bug, ios15: the ambiguous-accessibility-id guard skipped accessibility-id as intended, but then fell through to a just-as-ambiguous label predicate instead of classChain, since the label block had no ambiguity check of its own)", async () => {
+    const { semanticAct, restore } = loadWithFakeOllama(async () => ({ ref: 1 }));
+    try {
+      assert.deepStrictEqual(
+        semanticAct.toSelector({
+          accessibilityId: "LOGIN",
+          ambiguousAccessibilityId: true,
+          label: "LOGIN",
+          classChain: '**/XCUIElementTypeButton[`name == "LOGIN" AND visible == 1`]',
+        }),
+        { strategy: "class-chain", value: '**/XCUIElementTypeButton[`name == "LOGIN" AND visible == 1`]' }
+      );
+    } finally {
+      restore();
+    }
+  });
+
   await test("toSelector prefers classChain over xpath for an iOS element that has both (real bug: XCUITestDriver's native xpath finder couldn't resolve a position-based path that resolved fine on Android)", async () => {
     const { semanticAct, restore } = loadWithFakeOllama(async () => ({ ref: 1 }));
     try {

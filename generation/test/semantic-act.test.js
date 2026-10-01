@@ -223,6 +223,33 @@ async function test(name, fn) {
     }
   });
 
+  await test("toSelector prefers classChain over accessibility-id for an iOS secure field that has both (real bug, ios11, login-script mode's first real-hardware run): this app's password field reports accessibility id \"PASSWORD\" while empty, derived from its placeholder, but that name vanishes from the tree once real text is typed -- a setValue() against \"~PASSWORD\" can succeed once and then fail on an internal re-resolve with \"element wasn't found\", the same live-selector failure bug 13 already fixed for `label`", async () => {
+    const { semanticAct, restore } = loadWithFakeOllama(async () => ({ ref: 1 }));
+    try {
+      assert.deepStrictEqual(
+        semanticAct.toSelector({
+          secure: true,
+          accessibilityId: "PASSWORD",
+          label: "•••••••••",
+          classChain: "**/XCUIElementTypeSecureTextField[1]",
+        }),
+        { strategy: "class-chain", value: "**/XCUIElementTypeSecureTextField[1]" }
+      );
+      // Android's secure fields never get a classChain at all (that's
+      // only ever computed for iOS, see needsIosPositionalLocator in
+      // semantic-snapshot.js) -- without one to fall back to, a secure
+      // field's accessibility id is still trusted exactly as before
+      // (bug 8 was only ever about the live masked *text*, not the
+      // accessibility id), so this fix must not touch that path.
+      assert.deepStrictEqual(
+        semanticAct.toSelector({ secure: true, label: "•••••••", accessibilityId: "a11y1" }),
+        { strategy: "accessibility-id", value: "a11y1" }
+      );
+    } finally {
+      restore();
+    }
+  });
+
   await test("toSelector prefers classChain over xpath for an iOS element that has both (real bug: XCUITestDriver's native xpath finder couldn't resolve a position-based path that resolved fine on Android)", async () => {
     const { semanticAct, restore } = loadWithFakeOllama(async () => ({ ref: 1 }));
     try {

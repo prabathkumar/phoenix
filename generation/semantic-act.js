@@ -73,7 +73,26 @@ function toSelector(element, options = {}) {
   // first), so semantic-snapshot.js flags this case and also computes
   // an xpath for it; prefer that over the ambiguous resource-id.
   if (element.resourceId && !element.ambiguousResourceId) return { strategy: "resource-id", value: element.resourceId };
-  if (element.accessibilityId) return { strategy: "accessibility-id", value: element.accessibilityId };
+  // Found for real on a live BrowserStack iOS run (login-script mode,
+  // first real-hardware run): an iOS secure field's accessibility id
+  // can be just as live as its label -- this app's password field
+  // reports accessibility id "PASSWORD" while empty (apparently derived
+  // from its placeholder), but that name disappears from the
+  // accessibility tree entirely once real text is typed into it (iOS's
+  // own privacy behavior for secure fields). A `setValue()` call
+  // against "~PASSWORD" can succeed once, then internally re-resolve
+  // the same selector a moment later (to verify/retry) and fail with
+  // "element wasn't found" -- the exact live-selector failure bug 13
+  // already fixed for `label`, just surfacing through `accessibilityId`
+  // instead. Only skip it when there's a classChain to fall back to
+  // (i.e. this is one of bug 13's iOS secure fields, see
+  // needsIosPositionalLocator in semantic-snapshot.js) -- Android's
+  // secure fields have no classChain and their accessibility id IS
+  // stable (bug 8 was only ever about Android's live masked *text*),
+  // so this must not touch the existing, already-correct Android path.
+  if (element.accessibilityId && !(element.secure && element.classChain)) {
+    return { strategy: "accessibility-id", value: element.accessibilityId };
+  }
   // Found for real on a live BrowserStack run: a password field's
   // `label` is populated from its own masked display text (e.g.
   // "•••••••") once something has been typed into it -- that text

@@ -283,6 +283,19 @@ const LOGIN_SCRIPT_STEPS = Object.freeze([
   // as a separate model-planned step; this makes it an explicit, fixed
   // step instead of relying on resolveSemanticAction to infer it.
   { kind: "tap", instruction: "tap the PASSWORD tab to switch the form into password-entry mode" },
+  // Real bug found on real hardware (ios13): WebDriver reported
+  // elementClear/elementSendKeys succeeding against the real secure
+  // field (resolved correctly via classChain -- bugs 12/13/19/20 all
+  // confirmed working) with no error at all, yet the password visibly
+  // never made it into the field (confirmed by watching the BrowserStack
+  // session video). This app's secure field apparently needs an actual
+  // tap to focus/engage its keyboard before it will accept
+  // programmatically-injected keystrokes -- WebDriverAgent can report a
+  // clean elementSendKeys even when the custom secure entry never
+  // actually received it. The plain phone/account field (not secure)
+  // didn't have this problem. Fixed by tapping the field first, exactly
+  // like a real user would, before sending the text.
+  { kind: "tap", instruction: "tap the password field to focus it" },
   { kind: "type", instruction: "type the password into the password field", text: () => LOGIN_PASSWORD },
   { kind: "tap", instruction: "tap the LOGIN button to submit the login form" },
 ]);

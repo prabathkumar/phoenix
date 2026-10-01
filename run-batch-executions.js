@@ -269,6 +269,20 @@ const LOGIN_SCRIPT_STEPS = Object.freeze([
   { kind: "tap", instruction: "tap the Allow button to dismiss a system permission dialog", optional: true },
   { kind: "tap", instruction: "tap the LOGIN button on the home screen to open the login form" },
   { kind: "type", instruction: "type the phone number into the phone/account number field", text: () => LOGIN_PHONE },
+  // Real bug found on real hardware (ios11/ios12): the login form's
+  // "PASSWORD" accessibility id does NOT belong to the password input
+  // at all -- confirmed directly in the page source, it's a separate
+  // XCUIElementTypeButton (a tab, exactly like Android's PASSWORD tab
+  // from the earlier Android bugs), only switching the form into
+  // password-entry mode when tapped. Without this explicit tap first,
+  // resolveSemanticAction's "type the password" instruction kept
+  // matching that same tab button instead of the real (and still
+  // hidden) secure field -- a setValue() against it could even succeed
+  // once harmlessly, then fail on an internal re-resolve. The working
+  // "loop" mode runs (ios6, ios10) always included this tap, implicitly,
+  // as a separate model-planned step; this makes it an explicit, fixed
+  // step instead of relying on resolveSemanticAction to infer it.
+  { kind: "tap", instruction: "tap the PASSWORD tab to switch the form into password-entry mode" },
   { kind: "type", instruction: "type the password into the password field", text: () => LOGIN_PASSWORD },
   { kind: "tap", instruction: "tap the LOGIN button to submit the login form" },
 ]);

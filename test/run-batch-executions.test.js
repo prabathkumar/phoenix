@@ -327,6 +327,7 @@ test("runOneLoginScriptIteration runs the fixed sequence in order and reports su
           "tap the Allow button to dismiss a system permission dialog",
           "tap the LOGIN button on the home screen to open the login form",
           "type the phone number into the phone/account number field",
+          "tap the PASSWORD tab to switch the form into password-entry mode",
           "type the password into the password field",
           "tap the LOGIN button to submit the login form",
         ]
@@ -335,7 +336,7 @@ test("runOneLoginScriptIteration runs the fixed sequence in order and reports su
       // confirms the fixed sequence (not a model) decided what to type
       // where.
       assert.strictEqual(calls[2].text, "0123456789");
-      assert.strictEqual(calls[3].text, "secret123");
+      assert.strictEqual(calls[4].text, "secret123");
       assert.strictEqual(deleteSessionCalls.length, 1, "session must be torn down exactly once");
     }
   );

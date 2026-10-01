@@ -1,5 +1,7 @@
 const assert = require("assert");
-const { splitBatchCounts, summarizeBatchResults, computeModeCounts, parseBatchModes } = require("../run-batch-executions");
+const fs = require("fs");
+const path = require("path");
+const { splitBatchCounts, summarizeBatchResults, computeModeCounts, parseBatchModes, writeReport, OUTPUT_DIR } = require("../run-batch-executions");
 
 const modulePath = require.resolve("../run-batch-executions");
 
@@ -244,6 +246,69 @@ test("parseBatchModes falls back to all three when every named mode is invalid",
   } finally {
     if (previous === undefined) delete process.env.PHOENIX_BATCH_MODES;
     else process.env.PHOENIX_BATCH_MODES = previous;
+  }
+});
+
+// Real bug found on a live BrowserStack iOS run (ios6): an infra-level
+// library crash (an unhandled rejection from WebdriverIO's own HTTP
+// client, raced by a slow/flaky BrowserStack response -- not a Phoenix
+// selector bug) killed the whole process with no "FAILED" line, no
+// summary, and NO REPORT FILE WRITTEN AT ALL, silently losing every
+// iteration's result that had already completed. writeReport() is the
+// fix: pulled out of main() so both a clean finish and the new crash
+// handlers (process.on("unhandledRejection"/"uncaughtException")) can
+// call the same code path and never lose what's already been collected.
+test("writeReport writes a normal (non-crashed) report with no crashed/crashReason fields", () => {
+  const results = [{ mode: "loop", success: true, durationMs: 100 }];
+  const reportPath = writeReport(results);
+  try {
+    assert.ok(reportPath.startsWith(OUTPUT_DIR));
+    const written = JSON.parse(fs.readFileSync(reportPath, "utf8"));
+    assert.deepStrictEqual(written.results, results);
+    assert.strictEqual(written.crashed, undefined);
+    assert.strictEqual(written.crashReason, undefined);
+    assert.strictEqual(written.summary.total, 1);
+  } finally {
+    fs.unlinkSync(reportPath);
+  }
+});
+
+test("writeReport marks a crash-salvaged report as crashed and includes the (redacted) reason, without losing the results collected before the crash", () => {
+  const results = [
+    { mode: "loop", success: true, durationMs: 100 },
+    { mode: "loop", success: true, durationMs: 150 },
+  ];
+  const reportPath = writeReport(results, new Error("onCancel handler was attached after the promise settled"));
+  try {
+    const written = JSON.parse(fs.readFileSync(reportPath, "utf8"));
+    assert.strictEqual(written.crashed, true);
+    assert.ok(written.crashReason.includes("onCancel handler was attached after the promise settled"));
+    // The whole point: nothing collected before the crash is lost.
+    assert.deepStrictEqual(written.results, results);
+    assert.strictEqual(written.summary.total, 2);
+  } finally {
+    fs.unlinkSync(reportPath);
+  }
+});
+
+test("writeReport redacts a configured credential if it leaks into the crash error message", () => {
+  const previous = { phone: process.env.PHOENIX_BATCH_LOGIN_PHONE };
+  process.env.PHOENIX_BATCH_LOGIN_PHONE = "0123456789";
+  delete require.cache[modulePath];
+  const freshModule = require(modulePath);
+  try {
+    const reportPath = freshModule.writeReport([], new Error("failed while typing 0123456789 into the field"));
+    try {
+      const written = JSON.parse(fs.readFileSync(reportPath, "utf8"));
+      assert.ok(!written.crashReason.includes("0123456789"), "leaked credential must be redacted from the saved crash reason");
+      assert.ok(written.crashReason.includes("[REDACTED]"));
+    } finally {
+      fs.unlinkSync(reportPath);
+    }
+  } finally {
+    if (previous.phone === undefined) delete process.env.PHOENIX_BATCH_LOGIN_PHONE;
+    else process.env.PHOENIX_BATCH_LOGIN_PHONE = previous.phone;
+    delete require.cache[modulePath];
   }
 });
 

@@ -342,23 +342,21 @@ async function main() {
     console.log("[run-batch-executions] login credentials supplied via env for loop mode (not logged, not written to the report)");
   }
 
-  const results = [];
-
+  // Module-level (not a local const) so the crash handlers below can
+  // still see and salvage whatever's been collected so far if the
+  // process dies mid-batch -- see their comment for why that matters.
   for (let i = 1; i <= counts.guided; i += 1) {
-    results.push(await runIteration("guided", i, { platform }));
+    resultsSoFar.push(await runIteration("guided", i, { platform }));
   }
   for (let i = 1; i <= counts.semantic; i += 1) {
-    results.push(await runIteration("semantic", i, { platform, instruction }));
+    resultsSoFar.push(await runIteration("semantic", i, { platform, instruction }));
   }
   for (let i = 1; i <= counts.loop; i += 1) {
-    results.push(await runIteration("loop", i, { platform, goal, maxSteps }));
+    resultsSoFar.push(await runIteration("loop", i, { platform, goal, maxSteps }));
   }
 
-  const summary = summarizeBatchResults(results);
-
-  fs.mkdirSync(OUTPUT_DIR, { recursive: true });
-  const reportPath = path.join(OUTPUT_DIR, `${Date.now()}.json`);
-  fs.writeFileSync(reportPath, JSON.stringify({ summary, results }, null, 2), "utf8");
+  const reportPath = writeReport(resultsSoFar);
+  const summary = summarizeBatchResults(resultsSoFar);
 
   console.log("\n[run-batch-executions] ==== SUMMARY ====");
   console.log(`Total: ${summary.total}  Succeeded: ${summary.succeeded}  Failed: ${summary.failed}`);
@@ -368,11 +366,71 @@ async function main() {
   console.log(`[run-batch-executions] full report: ${reportPath}`);
 }
 
+// Accumulates every iteration's result as main() produces it (not just
+// returned at the end) -- see writeReport()/the crash handlers below
+// for why a batch needs this to survive a mid-run crash rather than
+// losing everything.
+const resultsSoFar = [];
+
+/**
+ * Writes whatever's in `results` to a timestamped report file, same
+ * shape whether the batch finished cleanly or was cut short by a
+ * crash (see `crashed`/`crashReason`, both omitted on a clean finish).
+ * Pulled out of main() so the crash handlers below can call it too.
+ */
+function writeReport(results, crashInfo) {
+  fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+  const reportPath = path.join(OUTPUT_DIR, `${Date.now()}.json`);
+  const summary = summarizeBatchResults(results);
+  fs.writeFileSync(
+    reportPath,
+    JSON.stringify({ summary, results, ...(crashInfo ? { crashed: true, crashReason: redactSecrets(String(crashInfo)) } : {}) }, null, 2),
+    "utf8"
+  );
+  return reportPath;
+}
+
+// Real bug found on a live BrowserStack iOS run (ios6): a slow/flaky
+// BrowserStack response raced WebdriverIO's own HTTP client's request-
+// cancellation logic ("got"/"p-cancelable" -- an infra-level library
+// issue, not a Phoenix selector bug) and threw an unhandled rejection
+// well outside main()'s own await chain, which main().catch() below
+// can't see at all. Node's default behavior for an unhandled rejection
+// is to crash the process immediately -- which it did here, with a raw
+// stack trace, no "FAILED" line, no summary, and (critically) NO
+// REPORT FILE WRITTEN AT ALL, silently losing every iteration's result
+// that had already completed. Harmless for a 1-iteration debug run,
+// but this harness exists specifically to run batches of up to 100
+// real-device iterations (see this file's header) -- losing all of
+// them to one flaky network blip partway through is a real problem a
+// bigger batch WILL eventually hit. These handlers can't make the
+// crashed iteration succeed (the promise/connection state is already
+// corrupted), but they can make sure nothing already collected is lost
+// and that the person running this sees a clear reason instead of a
+// raw library stack trace.
+function handleFatalCrash(err) {
+  console.error("[run-batch-executions] fatal error (likely an infra/network issue, not a Phoenix bug) -- salvaging results collected so far:", err);
+  if (resultsSoFar.length > 0) {
+    const reportPath = writeReport(resultsSoFar, err);
+    console.error(`[run-batch-executions] partial report (${resultsSoFar.length} iteration(s)) written to: ${reportPath}`);
+  } else {
+    console.error("[run-batch-executions] no iterations had completed yet -- nothing to salvage.");
+  }
+  process.exit(1);
+}
 if (require.main === module) {
-  main().catch((err) => {
-    console.error("[run-batch-executions] failed:", err);
-    process.exit(1);
-  });
+  // Registered only when actually running as the batch script, not
+  // when required as a library (e.g. by this file's own tests, which
+  // reload the module repeatedly via require.cache -- registering
+  // these unconditionally at module scope would pile up a fresh global
+  // listener on every such reload).
+  process.on("unhandledRejection", handleFatalCrash);
+  process.on("uncaughtException", handleFatalCrash);
+  // A rejection that propagates through main()'s own await chain (e.g.
+  // runIteration() itself throwing) hits this handler, not the
+  // unhandledRejection one above -- same "don't lose whatever's
+  // already in resultsSoFar" fix applies here too.
+  main().catch((err) => handleFatalCrash(err));
 }
 
 module.exports = {
@@ -383,4 +441,6 @@ module.exports = {
   sanitizeStepsForReport,
   parseBatchModes,
   computeModeCounts,
+  writeReport,
+  OUTPUT_DIR,
 };

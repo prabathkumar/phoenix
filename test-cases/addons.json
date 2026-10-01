@@ -1,0 +1,67 @@
+{
+  "name": "addons",
+  "description": "UNVERIFIED FIRST DRAFT -- blind-authored from a plain-language description only, never run against real hardware. Login into the app, close any post-login notification dialogs, view the Add-ons screen, then log out. Steps 1-7 (dismiss system dialog through submit) are copied from the already-proven test-cases/login.json sequence (bugs 18-23, closed out end to end on real BrowserStack hardware for both platforms); steps 8+ (notifications, Add-ons, logout) are new guesses about this app's UI and have NOT been confirmed against a real screen. Expect this file to need the same bug-by-bug correction login.json did -- run it once via PHOENIX_BATCH_MODES=test-case, PHOENIX_TEST_CASE_FILE=test-cases/addons.json, and report back whatever the log/report actually shows so the guessed steps can be fixed from real evidence, not another guess.",
+  "requiredEnv": ["PHOENIX_BATCH_LOGIN_PHONE", "PHOENIX_BATCH_LOGIN_PASSWORD"],
+  "steps": [
+    {
+      "kind": "tap",
+      "instruction": "tap the Allow button to dismiss a system permission dialog",
+      "optional": true
+    },
+    {
+      "kind": "tap",
+      "instruction": "tap the LOGIN button on the home screen to open the login form"
+    },
+    {
+      "kind": "type",
+      "instruction": "type the phone number into the phone/account number field",
+      "text": "${PHOENIX_BATCH_LOGIN_PHONE}"
+    },
+    {
+      "kind": "tap",
+      "instruction": "tap the PASSWORD tab to switch the form into password-entry mode"
+    },
+    {
+      "kind": "tap",
+      "instruction": "tap the password field to focus it"
+    },
+    {
+      "kind": "type",
+      "instruction": "type the password into the password field",
+      "text": "${PHOENIX_BATCH_LOGIN_PASSWORD}"
+    },
+    {
+      "kind": "tap",
+      "instruction": "tap the LOGIN button to submit the login form"
+    },
+    {
+      "kind": "tap",
+      "instruction": "tap the close or X button to dismiss a post-login notification popup",
+      "optional": true,
+      "note": "GUESS: this app may show one or more notification/promo dialogs right after a successful login (separate from the pre-login system permission dialog in step 1). Repeated below in case more than one stacks up -- the real count/wording needs a live run to confirm."
+    },
+    {
+      "kind": "tap",
+      "instruction": "tap the close or X button to dismiss a second post-login notification popup",
+      "optional": true,
+      "note": "GUESS: same as the step above, for a possible second stacked dialog. Delete this step once a real run shows how many (if any) actually appear."
+    },
+    {
+      "kind": "tap",
+      "instruction": "tap the Add-ons tab or menu item",
+      "optional": false,
+      "note": "GUESS: exact label/position unconfirmed -- docs/REAL_DEVICE_BATCH_TESTING.md's own test-case example already guesses \"tap the Add-ons tab\", reused here, but it has never been run against this app's real screen either."
+    },
+    {
+      "kind": "tap",
+      "instruction": "tap the Profile or Account menu to find the logout option",
+      "optional": true,
+      "note": "GUESS: logout may be directly visible on the Add-ons/home screen, or may require first opening a Profile/Account/More menu -- unconfirmed. Marked optional so a run where logout is already visible doesn't fail here."
+    },
+    {
+      "kind": "tap",
+      "instruction": "tap the LOGOUT or Log Out button to sign out of the app",
+      "optional": false
+    }
+  ]
+}

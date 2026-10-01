@@ -23,6 +23,19 @@
 
 const fs = require("fs");
 
+// Default pause for a "wait" step when the step doesn't specify its own
+// durationMs. Exists for a real timing gap found on real hardware
+// (docs/STATUS.md, addons.json bug: the post-login-submit notification
+// permission dialog appeared at a variable delay across two otherwise
+// identical runs -- fast enough for two "tap Allow" steps to catch it
+// in one run, and still not up by the time of the following step in
+// another). 3s matches the slower observed delay with headroom.
+const DEFAULT_WAIT_MS = 3000;
+
+function defaultSleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 // Matches "${ENV_VAR_NAME}" exactly (the whole string, not a
 // substring) -- a test case's `text` field is either a literal string
 // typed as-is, or a placeholder naming an environment variable to read
@@ -35,7 +48,7 @@ const ENV_PLACEHOLDER_RE = /^\$\{([A-Z0-9_]+)\}$/;
 
 /**
  * Loads and validates a test-case JSON file. Each step must have a
- * `kind` ("tap" or "type") and an `instruction` (the plain-language
+ * `kind` ("tap", "type", "scroll", or "wait") and an `instruction` (the plain-language
  * text handed to the same resolver `executeSemanticAction` already
  * uses); "type" steps also need a `text` field. `optional: true` marks
  * a step that's allowed to not match anything on screen without
@@ -59,8 +72,8 @@ function loadTestCaseSteps(filePath) {
   }
   steps.forEach((step, i) => {
     if (!step || typeof step !== "object") throw new Error(`test case file "${filePath}": step ${i} is not an object`);
-    if (step.kind !== "tap" && step.kind !== "type" && step.kind !== "scroll") {
-      throw new Error(`test case file "${filePath}": step ${i} has invalid "kind" (must be "tap", "type", or "scroll"): ${step.kind}`);
+    if (step.kind !== "tap" && step.kind !== "type" && step.kind !== "scroll" && step.kind !== "wait") {
+      throw new Error(`test case file "${filePath}": step ${i} has invalid "kind" (must be "tap", "type", "scroll", or "wait"): ${step.kind}`);
     }
     if (typeof step.instruction !== "string" || !step.instruction) {
       throw new Error(`test case file "${filePath}": step ${i} is missing a non-empty "instruction"`);
@@ -150,18 +163,33 @@ function resolveSteps(steps) {
  * the original hardcoded `text: () => LOGIN_PASSWORD` closures
  * effectively had) avoids that race entirely.
  *
+ * A `"wait"` step is a pure timing pause -- no instruction resolution,
+ * no device action, and so no call to `executeSemanticAction` at all.
+ * It exists for a real race found on real hardware: the post-submit
+ * notification-permission dialog appeared at a variable delay across
+ * two otherwise-identical runs, fast enough in one for the following
+ * "tap Allow" steps to catch it, and still not up by the next step in
+ * another -- a step sequence has no way to out-guess that without an
+ * explicit pause. `durationMs` defaults to `DEFAULT_WAIT_MS` (3000) if
+ * not given. `sleepFn` is injected the same way `executeSemanticAction`
+ * is, so tests can run a "wait" step without actually waiting.
+ *
  * @param {Object} driver - a started WebdriverIO session
- * @param {Array<{kind: string, instruction: string, text?: string, direction?: string, optional?: boolean}>} steps
- * @param {{platform: string, executeSemanticAction: Function}} options -
+ * @param {Array<{kind: string, instruction: string, text?: string, direction?: string, durationMs?: number, optional?: boolean}>} steps
+ * @param {{platform: string, executeSemanticAction: Function, sleepFn?: Function}} options -
  *   `executeSemanticAction` is injected (not required() here) so
  *   callers/tests can fake it the same way existing tests already do
  *   for run-batch-executions.js.
  * @returns {Promise<{success: boolean, detail: string}>}
  */
-async function runScriptSteps(driver, steps, { platform, executeSemanticAction }) {
+async function runScriptSteps(driver, steps, { platform, executeSemanticAction, sleepFn = defaultSleep }) {
   const resolvedSteps = steps.map((step) => ({ ...step, text: resolveStepText(step) }));
   let lastResult;
   for (const step of resolvedSteps) {
+    if (step.kind === "wait") {
+      await sleepFn(typeof step.durationMs === "number" ? step.durationMs : DEFAULT_WAIT_MS);
+      continue;
+    }
     const result = await executeSemanticAction(driver, step.instruction, { kind: step.kind, text: step.text, platform, direction: step.direction });
     if (!result.success) {
       if (step.optional) continue;

@@ -215,6 +215,55 @@ function writeTempJson(content) {
     assert.deepStrictEqual(calls, ["required step"]);
   });
 
+  await run("runScriptSteps performs a \"wait\" step as a pure pause -- no call to executeSemanticAction, default duration when none given", async () => {
+    const sleepCalls = [];
+    const executeCalls = [];
+    const result = await runScriptSteps(
+      {},
+      [
+        { kind: "tap", instruction: "tap LOGIN to submit" },
+        { kind: "wait", instruction: "wait for the notification dialog to appear" },
+        { kind: "tap", instruction: "tap the Allow button" },
+      ],
+      {
+        platform: "android",
+        executeSemanticAction: async (driver, instruction) => {
+          executeCalls.push(instruction);
+          return { success: true, diffSummary: `did: ${instruction}` };
+        },
+        sleepFn: async (ms) => {
+          sleepCalls.push(ms);
+        },
+      }
+    );
+    assert.strictEqual(result.success, true);
+    assert.deepStrictEqual(sleepCalls, [3000]);
+    assert.deepStrictEqual(executeCalls, ["tap LOGIN to submit", "tap the Allow button"]);
+  });
+
+  await run("runScriptSteps honors a \"wait\" step's own durationMs instead of the default", async () => {
+    const sleepCalls = [];
+    await runScriptSteps(
+      {},
+      [{ kind: "wait", instruction: "wait a custom amount", durationMs: 500 }],
+      {
+        platform: "android",
+        executeSemanticAction: async () => ({ success: true }),
+        sleepFn: async (ms) => {
+          sleepCalls.push(ms);
+        },
+      }
+    );
+    assert.deepStrictEqual(sleepCalls, [500]);
+  });
+
+  await run("loadTestCaseSteps accepts a \"wait\" step with no text", async () => {
+    const file = writeTempJson([{ kind: "wait", instruction: "wait for the login submission to settle", durationMs: 3000 }]);
+    const steps = loadTestCaseSteps(file);
+    assert.strictEqual(steps.length, 1);
+    assert.strictEqual(steps[0].kind, "wait");
+  });
+
   if (process.exitCode) {
     console.error("\nengine/test-case-runner tests FAILED");
     process.exit(1);

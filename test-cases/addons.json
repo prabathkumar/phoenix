@@ -47,6 +47,12 @@
       "instruction": "tap the LOGIN button to submit the login form"
     },
     {
+      "kind": "wait",
+      "instruction": "wait for the login submission to finish and the notification-permission dialog to appear",
+      "durationMs": 3000,
+      "note": "CONFIRMED real bug on addons-run-android-5.log, a timing race rather than a wording/sequencing/resolver bug: login submission shows a progress spinner for a variable amount of time before the native 'Allow MyYes to send you notifications?' dialog actually appears. On addons-run-android-4.log the dialog was already up by the time the two 'tap Allow' steps below ran, so both resolved fine. On this run it wasn't -- both Allow taps correctly found nothing (optional, skipped as no-ops) while the spinner was still showing, and by the time the NEXT step (tap Add-ons) ran, the dialog had finally appeared and blocked it, failing the whole run with 'No elements match' since that step isn't optional. No step-sequence fix could have caught this: the dialog's arrival time varies run to run. Added this fixed pause (needed engine support: a new 'wait' step kind in engine/test-case-runner.js, since nothing could previously pause between steps) to give the dialog time to show up before either Allow-dismiss attempt runs."
+    },
+    {
       "kind": "tap",
       "instruction": "tap the Allow button to dismiss a system permission dialog",
       "optional": true,

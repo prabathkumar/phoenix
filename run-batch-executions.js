@@ -243,6 +243,63 @@ async function runOneLoopIteration(platform, goal, maxSteps) {
   }
 }
 
+// Fixed, deterministic login sequence -- NOT a goal handed to the
+// autonomous loop for the model to plan its own way through. Added
+// after the "loop" mode repeatedly got stuck at the exact same point
+// on real iOS hardware (ios7, ios10 -- see docs/STATUS.md bugs 15/17):
+// once both fields were correctly filled in, the model would not
+// reliably recognize "data entry is done, submit now" and instead
+// wandered into a decoy element, re-verified already-correct field
+// values, or re-tapped the home screen's own LOGIN button (which
+// shares its exact name with the form's submit button) before the
+// password was even typed. Prompt wording changes didn't fix this
+// across two separate attempts, so instead of asking the model to
+// decide the sequence, this mode hardcodes it: each step still uses
+// executeSemanticAction()'s existing per-instruction resolver (the
+// same resolver already proven correct for iOS classChain/secure-field
+// selectors, bugs 12/13), but which step runs next is fixed code, not
+// a model decision -- eliminating the exact failure class seen above.
+const LOGIN_SCRIPT_STEPS = Object.freeze([
+  // Not every run shows this -- a fresh BrowserStack device/app install
+  // can surface iOS's own system notification-permission dialog (see
+  // bug 16), but a reused device/session may not. Optional: if
+  // resolveSemanticAction() can't confidently match it (nothing to
+  // match against), that's not a failure of the login sequence itself,
+  // so this step is skipped rather than aborting the whole run.
+  { kind: "tap", instruction: "tap the Allow button to dismiss a system permission dialog", optional: true },
+  { kind: "tap", instruction: "tap the LOGIN button on the home screen to open the login form" },
+  { kind: "type", instruction: "type the phone number into the phone/account number field", text: () => LOGIN_PHONE },
+  { kind: "type", instruction: "type the password into the password field", text: () => LOGIN_PASSWORD },
+  { kind: "tap", instruction: "tap the LOGIN button to submit the login form" },
+]);
+
+async function runOneLoginScriptIteration(platform) {
+  if (!LOGIN_PHONE || !LOGIN_PASSWORD) {
+    return {
+      success: false,
+      detail: "login-script mode requires PHOENIX_BATCH_LOGIN_PHONE and PHOENIX_BATCH_LOGIN_PASSWORD to be set",
+    };
+  }
+  const { startSession } = require(platform === "ios" ? "./engine/ios-session" : "./engine/session");
+  const driver = await startSession();
+  try {
+    await sleep(STARTUP_DELAY_MS);
+    let lastResult;
+    for (const step of LOGIN_SCRIPT_STEPS) {
+      const text = typeof step.text === "function" ? step.text() : undefined;
+      const result = await executeSemanticAction(driver, step.instruction, { kind: step.kind, text, platform });
+      if (!result.success) {
+        if (step.optional) continue;
+        return { success: false, detail: `step "${step.instruction}" failed: ${result.reason}` };
+      }
+      lastResult = result;
+    }
+    return { success: true, detail: lastResult ? lastResult.diffSummary : "login script completed" };
+  } finally {
+    await driver.deleteSession();
+  }
+}
+
 async function runIteration(mode, index, { platform, instruction, goal, maxSteps }) {
   const startedAt = Date.now();
   console.log(`[run-batch-executions] [${mode} ${index}] starting...`);
@@ -251,6 +308,8 @@ async function runIteration(mode, index, { platform, instruction, goal, maxSteps
       ? runOneGuidedIteration(platform)
       : mode === "semantic"
       ? runOneSemanticIteration(platform, instruction)
+      : mode === "login-script"
+      ? runOneLoginScriptIteration(platform)
       : runOneLoopIteration(platform, buildEffectiveGoal(goal), maxSteps));
     const detail = redactSecrets(rawDetail);
     const durationMs = Date.now() - startedAt;
@@ -275,13 +334,20 @@ async function runIteration(mode, index, { platform, instruction, goal, maxSteps
 // was actually wanted. Defaults to all three modes, unchanged from
 // before this existed. Invalid mode names are ignored with a warning
 // rather than silently running nothing.
+// "login-script" is deliberately NOT part of the default ALL_MODES
+// split (splitBatchCounts() keeps its existing guided/semantic/loop
+// ratio, untouched and still unit-tested the same way) -- it only runs
+// when explicitly requested via PHOENIX_BATCH_MODES=login-script,
+// matching how a 1-off debug run already has to request "loop"
+// explicitly to get one (see the comment on parseBatchModes below).
 const ALL_MODES = ["guided", "semantic", "loop"];
+const REQUESTABLE_MODES = [...ALL_MODES, "login-script"];
 function parseBatchModes() {
   const raw = process.env.PHOENIX_BATCH_MODES;
   if (!raw) return ALL_MODES;
   const requested = raw.split(",").map((m) => m.trim().toLowerCase()).filter(Boolean);
-  const valid = requested.filter((m) => ALL_MODES.includes(m));
-  const invalid = requested.filter((m) => !ALL_MODES.includes(m));
+  const valid = requested.filter((m) => REQUESTABLE_MODES.includes(m));
+  const invalid = requested.filter((m) => !REQUESTABLE_MODES.includes(m));
   if (invalid.length > 0) {
     console.warn(`[run-batch-executions] ignoring unknown mode(s) in PHOENIX_BATCH_MODES: ${invalid.join(", ")}`);
   }
@@ -306,7 +372,9 @@ function parseBatchModes() {
  * @returns {{guided: number, semantic: number, loop: number}}
  */
 function computeModeCounts(total, modes) {
-  if (modes.length === ALL_MODES.length) return splitBatchCounts(total);
+  if (modes.length === ALL_MODES.length && ALL_MODES.every((m) => modes.includes(m))) {
+    return splitBatchCounts(total);
+  }
 
   const counts = { guided: 0, semantic: 0, loop: 0 };
   if (total <= 0 || modes.length === 0) return counts;
@@ -336,10 +404,13 @@ async function main() {
   }
 
   const counts = computeModeCounts(total, modes);
-  console.log(`[run-batch-executions] plan: ${counts.guided} guided, ${counts.semantic} semantic, ${counts.loop} loop (total ${total})`);
+  console.log(
+    `[run-batch-executions] plan: ${counts.guided} guided, ${counts.semantic} semantic, ${counts.loop} loop, ` +
+      `${counts["login-script"] || 0} login-script (total ${total})`
+  );
   console.log(`[run-batch-executions] platform: ${platform}, instruction: "${instruction}", goal: "${goal}"`);
   if (SECRETS.length > 0) {
-    console.log("[run-batch-executions] login credentials supplied via env for loop mode (not logged, not written to the report)");
+    console.log("[run-batch-executions] login credentials supplied via env for loop/login-script mode (not logged, not written to the report)");
   }
 
   // Module-level (not a local const) so the crash handlers below can
@@ -353,6 +424,9 @@ async function main() {
   }
   for (let i = 1; i <= counts.loop; i += 1) {
     resultsSoFar.push(await runIteration("loop", i, { platform, goal, maxSteps }));
+  }
+  for (let i = 1; i <= (counts["login-script"] || 0); i += 1) {
+    resultsSoFar.push(await runIteration("login-script", i, { platform }));
   }
 
   const reportPath = writeReport(resultsSoFar);
@@ -443,4 +517,6 @@ module.exports = {
   computeModeCounts,
   writeReport,
   OUTPUT_DIR,
+  runOneLoginScriptIteration,
+  LOGIN_SCRIPT_STEPS,
 };

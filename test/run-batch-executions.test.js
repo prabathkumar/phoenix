@@ -249,6 +249,146 @@ test("parseBatchModes falls back to all three when every named mode is invalid",
   }
 });
 
+/**
+ * runOneLoginScriptIteration() is the fixed, deterministic replacement
+ * for asking the "loop" mode's model to plan the login sequence itself
+ * -- added after real iOS runs (ios7, ios10) got stuck right at "both
+ * fields are filled in, now submit" twice in a row despite goal-wording
+ * fixes (see docs/STATUS.md bugs 15/17). These tests fake both
+ * engine/semantic-act-executor's executeSemanticAction (same
+ * require.cache-injection technique as engine/test/semantic-loop.test.js)
+ * and engine/session's startSession, so the fixed step sequence can be
+ * exercised without a real driver or BrowserStack session.
+ */
+const EXECUTOR_PATH = require.resolve("../engine/semantic-act-executor");
+const SESSION_PATH = require.resolve("../engine/session");
+
+function freshBatchModuleWithFakes({ executeSemanticAction, deleteSessionCalls = [] } = {}) {
+  for (const p of [modulePath, EXECUTOR_PATH, SESSION_PATH]) delete require.cache[p];
+
+  require.cache[EXECUTOR_PATH] = {
+    id: EXECUTOR_PATH,
+    filename: EXECUTOR_PATH,
+    loaded: true,
+    exports: { executeSemanticAction },
+  };
+
+  const fakeDriver = {
+    deleteSession: async () => {
+      deleteSessionCalls.push(true);
+    },
+  };
+  require.cache[SESSION_PATH] = {
+    id: SESSION_PATH,
+    filename: SESSION_PATH,
+    loaded: true,
+    exports: { startSession: async () => fakeDriver },
+  };
+
+  return require(modulePath);
+}
+
+test("runOneLoginScriptIteration fails fast with a clear message when no credentials are configured", async () => {
+  await withEnvAndFreshModule(
+    { PHOENIX_BATCH_LOGIN_PHONE: undefined, PHOENIX_BATCH_LOGIN_PASSWORD: undefined },
+    async (freshModule) => {
+      const result = await freshModule.runOneLoginScriptIteration("android");
+      assert.strictEqual(result.success, false);
+      assert.ok(/PHOENIX_BATCH_LOGIN_PHONE/.test(result.detail));
+    }
+  );
+});
+
+test("runOneLoginScriptIteration runs the fixed sequence in order and reports success from the final step", async () => {
+  await withEnvAndFreshModule(
+    { PHOENIX_BATCH_LOGIN_PHONE: "0123456789", PHOENIX_BATCH_LOGIN_PASSWORD: "secret123" },
+    async () => {
+      const calls = [];
+      const deleteSessionCalls = [];
+      const freshModule = freshBatchModuleWithFakes({
+        deleteSessionCalls,
+        executeSemanticAction: async (driver, instruction, options = {}) => {
+          calls.push({ instruction, kind: options.kind, text: options.text });
+          // First step (the optional "Allow" dialog) isn't present this
+          // run -- the resolver reports unresolved, same as a real
+          // screen with no such dialog on it.
+          if (instruction.includes("Allow")) return { success: false, reason: "no confident match" };
+          return { success: true, diffSummary: `did: ${instruction}` };
+        },
+      });
+
+      const result = await freshModule.runOneLoginScriptIteration("android");
+
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(result.detail, "did: tap the LOGIN button to submit the login form");
+      assert.deepStrictEqual(
+        calls.map((c) => c.instruction),
+        [
+          "tap the Allow button to dismiss a system permission dialog",
+          "tap the LOGIN button on the home screen to open the login form",
+          "type the phone number into the phone/account number field",
+          "type the password into the password field",
+          "tap the LOGIN button to submit the login form",
+        ]
+      );
+      // The two "type" steps get the real credentials, in order --
+      // confirms the fixed sequence (not a model) decided what to type
+      // where.
+      assert.strictEqual(calls[2].text, "0123456789");
+      assert.strictEqual(calls[3].text, "secret123");
+      assert.strictEqual(deleteSessionCalls.length, 1, "session must be torn down exactly once");
+    }
+  );
+});
+
+test("runOneLoginScriptIteration stops and reports failure on the first non-optional step that fails, without running later steps", async () => {
+  await withEnvAndFreshModule(
+    { PHOENIX_BATCH_LOGIN_PHONE: "0123456789", PHOENIX_BATCH_LOGIN_PASSWORD: "secret123" },
+    async () => {
+      const calls = [];
+      const deleteSessionCalls = [];
+      const freshModule = freshBatchModuleWithFakes({
+        deleteSessionCalls,
+        executeSemanticAction: async (driver, instruction) => {
+          calls.push(instruction);
+          if (instruction.includes("Allow")) return { success: false, reason: "no confident match" };
+          if (instruction.includes("open the login form")) {
+            return { success: false, reason: "resolved element is no longer on screen" };
+          }
+          throw new Error("should not reach a later step after a required step fails");
+        },
+      });
+
+      const result = await freshModule.runOneLoginScriptIteration("android");
+
+      assert.strictEqual(result.success, false);
+      assert.ok(result.detail.includes("open the login form"));
+      assert.ok(result.detail.includes("resolved element is no longer on screen"));
+      assert.strictEqual(calls.length, 2, "must stop right after the failing required step, not continue to type/submit");
+      assert.strictEqual(deleteSessionCalls.length, 1, "session must still be torn down after a failed step");
+    }
+  );
+});
+
+test("parseBatchModes accepts the opt-in login-script mode by itself", () => {
+  const previous = process.env.PHOENIX_BATCH_MODES;
+  process.env.PHOENIX_BATCH_MODES = "login-script";
+  try {
+    assert.deepStrictEqual(parseBatchModes(), ["login-script"]);
+  } finally {
+    if (previous === undefined) delete process.env.PHOENIX_BATCH_MODES;
+    else process.env.PHOENIX_BATCH_MODES = previous;
+  }
+});
+
+test("computeModeCounts gives login-script the entire total when requested alone (opt-in, not part of the default three-way split)", () => {
+  assert.deepStrictEqual(computeModeCounts(1, ["login-script"]), { guided: 0, semantic: 0, loop: 0, "login-script": 1 });
+});
+
+test("computeModeCounts still matches splitBatchCounts for the real default three modes (login-script never silently included)", () => {
+  assert.deepStrictEqual(computeModeCounts(100, ["guided", "semantic", "loop"]), splitBatchCounts(100));
+});
+
 // Real bug found on a live BrowserStack iOS run (ios6): an infra-level
 // library crash (an unhandled rejection from WebdriverIO's own HTTP
 // client, raced by a slow/flaky BrowserStack response -- not a Phoenix

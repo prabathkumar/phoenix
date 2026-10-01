@@ -36,15 +36,15 @@
     },
     {
       "kind": "tap",
-      "instruction": "tap the close or X button to dismiss a post-login notification popup",
+      "instruction": "tap the Allow button to dismiss a system permission dialog",
       "optional": true,
-      "note": "GUESS: this app may show one or more notification/promo dialogs right after a successful login (separate from the pre-login system permission dialog in step 1). Repeated below in case more than one stacks up -- the real count/wording needs a live run to confirm."
+      "note": "CONFIRMED real bug on addons-run-android-1.log: this app fires a native Android runtime-permission dialog (\"Allow MyYes to send you notifications?\", Allow/Don't allow buttons) right after login submit, not a custom in-app popup with a close/X button -- the original guess here (\"tap the close or X button...\") never matched it, leaving the dialog on screen and blocking the Add-ons tap underneath it. Fixed by reusing the exact, already-proven \"tap the Allow button...\" instruction from step 1 above (same resolver match, same dialog shape), repeated here for whichever permission prompt(s) appear post-login."
     },
     {
       "kind": "tap",
-      "instruction": "tap the close or X button to dismiss a second post-login notification popup",
+      "instruction": "tap the Allow button to dismiss a system permission dialog",
       "optional": true,
-      "note": "GUESS: same as the step above, for a possible second stacked dialog. Delete this step once a real run shows how many (if any) actually appear."
+      "note": "Repeated in case a second permission dialog (e.g. contacts/location) stacks up after the notifications one -- still unconfirmed whether more than one actually appears; delete if a run shows only one."
     },
     {
       "kind": "tap",

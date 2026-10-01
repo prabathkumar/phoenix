@@ -197,10 +197,19 @@ function fakeDriver(pageSource = SIMPLE_SCREEN) {
     }
   });
 
-  await run("runAutonomousLoop stops with max-steps-reached rather than looping forever", async () => {
+  await run("runAutonomousLoop stops with max-steps-reached rather than looping forever (real progress every step, never a no-op)", async () => {
     const { loop, restore } = freshLoopWithFakes({
       decisions: [{ instruction: "tap something", kind: "tap" }], // same decision every call
-      executionResults: [{ success: true, selector: { strategy: "text", value: "something" }, diffSummary: "No visible change." }],
+      // Unlike the android17 real bug (same action, "No visible change."
+      // every time -- now caught by the no-op stuck-loop guard above and
+      // tested separately), this fake keeps reporting real, distinct
+      // progress on every step, so max-steps-reached is the only way
+      // this loop can end.
+      executionResults: [
+        { success: true, selector: { strategy: "text", value: "something" }, diffSummary: 'Appeared: "step 1".' },
+        { success: true, selector: { strategy: "text", value: "something" }, diffSummary: 'Appeared: "step 2".' },
+        { success: true, selector: { strategy: "text", value: "something" }, diffSummary: 'Appeared: "step 3".' },
+      ],
     });
     try {
       const result = await loop.runAutonomousLoop(fakeDriver(), "an unreachable goal", { maxSteps: 3 });
@@ -551,6 +560,63 @@ function fakeDriver(pageSource = SIMPLE_SCREEN) {
     } finally {
       delete require.cache[LOOP_PATH];
       delete require.cache[LLM_PATH];
+    }
+  });
+
+  await run("runAutonomousLoop stops with action-failed after 3 consecutive successful actions that each produce \"No visible change.\" (real bug: android17 clicked the same already-filled field 15 times in a row and burned the entire step budget)", async () => {
+    const { loop, restore } = freshLoopWithFakes({
+      decisions: [
+        { instruction: "type the Yes Number into the edit text", kind: "type", text: "01166114421" },
+        // The model keeps re-tapping the same field; each tap is
+        // accepted by the device (success: true) but changes nothing.
+        { instruction: "tap the Yes Number field", kind: "tap" },
+        { instruction: "tap the Yes Number field", kind: "tap" },
+        { instruction: "tap the Yes Number field", kind: "tap" },
+        // Should never be reached -- the loop stops after the 3rd no-op.
+        { done: true },
+      ],
+      executionResults: [
+        { success: true, selector: { strategy: "resource-id", value: "edtCommon" }, diffSummary: 'Appeared: "[REDACTED]".' },
+        { success: true, selector: { strategy: "resource-id", value: "edtCommon" }, diffSummary: "No visible change." },
+        { success: true, selector: { strategy: "resource-id", value: "edtCommon" }, diffSummary: "No visible change." },
+        { success: true, selector: { strategy: "resource-id", value: "edtCommon" }, diffSummary: "No visible change." },
+      ],
+    });
+    try {
+      const result = await loop.runAutonomousLoop(fakeDriver(), "log in", { maxSteps: 20 });
+      assert.strictEqual(result.stoppedBecause, "action-failed");
+      assert.ok(result.reason.includes("No visible change"));
+      assert.ok(result.reason.includes("stuck repeating"));
+      // The typing step plus the 3 no-op taps -- not all 20 maxSteps.
+      assert.strictEqual(result.steps.length, 4);
+    } finally {
+      restore();
+    }
+  });
+
+  await run("runAutonomousLoop does NOT stop early when a no-op tap is followed by real progress (the no-op counter resets)", async () => {
+    const { loop, restore } = freshLoopWithFakes({
+      decisions: [
+        { instruction: "type the Yes Number into the edit text", kind: "type", text: "01166114421" },
+        { instruction: "tap the Yes Number field", kind: "tap" },
+        { instruction: "tap the Yes Number field", kind: "tap" },
+        // Recovers before hitting the 3-in-a-row threshold.
+        { instruction: "tap the PASSWORD tab", kind: "tap" },
+        { done: true },
+      ],
+      executionResults: [
+        { success: true, selector: { strategy: "resource-id", value: "edtCommon" }, diffSummary: 'Appeared: "[REDACTED]".' },
+        { success: true, selector: { strategy: "resource-id", value: "edtCommon" }, diffSummary: "No visible change." },
+        { success: true, selector: { strategy: "resource-id", value: "edtCommon" }, diffSummary: "No visible change." },
+        { success: true, selector: { strategy: "xpath", value: "/hierarchy/View[2]" }, diffSummary: 'Appeared: "PASSWORD selected".' },
+      ],
+    });
+    try {
+      const result = await loop.runAutonomousLoop(fakeDriver(), "log in");
+      assert.strictEqual(result.stoppedBecause, "goal-achieved");
+      assert.strictEqual(result.steps.length, 4);
+    } finally {
+      restore();
     }
   });
 

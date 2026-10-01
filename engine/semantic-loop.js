@@ -249,6 +249,23 @@ async function runAutonomousLoop(driver, goal, options = {}) {
   let vetoRetries = 0;
   let refusedAttempt;
 
+  // Found for real on a live BrowserStack run (android17): a click that
+  // the device *accepts* (executeSemanticAction returns success, so
+  // MAX_VETO_RETRIES above never engages) can still do nothing -- e.g.
+  // tapping an already-focused input field again. The model is told in
+  // its own prompt that "stuck in a loop" is a valid reason to stop,
+  // but nothing forces it to notice; on that run it proposed the exact
+  // same tap on the same element 15 times in a row, each one diffed as
+  // "No visible change." (generation/semantic-diff.js's diffToText),
+  // and burned the entire step budget without ever reaching the
+  // password field. This is a code-level safety net, not a prompt
+  // tweak: after this many CONSECUTIVE successful steps that each
+  // produced no visible change, stop the loop outright rather than
+  // continuing to spend steps on an action that has already proven
+  // it does nothing.
+  const MAX_CONSECUTIVE_NO_OP_STEPS = 3;
+  let consecutiveNoOpSteps = 0;
+
   try {
     for (let i = 0; i < maxSteps; i += 1) {
       let pageSource;
@@ -302,18 +319,34 @@ async function runAutonomousLoop(driver, goal, options = {}) {
       refusedAttempt = undefined;
 
       const stepIndex = steps.length;
+      const diffSummary = result.diffSummary || "(couldn't read the screen after acting)";
       steps.push({
         instruction: decision.instruction,
         kind: decision.kind,
         text: decision.text,
         selector: result.selector,
-        diffSummary: result.diffSummary || "(couldn't read the screen after acting)",
+        diffSummary,
         // Reuses executeSemanticAction's own inferSemanticAssertions()
         // call (spec §6's "state-diff reporting... feeds the assertion-
         // inference step directly") -- just stamped with this step's
         // index so a multi-step run's assertions are attributable.
         assertions: (result.assertions || []).map((a) => ({ ...a, stepIndex })),
       });
+
+      if (diffSummary === "No visible change.") {
+        consecutiveNoOpSteps += 1;
+        if (consecutiveNoOpSteps >= MAX_CONSECUTIVE_NO_OP_STEPS) {
+          return {
+            stoppedBecause: "action-failed",
+            reason:
+              `the last ${consecutiveNoOpSteps} action(s) each produced "No visible change." -- ` +
+              `stuck repeating an action that isn't progressing (most recently: ${JSON.stringify(decision.instruction)})`,
+            steps,
+          };
+        }
+      } else {
+        consecutiveNoOpSteps = 0;
+      }
     }
 
     return { stoppedBecause: "max-steps-reached", steps };

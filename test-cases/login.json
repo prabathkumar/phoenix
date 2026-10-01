@@ -1,0 +1,38 @@
+{
+  "name": "login",
+  "description": "Fixed, deterministic login sequence -- extracted byte-for-byte from run-batch-executions.js's LOGIN_SCRIPT_STEPS after it was proven end to end on real BrowserStack hardware for both Android and iOS (docs/STATUS.md bugs 18-23). Each step is resolved against the live screen by the same per-instruction resolver executeSemanticAction() already uses everywhere else -- only the step ORDER is fixed here, not which selector a step resolves to.",
+  "requiredEnv": ["PHOENIX_BATCH_LOGIN_PHONE", "PHOENIX_BATCH_LOGIN_PASSWORD"],
+  "steps": [
+    {
+      "kind": "tap",
+      "instruction": "tap the Allow button to dismiss a system permission dialog",
+      "optional": true
+    },
+    {
+      "kind": "tap",
+      "instruction": "tap the LOGIN button on the home screen to open the login form"
+    },
+    {
+      "kind": "type",
+      "instruction": "type the phone number into the phone/account number field",
+      "text": "${PHOENIX_BATCH_LOGIN_PHONE}"
+    },
+    {
+      "kind": "tap",
+      "instruction": "tap the PASSWORD tab to switch the form into password-entry mode"
+    },
+    {
+      "kind": "tap",
+      "instruction": "tap the password field to focus it"
+    },
+    {
+      "kind": "type",
+      "instruction": "type the password into the password field",
+      "text": "${PHOENIX_BATCH_LOGIN_PASSWORD}"
+    },
+    {
+      "kind": "tap",
+      "instruction": "tap the LOGIN button to submit the login form"
+    }
+  ]
+}

@@ -55,6 +55,9 @@ const path = require("path");
 
 const { executeSemanticAction } = require("./engine/semantic-act-executor");
 const { runAutonomousLoop } = require("./engine/semantic-loop");
+const { loadTestCaseSteps, requiredEnvVars, resolveSteps, runScriptSteps } = require("./engine/test-case-runner");
+
+const TEST_CASES_DIR = path.join(__dirname, "test-cases");
 
 const OUTPUT_DIR = path.join(__dirname, "batch-results");
 
@@ -243,7 +246,7 @@ async function runOneLoopIteration(platform, goal, maxSteps) {
   }
 }
 
-// Fixed, deterministic login sequence -- NOT a goal handed to the
+// Fixed, deterministic step sequences -- NOT a goal handed to the
 // autonomous loop for the model to plan its own way through. Added
 // after the "loop" mode repeatedly got stuck at the exact same point
 // on real iOS hardware (ios7, ios10 -- see docs/STATUS.md bugs 15/17):
@@ -254,80 +257,84 @@ async function runOneLoopIteration(platform, goal, maxSteps) {
 // shares its exact name with the form's submit button) before the
 // password was even typed. Prompt wording changes didn't fix this
 // across two separate attempts, so instead of asking the model to
-// decide the sequence, this mode hardcodes it: each step still uses
-// executeSemanticAction()'s existing per-instruction resolver (the
-// same resolver already proven correct for iOS classChain/secure-field
-// selectors, bugs 12/13), but which step runs next is fixed code, not
-// a model decision -- eliminating the exact failure class seen above.
-const LOGIN_SCRIPT_STEPS = Object.freeze([
-  // Not every run shows this -- a fresh BrowserStack device/app install
-  // can surface iOS's own system notification-permission dialog (see
-  // bug 16), but a reused device/session may not. Optional: if
-  // resolveSemanticAction() can't confidently match it (nothing to
-  // match against), that's not a failure of the login sequence itself,
-  // so this step is skipped rather than aborting the whole run.
-  { kind: "tap", instruction: "tap the Allow button to dismiss a system permission dialog", optional: true },
-  { kind: "tap", instruction: "tap the LOGIN button on the home screen to open the login form" },
-  { kind: "type", instruction: "type the phone number into the phone/account number field", text: () => LOGIN_PHONE },
-  // Real bug found on real hardware (ios11/ios12): the login form's
-  // "PASSWORD" accessibility id does NOT belong to the password input
-  // at all -- confirmed directly in the page source, it's a separate
-  // XCUIElementTypeButton (a tab, exactly like Android's PASSWORD tab
-  // from the earlier Android bugs), only switching the form into
-  // password-entry mode when tapped. Without this explicit tap first,
-  // resolveSemanticAction's "type the password" instruction kept
-  // matching that same tab button instead of the real (and still
-  // hidden) secure field -- a setValue() against it could even succeed
-  // once harmlessly, then fail on an internal re-resolve. The working
-  // "loop" mode runs (ios6, ios10) always included this tap, implicitly,
-  // as a separate model-planned step; this makes it an explicit, fixed
-  // step instead of relying on resolveSemanticAction to infer it.
-  { kind: "tap", instruction: "tap the PASSWORD tab to switch the form into password-entry mode" },
-  // Real bug found on real hardware (ios13): WebDriver reported
-  // elementClear/elementSendKeys succeeding against the real secure
-  // field (resolved correctly via classChain -- bugs 12/13/19/20 all
-  // confirmed working) with no error at all, yet the password visibly
-  // never made it into the field (confirmed by watching the BrowserStack
-  // session video). This app's secure field apparently needs an actual
-  // tap to focus/engage its keyboard before it will accept
-  // programmatically-injected keystrokes -- WebDriverAgent can report a
-  // clean elementSendKeys even when the custom secure entry never
-  // actually received it. The plain phone/account field (not secure)
-  // didn't have this problem. Fixed by tapping the field first, exactly
-  // like a real user would, before sending the text.
-  { kind: "tap", instruction: "tap the password field to focus it" },
-  { kind: "type", instruction: "type the password into the password field", text: () => LOGIN_PASSWORD },
-  { kind: "tap", instruction: "tap the LOGIN button to submit the login form" },
-]);
+// decide the sequence, each step still uses executeSemanticAction()'s
+// existing per-instruction resolver (the same resolver already proven
+// correct for iOS classChain/secure-field selectors, bugs 12/13), but
+// which step runs next is now fixed DATA, not even fixed code: a step
+// sequence is a JSON file under test-cases/ (engine/test-case-runner.js
+// loads and runs it), so a new flow is a new file, not a new commit to
+// this script. `login-script` mode keeps its original name/behavior
+// for backward compatibility (existing docs/scripts/env-var habits all
+// still work unchanged) but is now just the one built-in test case that
+// happens to be requestable by a dedicated mode name; `test-case` mode
+// (below) runs any test case file at all via PHOENIX_TEST_CASE_FILE.
+const LOGIN_TEST_CASE_PATH = path.join(TEST_CASES_DIR, "login.json");
+// Loaded once at module scope (not per-iteration) so a malformed
+// test-cases/login.json fails fast at startup with a clear stack trace
+// pointing at the file, rather than surfacing as a confusing per-
+// iteration failure deep in a batch run.
+const LOGIN_SCRIPT_STEPS = loadTestCaseSteps(LOGIN_TEST_CASE_PATH);
 
 async function runOneLoginScriptIteration(platform) {
-  if (!LOGIN_PHONE || !LOGIN_PASSWORD) {
+  const missing = requiredEnvVars(LOGIN_SCRIPT_STEPS).filter((name) => !process.env[name]);
+  if (missing.length > 0) {
     return {
       success: false,
-      detail: "login-script mode requires PHOENIX_BATCH_LOGIN_PHONE and PHOENIX_BATCH_LOGIN_PASSWORD to be set",
+      detail: `login-script mode requires ${missing.join(" and ")} to be set`,
     };
   }
+  // Resolved synchronously, here, before the first `await` below -- see
+  // runScriptSteps' doc comment in engine/test-case-runner.js for why
+  // reading process.env must not be deferred until after an await
+  // (concurrently-running test code mutating process.env is the
+  // concrete case this guards against, but it's just as real a risk
+  // for any other concurrent env mutation during a real batch run).
+  const resolvedSteps = resolveSteps(LOGIN_SCRIPT_STEPS);
   const { startSession } = require(platform === "ios" ? "./engine/ios-session" : "./engine/session");
   const driver = await startSession();
   try {
     await sleep(STARTUP_DELAY_MS);
-    let lastResult;
-    for (const step of LOGIN_SCRIPT_STEPS) {
-      const text = typeof step.text === "function" ? step.text() : undefined;
-      const result = await executeSemanticAction(driver, step.instruction, { kind: step.kind, text, platform });
-      if (!result.success) {
-        if (step.optional) continue;
-        return { success: false, detail: `step "${step.instruction}" failed: ${result.reason}` };
-      }
-      lastResult = result;
-    }
-    return { success: true, detail: lastResult ? lastResult.diffSummary : "login script completed" };
+    return await runScriptSteps(driver, resolvedSteps, { platform, executeSemanticAction });
   } finally {
     await driver.deleteSession();
   }
 }
 
-async function runIteration(mode, index, { platform, instruction, goal, maxSteps }) {
+/**
+ * Runs any test-case JSON file (see engine/test-case-runner.js and
+ * test-cases/login.json for the format) via PHOENIX_TEST_CASE_FILE --
+ * the generalized counterpart to `login-script` above, for a flow that
+ * isn't the built-in login one. Same fixed-sequence-over-fixed-
+ * resolver approach, just not hardwired to a single named file.
+ */
+async function runOneTestCaseIteration(platform, filePath) {
+  if (!filePath) {
+    return { success: false, detail: "test-case mode requires PHOENIX_TEST_CASE_FILE to be set" };
+  }
+  let steps;
+  try {
+    steps = loadTestCaseSteps(filePath);
+  } catch (err) {
+    return { success: false, detail: err.message };
+  }
+  const missing = requiredEnvVars(steps).filter((name) => !process.env[name]);
+  if (missing.length > 0) {
+    return { success: false, detail: `test case "${filePath}" requires ${missing.join(" and ")} to be set` };
+  }
+  // See runOneLoginScriptIteration's matching comment: resolved here,
+  // synchronously, before the first await.
+  const resolvedSteps = resolveSteps(steps);
+  const { startSession } = require(platform === "ios" ? "./engine/ios-session" : "./engine/session");
+  const driver = await startSession();
+  try {
+    await sleep(STARTUP_DELAY_MS);
+    return await runScriptSteps(driver, resolvedSteps, { platform, executeSemanticAction });
+  } finally {
+    await driver.deleteSession();
+  }
+}
+
+async function runIteration(mode, index, { platform, instruction, goal, maxSteps, testCaseFile }) {
   const startedAt = Date.now();
   console.log(`[run-batch-executions] [${mode} ${index}] starting...`);
   try {
@@ -337,6 +344,8 @@ async function runIteration(mode, index, { platform, instruction, goal, maxSteps
       ? runOneSemanticIteration(platform, instruction)
       : mode === "login-script"
       ? runOneLoginScriptIteration(platform)
+      : mode === "test-case"
+      ? runOneTestCaseIteration(platform, testCaseFile)
       : runOneLoopIteration(platform, buildEffectiveGoal(goal), maxSteps));
     const detail = redactSecrets(rawDetail);
     const durationMs = Date.now() - startedAt;
@@ -361,14 +370,15 @@ async function runIteration(mode, index, { platform, instruction, goal, maxSteps
 // was actually wanted. Defaults to all three modes, unchanged from
 // before this existed. Invalid mode names are ignored with a warning
 // rather than silently running nothing.
-// "login-script" is deliberately NOT part of the default ALL_MODES
-// split (splitBatchCounts() keeps its existing guided/semantic/loop
-// ratio, untouched and still unit-tested the same way) -- it only runs
-// when explicitly requested via PHOENIX_BATCH_MODES=login-script,
-// matching how a 1-off debug run already has to request "loop"
-// explicitly to get one (see the comment on parseBatchModes below).
+// "login-script"/"test-case" are deliberately NOT part of the default
+// ALL_MODES split (splitBatchCounts() keeps its existing guided/
+// semantic/loop ratio, untouched and still unit-tested the same way)
+// -- they only run when explicitly requested via
+// PHOENIX_BATCH_MODES=login-script or =test-case, matching how a 1-off
+// debug run already has to request "loop" explicitly to get one (see
+// the comment on parseBatchModes below).
 const ALL_MODES = ["guided", "semantic", "loop"];
-const REQUESTABLE_MODES = [...ALL_MODES, "login-script"];
+const REQUESTABLE_MODES = [...ALL_MODES, "login-script", "test-case"];
 function parseBatchModes() {
   const raw = process.env.PHOENIX_BATCH_MODES;
   if (!raw) return ALL_MODES;
@@ -421,6 +431,7 @@ async function main() {
   const instruction = process.env.PHOENIX_BATCH_INSTRUCTION || "tap the first visible button";
   const goal = process.env.PHOENIX_BATCH_GOAL || "explore the app's first screen";
   const maxSteps = Number(process.env.PHOENIX_BATCH_LOOP_MAX_STEPS) || 3;
+  const testCaseFile = process.env.PHOENIX_TEST_CASE_FILE;
   const modes = parseBatchModes();
 
   if (process.env.PHOENIX_APPIUM_PROVIDER !== "browserstack") {
@@ -433,9 +444,12 @@ async function main() {
   const counts = computeModeCounts(total, modes);
   console.log(
     `[run-batch-executions] plan: ${counts.guided} guided, ${counts.semantic} semantic, ${counts.loop} loop, ` +
-      `${counts["login-script"] || 0} login-script (total ${total})`
+      `${counts["login-script"] || 0} login-script, ${counts["test-case"] || 0} test-case (total ${total})`
   );
   console.log(`[run-batch-executions] platform: ${platform}, instruction: "${instruction}", goal: "${goal}"`);
+  if (counts["test-case"] > 0) {
+    console.log(`[run-batch-executions] test-case file: ${testCaseFile || "(none set -- PHOENIX_TEST_CASE_FILE is required)"}`);
+  }
   if (SECRETS.length > 0) {
     console.log("[run-batch-executions] login credentials supplied via env for loop/login-script mode (not logged, not written to the report)");
   }
@@ -454,6 +468,9 @@ async function main() {
   }
   for (let i = 1; i <= (counts["login-script"] || 0); i += 1) {
     resultsSoFar.push(await runIteration("login-script", i, { platform }));
+  }
+  for (let i = 1; i <= (counts["test-case"] || 0); i += 1) {
+    resultsSoFar.push(await runIteration("test-case", i, { platform, testCaseFile }));
   }
 
   const reportPath = writeReport(resultsSoFar);
@@ -545,5 +562,6 @@ module.exports = {
   writeReport,
   OUTPUT_DIR,
   runOneLoginScriptIteration,
+  runOneTestCaseIteration,
   LOGIN_SCRIPT_STEPS,
 };

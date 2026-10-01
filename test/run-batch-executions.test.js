@@ -29,7 +29,15 @@ function test(name, fn) {
  * fresh require, then restore both afterward -- same require.cache
  * technique used throughout this repo's other tests.
  */
-function withEnvAndFreshModule(env, fn) {
+// `fn` may be async (several callers now read process.env at run time,
+// not just at module-load time -- see engine/test-case-runner.js's
+// resolveStepText -- so env must stay in place for fn's entire
+// execution, not just until it starts). Always `await`s fn()'s result
+// before restoring env in `finally`, whether or not fn itself is an
+// async function, so a synchronous fn (most existing callers) is
+// unaffected and an async one no longer has its env pulled out from
+// under it while still running.
+async function withEnvAndFreshModule(env, fn) {
   const previous = {};
   for (const key of Object.keys(env)) {
     previous[key] = process.env[key];
@@ -38,7 +46,7 @@ function withEnvAndFreshModule(env, fn) {
   }
   delete require.cache[modulePath];
   try {
-    fn(require(modulePath));
+    await fn(require(modulePath));
   } finally {
     for (const key of Object.keys(previous)) {
       if (previous[key] === undefined) delete process.env[key];
@@ -389,6 +397,101 @@ test("computeModeCounts gives login-script the entire total when requested alone
 
 test("computeModeCounts still matches splitBatchCounts for the real default three modes (login-script never silently included)", () => {
   assert.deepStrictEqual(computeModeCounts(100, ["guided", "semantic", "loop"]), splitBatchCounts(100));
+});
+
+test("parseBatchModes accepts the opt-in test-case mode by itself", () => {
+  const previous = process.env.PHOENIX_BATCH_MODES;
+  process.env.PHOENIX_BATCH_MODES = "test-case";
+  try {
+    assert.deepStrictEqual(parseBatchModes(), ["test-case"]);
+  } finally {
+    if (previous === undefined) delete process.env.PHOENIX_BATCH_MODES;
+    else process.env.PHOENIX_BATCH_MODES = previous;
+  }
+});
+
+test("computeModeCounts gives test-case the entire total when requested alone", () => {
+  assert.deepStrictEqual(computeModeCounts(1, ["test-case"]), { guided: 0, semantic: 0, loop: 0, "test-case": 1 });
+});
+
+/**
+ * runOneTestCaseIteration() is the generalized, data-driven counterpart
+ * to runOneLoginScriptIteration() above -- same fixed-sequence-over-
+ * fixed-resolver approach (engine/test-case-runner.js), but reading an
+ * arbitrary test-case JSON file instead of the one built-in login
+ * sequence. These tests write a small temp JSON file rather than
+ * exercising test-cases/login.json itself (already covered by
+ * engine/test/test-case-runner.test.js and the login-script tests
+ * above).
+ */
+const os = require("os");
+
+function writeTempTestCase(content) {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "phoenix-run-batch-test-case-")), "case.json");
+  fs.writeFileSync(file, JSON.stringify(content), "utf8");
+  return file;
+}
+
+test("runOneTestCaseIteration fails fast with a clear message when PHOENIX_TEST_CASE_FILE isn't set", async () => {
+  await withEnvAndFreshModule({}, async (freshModule) => {
+    const result = await freshModule.runOneTestCaseIteration("android", undefined);
+    assert.strictEqual(result.success, false);
+    assert.ok(/PHOENIX_TEST_CASE_FILE/.test(result.detail));
+  });
+});
+
+test("runOneTestCaseIteration fails fast with a clear message when the file doesn't parse", async () => {
+  const badFile = writeTempTestCase("not json at all");
+  fs.writeFileSync(badFile, "{ not valid json", "utf8");
+  await withEnvAndFreshModule({}, async (freshModule) => {
+    const result = await freshModule.runOneTestCaseIteration("android", badFile);
+    assert.strictEqual(result.success, false);
+    assert.ok(/not valid JSON/.test(result.detail));
+  });
+});
+
+test("runOneTestCaseIteration runs an arbitrary test case's steps in order, resolving a placeholder from the environment", async () => {
+  const file = writeTempTestCase({
+    name: "demo-flow",
+    steps: [
+      { kind: "tap", instruction: "tap the Add-ons tab" },
+      { kind: "type", instruction: "type the promo code", text: "${PHOENIX_DEMO_PROMO_CODE}" },
+      { kind: "tap", instruction: "tap Apply" },
+    ],
+  });
+  await withEnvAndFreshModule({ PHOENIX_DEMO_PROMO_CODE: "SAVE10" }, async () => {
+    const calls = [];
+    const deleteSessionCalls = [];
+    const freshModule = freshBatchModuleWithFakes({
+      deleteSessionCalls,
+      executeSemanticAction: async (driver, instruction, options = {}) => {
+        calls.push({ instruction, text: options.text });
+        return { success: true, diffSummary: `did: ${instruction}` };
+      },
+    });
+
+    const result = await freshModule.runOneTestCaseIteration("android", file);
+
+    assert.strictEqual(result.success, true);
+    assert.strictEqual(result.detail, "did: tap Apply");
+    assert.deepStrictEqual(
+      calls.map((c) => c.instruction),
+      ["tap the Add-ons tab", "type the promo code", "tap Apply"]
+    );
+    assert.strictEqual(calls[1].text, "SAVE10");
+    assert.strictEqual(deleteSessionCalls.length, 1);
+  });
+});
+
+test("runOneTestCaseIteration fails fast, before starting a session, when a referenced env var isn't set", async () => {
+  const file = writeTempTestCase({
+    steps: [{ kind: "type", instruction: "type the promo code", text: "${PHOENIX_DEMO_PROMO_CODE_MISSING}" }],
+  });
+  await withEnvAndFreshModule({ PHOENIX_DEMO_PROMO_CODE_MISSING: undefined }, async (freshModule) => {
+    const result = await freshModule.runOneTestCaseIteration("android", file);
+    assert.strictEqual(result.success, false);
+    assert.ok(result.detail.includes("PHOENIX_DEMO_PROMO_CODE_MISSING"));
+  });
 });
 
 // Real bug found on a live BrowserStack iOS run (ios6): an infra-level

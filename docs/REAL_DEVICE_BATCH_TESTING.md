@@ -118,6 +118,44 @@ node run-batch-executions.js
 
 Set `PHOENIX_PLATFORM=android` (or omit it, since `android` is the default) for the Android path. A successful run's report line reads `OK (...) - Appeared: "...", "Home", "Rewards", "Profile", ... Disappeared: "...", "LOGIN", "LOGIN", ...` — the login screen's own elements disappearing and the post-login home screen's elements appearing in the same diff is the confirmation the submit tap actually landed, not just that no WebDriver error was thrown.
 
+### `test-case` mode: the same approach for ANY flow, as data instead of code (the recommended way to adopt Phoenix)
+
+`login-script` mode's step sequence is hardcoded JS (`run-batch-executions.js`'s `LOGIN_SCRIPT_STEPS`) — a new flow meant a new array and a new commit. `test-case` mode generalizes it: a test case is a plain JSON file (`engine/test-case-runner.js` loads and runs it), run through the exact same per-instruction resolver. `test-cases/login.json` is the proven login sequence above, unchanged, now just data; `login-script` mode is kept as a convenience alias pointed at that one file.
+
+**This is the recommended starting point for a new test case, not `loop` and not guided recording** — write the steps as JSON, let the resolver self-heal against the live screen, and only fall back to guided recording (Act 1) for a specific flow if the semantic layer genuinely can't resolve something on it.
+
+Write a test case as a JSON file with a `steps` array:
+
+```json
+{
+  "name": "add-a-voucher",
+  "steps": [
+    { "kind": "tap", "instruction": "tap the Add-ons tab" },
+    { "kind": "type", "instruction": "type the promo code", "text": "${PHOENIX_PROMO_CODE}" },
+    { "kind": "tap", "instruction": "tap the Apply button" }
+  ]
+}
+```
+
+- `kind`: `"tap"` or `"type"`.
+- `instruction`: plain language, resolved exactly the way a standalone `executeSemanticAction` call already is — no selector, no element reference.
+- `text` (type steps only): a literal string, or a whole-string `"${ENV_VAR_NAME}"` placeholder resolved from the environment at run time — never commit a real credential into a test-case file; reference it by env var name instead, the same way `test-cases/login.json` does for `PHOENIX_BATCH_LOGIN_PHONE`/`PHOENIX_BATCH_LOGIN_PASSWORD`. Partial interpolation (`"prefix-${VAR}"`) is deliberately not supported, to keep a half-written credential from ever looking like it belongs in a committed file.
+- `optional` (either kind): `true` if the step is allowed to not match anything on screen without failing the run (a system dialog that doesn't always appear, say).
+
+Run it:
+
+```bash
+export PHOENIX_PROMO_CODE="<value>"
+
+PHOENIX_BATCH_TOTAL=1 \
+PHOENIX_BATCH_MODES=test-case \
+PHOENIX_TEST_CASE_FILE=test-cases/add-a-voucher.json \
+PHOENIX_PLATFORM=ios \
+node run-batch-executions.js
+```
+
+Missing env vars referenced by a `"${...}"` placeholder are checked up front, before a session even starts, with a single clear error naming every missing variable.
+
 The plan line printed at the top should read
 `plan: 0 guided, 0 semantic, 1 loop (total 1)` — if it doesn't, the
 mode filter isn't taking effect and the run isn't testing what you

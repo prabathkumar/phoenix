@@ -212,6 +212,16 @@ function buildExecutionRecord(instruction, options, result) {
     success: Boolean(result.success),
     reason: result.success ? undefined : result.reason,
     selector: result.selector,
+    // The ORIGINAL selector that produced "No visible change." before
+    // a successful self-heal retry replaced it with result.selector
+    // (the healed, working one) -- see executeSemanticActionInner's
+    // self-heal block in engine/semantic-act-executor.js, which sets
+    // this explicitly on a healed result. Without capturing it
+    // separately here, the dead-end selector that CAUSED the heal was
+    // silently lost the moment the heal succeeded -- the record only
+    // ever showed the good outcome, with no trace of what to avoid
+    // next time. This is what getDeadSelectors() below reads back.
+    deadSelector: result.deadSelector,
     diffSummary: result.diffSummary,
     usedCache: Boolean(result.usedCache),
     healedFromCache: Boolean(result.healedFromCache),
@@ -290,4 +300,86 @@ function getPastFailures(instruction, options = {}) {
   }
 }
 
-module.exports = { logExecution, buildExecutionRecord, logPath, getPastFailures, pruneOldExecutions, retentionDays };
+/**
+ * Reads back selectors already proven to be dead-end taps for the SAME
+ * instruction, across runs -- the cross-run extension of the in-run
+ * `excludedRefs` self-heal (engine/semantic-act-executor.js), flagged
+ * as the next concrete increment in docs/CONTINUOUS_TRAINING.md §2(b):
+ * "if a resolved selector is later found to be a dead-end ... record it
+ * the same way resolvedSelector is recorded today, and exclude it from
+ * candidates on every future run for that step."
+ *
+ * Two kinds of record count as a proven dead end for this instruction:
+ *   1. A final (never healed) result: `kind: "tap"`, `success: true`,
+ *      `diffSummary: "No visible change."`, and NOT `selfHealedNoOp` --
+ *      that run's own `selector` IS the dead end (no better candidate
+ *      was ever found to replace it).
+ *   2. A healed result (`selfHealedNoOp: true`): its `deadSelector`
+ *      field (not `selector`, which is the HEALED, working one) is the
+ *      dead end.
+ *
+ * Unlike getPastFailures() above, this is intentionally a HARD
+ * exclusion, not a soft hint -- see where it's consumed
+ * (generation/semantic-act.js) for why that's still safe: a dead tap
+ * is a concrete, already-observed "this control does nothing" fact
+ * about a specific resource-id/accessibility-id/text, not a judgment
+ * call about whether an instruction was understood correctly, so
+ * there's no risk of permanently blinding the resolver to a
+ * legitimately different interpretation the way hard-excluding a
+ * *failure* might. If the screen genuinely changes such that the same
+ * selector string now points at a different, real control, this list
+ * naturally stops matching anything in the live snapshot (matched by
+ * resource-id/accessibility-id/text value, not by position) -- it
+ * never actively blocks a real match, it just never offers a value this
+ * exact instruction has already proven useless on a prior screen.
+ *
+ * @param {string} instruction
+ * @param {Object} [options]
+ * @param {number} [options.limit] - most recent N distinct dead
+ *   selectors to return (default 5).
+ * @returns {Array<{strategy: string, value: string}>}
+ */
+function getDeadSelectors(instruction, options = {}) {
+  const limit = options.limit || 5;
+  try {
+    const filePath = logPath();
+    if (!fs.existsSync(filePath)) return [];
+    const lines = fs.readFileSync(filePath, "utf8").split("\n").filter(Boolean);
+    const seen = new Set();
+    const deadSelectors = [];
+    // Walk from the end -- most recent first, same convention as
+    // getPastFailures() -- so a long-since-fixed dead end (app updated,
+    // control is now functional) doesn't crowd out a more recent one.
+    for (let i = lines.length - 1; i >= 0 && deadSelectors.length < limit; i -= 1) {
+      let record;
+      try {
+        record = JSON.parse(lines[i]);
+      } catch {
+        continue; // tolerate a corrupt/partial line, same as getPastFailures()
+      }
+      if (record.instruction !== instruction || record.kind !== "tap") continue;
+
+      let candidate;
+      if (record.selfHealedNoOp && record.deadSelector) {
+        candidate = record.deadSelector;
+      } else if (record.success === true && record.diffSummary === "No visible change." && !record.selfHealedNoOp) {
+        candidate = record.selector;
+      }
+      if (!candidate || !candidate.strategy || !candidate.value) continue;
+
+      const key = `${candidate.strategy}:${candidate.value}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      deadSelectors.push({ strategy: candidate.strategy, value: candidate.value });
+    }
+    return deadSelectors;
+  } catch (err) {
+    // Fail-soft, same contract as getPastFailures(): a corrupt/unreadable
+    // log must never block resolution, only lose this one piece of
+    // helpful context.
+    console.warn("[generation/execution-log] couldn't read dead selectors (continuing without them):", err.message);
+    return [];
+  }
+}
+
+module.exports = { logExecution, buildExecutionRecord, logPath, getPastFailures, getDeadSelectors, pruneOldExecutions, retentionDays };

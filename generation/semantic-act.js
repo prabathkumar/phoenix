@@ -29,7 +29,7 @@
 
 const { buildGroundedSnapshot, snapshotToText, findByRef } = require("./semantic-snapshot");
 const { callOllamaJson } = require("./llm");
-const { getPastFailures } = require("./execution-log");
+const { getPastFailures, getDeadSelectors } = require("./execution-log");
 
 /**
  * @typedef {Object} SemanticActionResult
@@ -192,8 +192,48 @@ function toSelector(element, options = {}) {
  * @returns {Promise<SemanticActionResult>}
  */
 async function resolveSemanticAction(pageSourceXml, instruction, options = {}) {
-  const allElements = buildGroundedSnapshot(pageSourceXml)
-    .filter((el) => !(options.excludedRefs && options.excludedRefs.includes(el.ref)));
+  const snapshot = buildGroundedSnapshot(pageSourceXml);
+
+  // Cross-run dead-tap exclusion (docs/CONTINUOUS_TRAINING.md §2(b)'s
+  // flagged next increment): a resource-id/accessibility-id/text value
+  // already PROVEN, on a prior run of this exact instruction, to be a
+  // dead end (a tap that produced literally "No visible change.") is
+  // removed from the candidate list here -- before the model ever sees
+  // it -- exactly the same way engine/semantic-act-executor.js's
+  // in-run self-heal removes the just-tried element via excludedRefs,
+  // just persisted across runs instead of only within one. Matched by
+  // VALUE (resource-id/accessibility-id/text), not by `ref` (refs are
+  // only stable within one snapshot) -- see getDeadSelectors()'s doc
+  // comment for why this is safe as a hard exclusion where
+  // getPastFailures() below deliberately stays a soft hint: a dead tap
+  // is a concrete fact about a specific control, not a judgment call
+  // about whether an instruction was understood. Scoped to "tap" only,
+  // matching the self-heal mechanism it extends. If the screen
+  // genuinely changed such that this value now identifies a different,
+  // real control, nothing here actively blocks it -- a stale dead
+  // selector that happens to match a NEW element would wrongly exclude
+  // it, but that's the same accepted tradeoff the live excludedRefs
+  // mechanism already makes for "fewer wrong confident picks" over
+  // "never wrongly exclude a coincidental value match."
+  const deadSelectors = options.kind === "tap" ? getDeadSelectors(instruction) : [];
+  const deadRefs = deadSelectors.length === 0
+    ? new Set()
+    : new Set(
+        snapshot
+          .filter((el) =>
+            deadSelectors.some(
+              (sel) =>
+                (sel.strategy === "resource-id" && el.resourceId === sel.value) ||
+                (sel.strategy === "accessibility-id" && el.accessibilityId === sel.value) ||
+                (sel.strategy === "text" && el.label === sel.value)
+            )
+          )
+          .map((el) => el.ref)
+      );
+
+  const allElements = snapshot.filter(
+    (el) => !(options.excludedRefs && options.excludedRefs.includes(el.ref)) && !deadRefs.has(el.ref)
+  );
 
   if (allElements.length === 0) {
     return { resolved: false, reason: "grounded snapshot has no labeled/identified elements to act on" };

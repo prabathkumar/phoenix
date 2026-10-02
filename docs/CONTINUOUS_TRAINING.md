@@ -98,19 +98,42 @@ automatic:
     just proved to be a dead tap from the very next resolution attempt,
     live, in the same run.
 
-**What's new and still worth building** from (b): extending negative
-exclusion *across* runs, not just within one — if a resolved selector is
-later found to be a dead-end or a wrong-but-functional click (once an
-outcome-verification signal exists to detect that second case), record
-it the same way `resolvedSelector` is recorded today, and exclude it from
-candidates on every future run for that step. This is genuinely
-"learning from every execution" and runs instantly on CPU-only hardware,
-because it's a filter on what's offered to the model, not a change to the
-model itself. Flagged here as the next concrete increment, not yet built
-in this pass — it needs the outcome-verification signal (the still-open
-false-success gap) to be meaningful for the wrong-but-functional-click
-class; for the already-solved dead-tap class, it's a direct extension of
-the existing in-run `excludedRefs` mechanism to a persisted field.
+**Cross-run negative exclusion for the dead-tap class — done.** The
+in-run-only `excludedRefs` self-heal described above now persists: when
+`engine/semantic-act-executor.js`'s self-heal retry succeeds, the
+ORIGINAL dead-end selector is captured separately (`deadSelector`, kept
+distinct from the healed, working `selector` that replaced it) so
+`generation/execution-log.js` can log what was actually proven dead, not
+just the good outcome that followed it. `getDeadSelectors(instruction)`
+reads that history back — both a healed run's `deadSelector` and a
+never-healed run's own `selector` (when its only outcome was "No visible
+change.") — and `generation/semantic-act.js`'s `resolveSemanticAction()`
+automatically excludes any live element matching one of those exact
+resource-id/accessibility-id/text values from the candidate list, before
+the model ever sees it, on every future run of that exact instruction.
+Deliberately a **hard** exclusion (unlike `getPastFailures()`'s soft
+hint above) — see `getDeadSelectors()`'s own doc comment for why that's
+safe here: a dead tap is a concrete, already-observed fact about one
+specific control, not a judgment call about whether an instruction was
+understood, so there's no real risk of permanently blinding the resolver
+to a legitimate match the way hard-excluding a *failure* might. Scoped
+to `kind: "tap"` and exact-instruction matches only, matching the in-run
+mechanism it extends. Covered by dedicated tests in
+`generation/test/execution-log.test.js` (the log read/write shape) and
+`generation/test/semantic-act.test.js` (the exclusion actually keeping
+the dead element out of the prompt, scoped correctly by kind and
+instruction).
+
+**Still not built:** the wrong-but-functional-click class (a tap that
+*does* visibly change the screen, just not the way the instruction
+meant — `docs/STATUS.md` bugs #13–#18) has no equivalent yet. It needs
+an outcome-verification signal to even detect that case in the first
+place (`generation/outcome-verification.js`'s `expect` field, applied so
+far to only 3 steps in `test-cases/addons.json`) before a dead-selector-style
+record could be written for it — extending `getDeadSelectors()`'s same
+persisted-exclusion mechanism to "a selector whose action succeeded, but
+whose declared `expect` outcome failed" is the natural next increment
+once more steps carry `expect` annotations to learn from.
 
 ## 3. Recommendation, stated plainly
 

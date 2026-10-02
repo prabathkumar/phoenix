@@ -673,6 +673,130 @@ async function test(name, fn) {
     }
   });
 
+  await test("resolveSemanticAction excludes a resource-id already proven dead for this exact instruction on a PRIOR run (cross-run negative caching)", async () => {
+    // Simulates a final, never-healed "No visible change." record from
+    // a past run -- see getDeadSelectors()'s doc comment: this is the
+    // "no better candidate was ever found" case, so the run's own
+    // selector IS the dead end.
+    logExecution({
+      instruction: "tap the Add-ons card",
+      kind: "tap",
+      success: true,
+      diffSummary: "No visible change.",
+      selector: { strategy: "resource-id", value: "com.phoenix.demo:id/login_button" },
+    });
+
+    const DEAD_BUTTON_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy>
+  <android.widget.FrameLayout>
+    <android.widget.Button resource-id="com.phoenix.demo:id/login_button" text="Log In" bounds="[100,560][980,660]" />
+    <android.widget.Button resource-id="com.phoenix.demo:id/other_button" text="Other" bounds="[100,700][980,800]" />
+  </android.widget.FrameLayout>
+</hierarchy>`;
+    const calls = [];
+    const { semanticAct, restore } = loadWithFakeOllama(async (prompt) => {
+      calls.push(prompt);
+      return { ref: 2 }; // the only remaining candidate, "Other"
+    });
+    try {
+      const result = await semanticAct.resolveSemanticAction(DEAD_BUTTON_SCREEN, "tap the Add-ons card", { kind: "tap" });
+      assert.strictEqual(result.resolved, true);
+      // Excluded from the prompt text entirely -- the model never even sees it as an option.
+      assert.ok(!calls[0].includes("Log In"));
+    } finally {
+      restore();
+    }
+  });
+
+  await test("resolveSemanticAction excludes a HEALED self-heal's original dead selector (deadSelector), not its working replacement (selector)", async () => {
+    logExecution({
+      instruction: "tap the Add-ons card",
+      kind: "tap",
+      success: true,
+      selfHealedNoOp: true,
+      selector: { strategy: "resource-id", value: "com.phoenix.demo:id/other_button" }, // the HEALED, working selector -- must stay offered
+      deadSelector: { strategy: "resource-id", value: "com.phoenix.demo:id/login_button" }, // the ORIGINAL dead end -- must be excluded
+    });
+
+    const DEAD_BUTTON_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy>
+  <android.widget.FrameLayout>
+    <android.widget.Button resource-id="com.phoenix.demo:id/login_button" text="Log In" bounds="[100,560][980,660]" />
+    <android.widget.Button resource-id="com.phoenix.demo:id/other_button" text="Other" bounds="[100,700][980,800]" />
+  </android.widget.FrameLayout>
+</hierarchy>`;
+    const calls = [];
+    const { semanticAct, restore } = loadWithFakeOllama(async (prompt) => {
+      calls.push(prompt);
+      return { ref: 2 };
+    });
+    try {
+      const result = await semanticAct.resolveSemanticAction(DEAD_BUTTON_SCREEN, "tap the Add-ons card", { kind: "tap" });
+      assert.strictEqual(result.resolved, true);
+      assert.ok(!calls[0].includes("Log In"), "the dead selector's own element should be excluded from the prompt");
+      assert.ok(calls[0].includes("Other"), "the healed selector's replacement must still be offered, never confused with the dead one");
+    } finally {
+      restore();
+    }
+  });
+
+  await test("resolveSemanticAction's cross-run dead-selector exclusion is scoped to kind \"tap\" only -- a \"type\" resolution still offers the same element", async () => {
+    logExecution({
+      instruction: "focus the comment field",
+      kind: "tap",
+      success: true,
+      diffSummary: "No visible change.",
+      selector: { strategy: "resource-id", value: "com.phoenix.demo:id/login_button" },
+    });
+
+    const ONE_BUTTON_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy>
+  <android.widget.FrameLayout>
+    <android.widget.EditText resource-id="com.phoenix.demo:id/login_button" text="" bounds="[100,560][980,660]" />
+  </android.widget.FrameLayout>
+</hierarchy>`;
+    const calls = [];
+    const { semanticAct, restore } = loadWithFakeOllama(async (prompt) => {
+      calls.push(prompt);
+      return { ref: 1 };
+    });
+    try {
+      const result = await semanticAct.resolveSemanticAction(ONE_BUTTON_SCREEN, "focus the comment field", { kind: "type" });
+      assert.strictEqual(result.resolved, true, "a dead TAP result must not exclude the same element from a different kind of action");
+    } finally {
+      restore();
+    }
+  });
+
+  await test("resolveSemanticAction's cross-run dead-selector exclusion never crosses instructions", async () => {
+    logExecution({
+      instruction: "tap the Add-ons card",
+      kind: "tap",
+      success: true,
+      diffSummary: "No visible change.",
+      selector: { strategy: "resource-id", value: "com.phoenix.demo:id/login_button" },
+    });
+
+    const DEAD_BUTTON_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy>
+  <android.widget.FrameLayout>
+    <android.widget.Button resource-id="com.phoenix.demo:id/login_button" text="Log In" bounds="[100,560][980,660]" />
+  </android.widget.FrameLayout>
+</hierarchy>`;
+    const calls = [];
+    const { semanticAct, restore } = loadWithFakeOllama(async (prompt) => {
+      calls.push(prompt);
+      return { ref: 1 };
+    });
+    try {
+      const result = await semanticAct.resolveSemanticAction(DEAD_BUTTON_SCREEN, "tap an unrelated different instruction", { kind: "tap" });
+      assert.strictEqual(result.resolved, true);
+      assert.ok(calls[0].includes("Log In"), "a dead selector recorded for a DIFFERENT instruction must never exclude anything here");
+    } finally {
+      restore();
+    }
+  });
+
   if (process.exitCode) {
     console.error("\ngeneration/semantic-act tests FAILED");
     process.exit(1);

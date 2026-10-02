@@ -21,7 +21,7 @@ const path = require("path");
 const TMP_LOG_PATH = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "phoenix-exec-log-")), "executions.jsonl");
 process.env.PHOENIX_TRAINING_LOG_PATH = TMP_LOG_PATH;
 
-const { logExecution, buildExecutionRecord, logPath, pruneOldExecutions, retentionDays } = require("../execution-log");
+const { logExecution, buildExecutionRecord, logPath, getDeadSelectors, pruneOldExecutions, retentionDays } = require("../execution-log");
 
 function test(name, fn) {
   try {
@@ -129,6 +129,128 @@ test("buildExecutionRecord captures which code path produced the result (cache h
 
   const skipped = buildExecutionRecord("close the popup if open", { kind: "tapIfExists" }, { success: true, skipped: true });
   assert.strictEqual(skipped.skipped, true);
+});
+
+test("buildExecutionRecord captures deadSelector (the pre-heal dead end) separately from selector (the post-heal working one)", () => {
+  const healed = buildExecutionRecord(
+    "tap the Add-ons card",
+    { kind: "tap" },
+    {
+      success: true,
+      selfHealedNoOp: true,
+      selector: { strategy: "resource-id", value: "working_button" },
+      deadSelector: { strategy: "resource-id", value: "dead_button" },
+    }
+  );
+  assert.deepStrictEqual(healed.selector, { strategy: "resource-id", value: "working_button" });
+  assert.deepStrictEqual(healed.deadSelector, { strategy: "resource-id", value: "dead_button" });
+
+  const notHealed = buildExecutionRecord("tap the LOGIN button", { kind: "tap" }, { success: true, selector: { strategy: "resource-id", value: "login_button" } });
+  assert.strictEqual(notHealed.deadSelector, undefined, "a normal (never-healed) result has no deadSelector to report");
+});
+
+test("getDeadSelectors returns a final (never-healed) \"No visible change.\" result's own selector as the dead end", () => {
+  logExecution({
+    instruction: "tap the Add-ons card",
+    kind: "tap",
+    success: true,
+    diffSummary: "No visible change.",
+    selector: { strategy: "resource-id", value: "dead_button" },
+  });
+  const dead = getDeadSelectors("tap the Add-ons card");
+  assert.deepStrictEqual(dead, [{ strategy: "resource-id", value: "dead_button" }]);
+});
+
+test("getDeadSelectors returns a healed result's deadSelector, not its (working) selector", () => {
+  logExecution({
+    instruction: "tap the Add-ons card 2",
+    kind: "tap",
+    success: true,
+    selfHealedNoOp: true,
+    selector: { strategy: "resource-id", value: "working_button" },
+    deadSelector: { strategy: "resource-id", value: "dead_button" },
+  });
+  const dead = getDeadSelectors("tap the Add-ons card 2");
+  assert.deepStrictEqual(dead, [{ strategy: "resource-id", value: "dead_button" }]);
+});
+
+test("getDeadSelectors never includes a successful, non-healed result's selector (it's a real, working match, not a dead end)", () => {
+  logExecution({
+    instruction: "tap the Add-ons card 3",
+    kind: "tap",
+    success: true,
+    diffSummary: "Appeared: \"Add-On\".",
+    selector: { strategy: "resource-id", value: "working_button" },
+  });
+  const dead = getDeadSelectors("tap the Add-ons card 3");
+  assert.deepStrictEqual(dead, []);
+});
+
+test("getDeadSelectors scopes to kind \"tap\" and the exact instruction string only", () => {
+  logExecution({
+    instruction: "tap the Add-ons card 4",
+    kind: "type", // not a tap -- must never be treated as a dead tap
+    success: true,
+    diffSummary: "No visible change.",
+    selector: { strategy: "resource-id", value: "not_actually_dead" },
+  });
+  logExecution({
+    instruction: "a completely different instruction",
+    kind: "tap",
+    success: true,
+    diffSummary: "No visible change.",
+    selector: { strategy: "resource-id", value: "also_not_relevant" },
+  });
+  assert.deepStrictEqual(getDeadSelectors("tap the Add-ons card 4"), []);
+});
+
+test("getDeadSelectors dedups repeated dead selectors and respects limit, most recent first", () => {
+  for (let i = 0; i < 3; i += 1) {
+    logExecution({
+      instruction: "tap the flaky card",
+      kind: "tap",
+      success: true,
+      diffSummary: "No visible change.",
+      selector: { strategy: "resource-id", value: "same_dead_button" },
+    });
+  }
+  logExecution({
+    instruction: "tap the flaky card",
+    kind: "tap",
+    success: true,
+    diffSummary: "No visible change.",
+    selector: { strategy: "accessibility-id", value: "second_dead_control" },
+  });
+  const dead = getDeadSelectors("tap the flaky card");
+  assert.strictEqual(dead.length, 2, "repeated identical dead selectors should be deduped to one entry");
+  assert.deepStrictEqual(dead, [
+    { strategy: "accessibility-id", value: "second_dead_control" }, // most recent
+    { strategy: "resource-id", value: "same_dead_button" },
+  ]);
+
+  const limited = getDeadSelectors("tap the flaky card", { limit: 1 });
+  assert.strictEqual(limited.length, 1);
+  assert.deepStrictEqual(limited[0], { strategy: "accessibility-id", value: "second_dead_control" });
+});
+
+test("getDeadSelectors returns [] when there's no log file yet, and tolerates a corrupt line", () => {
+  const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), "phoenix-exec-log-empty-"));
+  const originalPath = process.env.PHOENIX_TRAINING_LOG_PATH;
+  process.env.PHOENIX_TRAINING_LOG_PATH = path.join(emptyDir, "executions.jsonl");
+  try {
+    assert.deepStrictEqual(getDeadSelectors("tap anything"), []);
+
+    fs.writeFileSync(process.env.PHOENIX_TRAINING_LOG_PATH, "not valid json\n" + JSON.stringify({
+      instruction: "tap anything",
+      kind: "tap",
+      success: true,
+      diffSummary: "No visible change.",
+      selector: { strategy: "resource-id", value: "survives_the_corrupt_line" },
+    }) + "\n");
+    assert.deepStrictEqual(getDeadSelectors("tap anything"), [{ strategy: "resource-id", value: "survives_the_corrupt_line" }]);
+  } finally {
+    process.env.PHOENIX_TRAINING_LOG_PATH = originalPath;
+  }
 });
 
 test("retentionDays() defaults to 15 and honors PHOENIX_TRAINING_LOG_RETENTION_DAYS", () => {

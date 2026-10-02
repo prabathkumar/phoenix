@@ -320,6 +320,17 @@ async function executeSemanticActionInner(driver, instruction, options = {}) {
               selector: retryResolution.selector,
               healedFromCache: Boolean(options.cachedSelector),
               selfHealedNoOp: true,
+              // The ORIGINAL selector that produced "No visible
+              // change." -- kept separately from `selector` above
+              // (which is now the HEALED, working one) so
+              // generation/execution-log.js's buildExecutionRecord can
+              // log the dead end that was actually found, not just the
+              // good outcome that replaced it. Consumed cross-run by
+              // getDeadSelectors()/resolveSemanticAction() to exclude
+              // this exact resource-id/accessibility-id/text from this
+              // instruction's candidates on every future run, not just
+              // the rest of this one.
+              deadSelector: resolution.selector,
             };
           }
         }

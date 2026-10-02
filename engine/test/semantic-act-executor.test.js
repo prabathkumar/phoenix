@@ -701,6 +701,11 @@ function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl,
       assert.strictEqual(result.success, true);
       assert.strictEqual(result.selfHealedNoOp, true);
       assert.deepStrictEqual(result.selector, { strategy: "text", value: "Real Button" });
+      // The ORIGINAL dead-end selector, kept separately so
+      // generation/execution-log.js can log it for cross-run negative
+      // caching (getDeadSelectors()) -- must never be confused with
+      // `selector` above, which is now the healed, working one.
+      assert.deepStrictEqual(result.deadSelector, { strategy: "text", value: "Dead End" });
       assert.strictEqual(result.diffSummary, "changed");
       assert.strictEqual(calls.click, 2);
       // First call excludes nothing; the retry excludes the dead element's ref.
@@ -728,6 +733,11 @@ function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl,
       assert.strictEqual(result.success, true);
       assert.strictEqual(result.selfHealedNoOp, undefined);
       assert.deepStrictEqual(result.selector, { strategy: "text", value: "Dead End" });
+      // No separate deadSelector here -- this IS the dead end (nothing
+      // healthier was ever found), so getDeadSelectors() reads it from
+      // `selector` itself (its "final, never-healed" case), not a
+      // distinct field.
+      assert.strictEqual(result.deadSelector, undefined);
       assert.strictEqual(result.diffSummary, "No visible change.");
       // Only the original attempt clicked -- the failed retry resolution never got to act.
       assert.strictEqual(calls.click, 1);

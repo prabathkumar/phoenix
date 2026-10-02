@@ -520,3 +520,13 @@ Asked the user directly rather than guess a replacement wording, and they sent a
 Fix: converted the LOGOUT step to `tapIfExists` with the confirmed `accessibility-id: "Right Icon"`, built from the user's own real-device evidence rather than another guess. The scroll step above is kept as a harmless no-op for now (a genuine engine capability, just not the fix this particular blocker needed).
 
 With this, every step in `test-cases/addons.json`'s full login → dashboard → Add-ons → close popup → Profile → Logout flow now has either a proven `resolvedSelector` cache entry or a confirmed, evidence-backed `tapIfExists` selector. Not yet re-run against real hardware -- this should be the first run with a real shot at a genuinely clean end-to-end pass. Full suite green (both `engine/test/*.test.js` and `test/run-batch-executions.test.js`).
+
+## Eighteenth bug: a real logout click reported "succeeded" while the app was still logged in, one confirmation dialog short
+
+addons-run-android-15.log reported `Succeeded: 1, Failed: 0` -- and this time the LOGOUT icon fix from bug #17 is genuinely validated: tapping `content-desc="Right Icon"` opened a real native "Are you sure you want to logout from the app?" dialog (Confirmation / YES / NO), proving it's the correct control, not another mis-fire. But the test case had no step after it to confirm the dialog. The run "succeeded" because every step it actually had completed -- the file simply stopped one step short of the real goal, leaving the app sitting on an unconfirmed dialog, never actually logged out, when the session ended.
+
+This is the same report/reality gap flagged in bug #16's note, in a gentler form: not a wrong click this time, just an incomplete sequence, invisible from the summary line alone -- confirmed only by reading the final page source.
+
+Fix: added a `tapIfExists` step to tap YES (`android:id/button1`; NO is `android:id/button2` -- confirmed from this run's page source), the same adjacent-sibling-button risk as bug #14's CANCEL/SETTINGS dialog, so built with the exact confirmed id rather than a resolver guess between the two.
+
+Not yet re-run against real hardware. Full suite green (both `engine/test/*.test.js` and `test/run-batch-executions.test.js`).

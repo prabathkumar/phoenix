@@ -430,6 +430,130 @@ function writeTempJson(content) {
     assert.deepStrictEqual(raw.steps[0].resolvedSelector, { strategy: "xpath", value: "//View[1]" });
   });
 
+  // ---- outcome verification (generation/outcome-verification.js, wired
+  // in here) -- the fix for docs/STATUS.md bugs #16/#18: a step can
+  // report success (no WebDriver error) while hitting the wrong
+  // element entirely, and nothing about `result.success` alone could
+  // ever catch that. ----
+
+  await run('loadTestCaseSteps accepts a step with a valid "expect" field', async () => {
+    const file = writeTempJson([{ kind: "tap", instruction: "tap Profile", expect: { appeared: ["Profile"], disappeared: ["Login"] } }]);
+    const steps = loadTestCaseSteps(file);
+    assert.deepStrictEqual(steps[0].expect, { appeared: ["Profile"], disappeared: ["Login"] });
+  });
+
+  await run('loadTestCaseSteps accepts "expect" with only "appeared" or only "disappeared"', async () => {
+    const file = writeTempJson([
+      { kind: "tap", instruction: "tap A", expect: { appeared: ["A"] } },
+      { kind: "tap", instruction: "tap B", expect: { disappeared: ["B"] } },
+    ]);
+    const steps = loadTestCaseSteps(file);
+    assert.deepStrictEqual(steps[0].expect, { appeared: ["A"] });
+    assert.deepStrictEqual(steps[1].expect, { disappeared: ["B"] });
+  });
+
+  await run('loadTestCaseSteps rejects an "expect" with neither "appeared" nor "disappeared" (would always pass trivially)', async () => {
+    const file = writeTempJson([{ kind: "tap", instruction: "tap X", expect: {} }]);
+    assert.throws(() => loadTestCaseSteps(file), /invalid "expect"/);
+  });
+
+  await run('loadTestCaseSteps rejects an "expect" field that is not an object', async () => {
+    const file = writeTempJson([{ kind: "tap", instruction: "tap X", expect: "Profile" }]);
+    assert.throws(() => loadTestCaseSteps(file), /invalid "expect"/);
+  });
+
+  await run('loadTestCaseSteps rejects "expect.appeared" that is not a non-empty array of strings', async () => {
+    const file = writeTempJson([{ kind: "tap", instruction: "tap X", expect: { appeared: [] } }]);
+    assert.throws(() => loadTestCaseSteps(file), /invalid "expect"/);
+    const file2 = writeTempJson([{ kind: "tap", instruction: "tap X", expect: { appeared: [123] } }]);
+    assert.throws(() => loadTestCaseSteps(file2), /invalid "expect"/);
+  });
+
+  await run("runScriptSteps FAILS the run when a step reports success but its declared outcome never appeared (the false-success fix, bugs #16/#18)", async () => {
+    const steps = [{ kind: "tap", instruction: "tap the Profile tab", expect: { appeared: ["Profile"] } }];
+    const result = await runScriptSteps({}, steps, {
+      platform: "android",
+      // Simulates the real bug: the click "succeeds" (a real, wrong
+      // element), but the diff shows something unrelated appeared --
+      // "Profile" never shows up.
+      executeSemanticAction: async () => ({
+        success: true,
+        diffSummary: "Appeared: \"Add-On Details\".",
+        diff: { appeared: [{ label: "Add-On Details" }], disappeared: [] },
+      }),
+    });
+    assert.strictEqual(result.success, false);
+    assert.ok(result.detail.includes("failed outcome verification"));
+    assert.ok(result.detail.includes("Profile"));
+  });
+
+  await run("runScriptSteps succeeds when a step's declared outcome is found in the real diff (appeared and disappeared both checked)", async () => {
+    const steps = [{ kind: "tap", instruction: "tap LOGOUT", expect: { appeared: ["login"], disappeared: ["Logout"] } }];
+    const result = await runScriptSteps({}, steps, {
+      platform: "android",
+      executeSemanticAction: async () => ({
+        success: true,
+        diffSummary: "ok",
+        // Case-insensitive, substring match -- "Login" in the diff
+        // satisfies a declared "login" expectation.
+        diff: { appeared: [{ label: "Login" }], disappeared: [{ label: "Logout" }] },
+      }),
+    });
+    assert.strictEqual(result.success, true);
+  });
+
+  await run("runScriptSteps fails outcome verification when the action succeeded but no diff was captured at all", async () => {
+    const steps = [{ kind: "tap", instruction: "tap Submit", expect: { appeared: ["Confirmation"] } }];
+    const result = await runScriptSteps({}, steps, {
+      platform: "android",
+      // Mirrors actAndDiff's own real "post-action read failed" shape:
+      // success, but no diff field at all.
+      executeSemanticAction: async () => ({ success: true }),
+    });
+    assert.strictEqual(result.success, false);
+    assert.ok(result.detail.includes("no screen diff was captured"));
+  });
+
+  await run("runScriptSteps honors optional:true on a step that fails outcome verification (skips rather than stopping the run)", async () => {
+    const calls = [];
+    const steps = [
+      { kind: "tap", instruction: "tap maybe", optional: true, expect: { appeared: ["Never Happens"] } },
+      { kind: "tap", instruction: "tap real step" },
+    ];
+    const result = await runScriptSteps({}, steps, {
+      platform: "android",
+      executeSemanticAction: async (driver, instruction) => {
+        calls.push(instruction);
+        return { success: true, diff: { appeared: [], disappeared: [] } };
+      },
+    });
+    assert.strictEqual(result.success, true);
+    assert.deepStrictEqual(calls, ["tap maybe", "tap real step"]);
+  });
+
+  await run('runScriptSteps does NOT run outcome verification on a "tapIfExists" step that was skipped (nothing happened, nothing to verify)', async () => {
+    const steps = [{ kind: "tapIfExists", instruction: "close popup if open", selector: { strategy: "resource-id", value: "x" }, expect: { appeared: ["would never be checked"] } }];
+    const result = await runScriptSteps({}, steps, {
+      platform: "android",
+      executeSemanticAction: async () => ({ success: true, skipped: true, diffSummary: "skipped" }),
+    });
+    assert.strictEqual(result.success, true);
+  });
+
+  await run("runScriptSteps never persists a resolvedSelector for a step that failed outcome verification (a wrong click never gets cached as proven-correct)", async () => {
+    const steps = [{ kind: "tap", instruction: "tap Profile", expect: { appeared: ["Profile"] } }];
+    const result = await runScriptSteps({}, steps, {
+      platform: "android",
+      executeSemanticAction: async () => ({
+        success: true,
+        selector: { strategy: "resource-id", value: "wrong_but_real_button" },
+        diff: { appeared: [{ label: "Something Else" }], disappeared: [] },
+      }),
+    });
+    assert.strictEqual(result.success, false);
+    assert.strictEqual(result.updatedSteps[0].resolvedSelector, undefined);
+  });
+
   if (process.exitCode) {
     console.error("\nengine/test-case-runner tests FAILED");
     process.exit(1);

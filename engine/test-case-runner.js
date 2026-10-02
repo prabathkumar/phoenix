@@ -22,6 +22,7 @@
  */
 
 const fs = require("fs");
+const { verifyExpectedOutcome, validateExpectShape } = require("../generation/outcome-verification");
 
 // Default pause for a "wait" step when the step doesn't specify its own
 // durationMs. Exists for a real timing gap found on real hardware
@@ -80,8 +81,23 @@ const ENV_PLACEHOLDER_RE = /^\$\{([A-Z0-9_]+)\}$/;
  * doesn't (silently skipped) -- see executeSemanticAction's
  * `exactSelector` option for the implementation.
  *
+ * An optional `expect: {appeared?: string[], disappeared?: string[]}`
+ * field is the outcome-verification layer (generation/outcome-
+ * verification.js): a step can report `success: true` (no WebDriver
+ * error, a real element was clicked) while still hitting the WRONG
+ * element -- the dominant real-bug class in this file's whole history
+ * (docs/STATUS.md bugs #13-#18), invisible from the run summary alone.
+ * `expect` lets a test-case author declare what should actually appear
+ * or disappear on screen after this step, checked by plain substring
+ * matching against the real, already-captured diff -- no model
+ * judgment involved, so it can't itself be confidently wrong. A step
+ * whose action "succeeds" but whose declared outcome doesn't show up
+ * is now reported as a FAILURE, not a false success. See that module's
+ * own doc comment for the full rationale and what this does and
+ * doesn't close.
+ *
  * @param {string} filePath - absolute or relative path to a .json file
- * @returns {Array<{kind: string, instruction: string, text?: string, optional?: boolean, resolvedSelector?: {strategy: string, value: string}, selector?: {strategy: string, value: string}}>}
+ * @returns {Array<{kind: string, instruction: string, text?: string, optional?: boolean, resolvedSelector?: {strategy: string, value: string}, selector?: {strategy: string, value: string}, expect?: {appeared?: string[], disappeared?: string[]}}>}
  */
 function loadTestCaseSteps(filePath) {
   const raw = fs.readFileSync(filePath, "utf8");
@@ -118,6 +134,10 @@ function loadTestCaseSteps(filePath) {
       if (!sel || typeof sel !== "object" || typeof sel.strategy !== "string" || typeof sel.value !== "string") {
         throw new Error(`test case file "${filePath}": step ${i} has an invalid "resolvedSelector" (must be {strategy, value} strings)`);
       }
+    }
+    const expectError = validateExpectShape(step.expect);
+    if (expectError) {
+      throw new Error(`test case file "${filePath}": step ${i} has an invalid "expect" field: ${expectError}`);
     }
   });
   return steps;
@@ -262,6 +282,27 @@ async function runScriptSteps(driver, steps, { platform, executeSemanticAction, 
     if (!result.success) {
       if (step.optional) continue;
       return { success: false, detail: `step "${step.instruction}" failed: ${result.reason}`, updatedSteps };
+    }
+    // Outcome verification: a step can report success (no WebDriver
+    // error) while having hit the wrong element entirely -- this is
+    // the check that catches that class instead of trusting the raw
+    // success flag. Skipped for a "tapIfExists" step that found
+    // nothing to do (result.skipped) -- there's no action outcome to
+    // verify when the step correctly did nothing. A step that fails
+    // verification is treated exactly like any other failure (honors
+    // `optional`, never silently persists a selector that just proved
+    // wrong -- see the resolvedSelector-write below, deliberately
+    // unreached on this path).
+    if (!result.skipped && step.expect) {
+      const verification = verifyExpectedOutcome(result.diff, step.expect);
+      if (!verification.ok) {
+        if (step.optional) continue;
+        return {
+          success: false,
+          detail: `step "${step.instruction}" reported success but failed outcome verification: ${verification.reason}`,
+          updatedSteps,
+        };
+      }
     }
     // A "tapIfExists" step's selector is hand-authored evidence, not a
     // learned cache entry -- never let it get overwritten/duplicated

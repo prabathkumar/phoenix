@@ -111,11 +111,11 @@
     <rect x="48" y="724" width="1152" height="150" rx="14" fill="#ffffff"/>
     <rect x="48" y="724" width="6" height="150" rx="3" fill="#dc2626"/>
   </g>
-  <text x="78" y="756" font-size="15" font-weight="700" fill="#dc2626">What ties all four together — and the one gap none of them closes</text>
+  <text x="78" y="756" font-size="15" font-weight="700" fill="#dc2626">What ties all four together — and the gap being closed one annotation at a time</text>
   <text x="78" y="782" font-size="12.5" fill="#475569">Every layer reports honestly rather than guessing: "unresolved" beats a confident wrong click, every time, across all four. <tspan fill="#334155" font-weight="600">engine/auto-heal.js</tspan> is where</text>
   <text x="78" y="800" font-size="12.5" fill="#475569">layer 1 and layer 2 meet — a guided script's recorded selector falls back to a fresh semantic resolution if it stops matching, or matches the wrong element.</text>
-  <text x="78" y="826" font-size="12.5" fill="#991b1b" font-weight="600">Known gap: "succeeded" means no step errored — not proof the real on-screen goal was reached. A step can click a real, functioning, WRONG element and</text>
-  <text x="78" y="844" font-size="12.5" fill="#991b1b" font-weight="600">still report success (closed per-flow today only by hand-authored tapIfExists selectors). Closing this generally needs outcome verification, not yet built.</text>
+  <text x="78" y="826" font-size="12.5" fill="#991b1b" font-weight="600">"Succeeded" alone means no step errored, not that the real goal was reached — a step can click a real, functioning, WRONG element and still report success.</text>
+  <text x="78" y="844" font-size="12.5" fill="#991b1b" font-weight="600"><tspan fill="#334155" font-weight="700">outcome-verification.js</tspan> now checks a step's declared outcome against the real diff — opt-in per step (`expect`), not yet applied everywhere.</text>
 
   <!-- ============ Connectors ============ -->
   <!-- All structural connectors are clean right-angle routes anchored at

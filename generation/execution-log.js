@@ -1,0 +1,293 @@
+/**
+ * Automatic execution-logging for the semantic layer. Explicit
+ * direction from the user: manual log-reading to diagnose and fix the
+ * resolver (the loop that closed `test-cases/addons.json`'s 18 bugs by
+ * hand) has to become a framework capability -- every execution should
+ * capture itself as structured, trainable data with zero human step,
+ * wired into the semantic layer itself, not a wrapper script tied to
+ * one person's machine or one log source.
+ *
+ * Scope, stated plainly so this isn't oversold: this module is the
+ * piece of "train the model on every execution" that's honestly
+ * automatable right now -- capturing what happened. It does NOT change
+ * any model weights, and it shouldn't: an LLM's weights only change via
+ * an offline fine-tuning job (GPU compute, a training toolchain), and
+ * doing that unreviewed after every single execution would mean a bad
+ * run could silently degrade the model with nobody checking -- the
+ * opposite of this codebase's "never guess, always verify" discipline
+ * (see docs/STATUS.md's false-success bugs #16/#18). The honest
+ * pipeline this module is step 1 of: automatic capture (this file) ->
+ * a periodic, automatic fine-tune job over the accumulated data -> an
+ * automatic regression-test gate (replay the known bugs) before a new
+ * model ever replaces the live one. Steps 2-3 need a training
+ * toolchain and GPU infra this sandbox doesn't have -- see
+ * docs/CONTINUOUS_TRAINING.md for that design. Old records past a 15-day retention window (configurable, PHOENIX_TRAINING_LOG_RETENTION_DAYS) are pruned automatically too -- once a training cycle has consumed them, the log itself doesn't need to be kept indefinitely, with no separate cleanup job to remember to run.
+ */
+
+const fs = require("fs");
+const path = require("path");
+
+/**
+ * Where execution records are appended, one JSON object per line
+ * (JSONL -- easy to append to, easy to stream into a training job
+ * later without parsing a giant array). Configurable so a real
+ * deployment can point this at a shared volume/log pipeline instead of
+ * a local file; defaults to a path inside the repo so it works
+ * out-of-the-box in dev.
+ */
+function logPath() {
+  return process.env.PHOENIX_TRAINING_LOG_PATH || path.join(process.cwd(), "training-data", "executions.jsonl");
+}
+
+/**
+ * How long a logged execution is kept before automatic cleanup removes
+ * it. Explicit requirement: once a run of training has consumed the
+ * log, the log itself shouldn't need to be kept around indefinitely --
+ * wired into the framework itself (no external cron job, no manual
+ * "remember to clean this up" step), defaulting to 15 days.
+ */
+function retentionDays() {
+  const raw = process.env.PHOENIX_TRAINING_LOG_RETENTION_DAYS;
+  const parsed = raw !== undefined ? Number(raw) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 15;
+}
+
+/**
+ * Where the "last cleanup ran at" marker lives -- a sentinel file next
+ * to the log itself, not a separate config entry, so the two always
+ * travel together and a copied/moved log directory keeps working
+ * without extra setup.
+ */
+function sentinelPath() {
+  return `${logPath()}.last-prune`;
+}
+
+/**
+ * Removes log records older than retentionDays() from the log file,
+ * keeping everything newer. Deliberately tolerant of a record with no
+ * parseable `loggedAt` (kept rather than dropped) or a corrupt line
+ * (dropped silently, same as getPastFailures()'s own tolerance) --
+ * cleanup must never be the reason real data disappears unexpectedly.
+ *
+ * Exported directly (not just invoked automatically) so it can also be
+ * run on demand -- a manual `node -e "require('./execution-log').pruneOldExecutions()"`,
+ * or wired into whatever periodic job a real deployment already has --
+ * without that being the ONLY way it runs.
+ *
+ * @returns {{kept: number, removed: number} | undefined} undefined if
+ *   there was nothing to prune (no log file yet) or the operation
+ *   failed (fail-soft, logged, never thrown).
+ */
+function pruneOldExecutions() {
+  try {
+    const filePath = logPath();
+    if (!fs.existsSync(filePath)) return undefined;
+
+    const cutoff = Date.now() - retentionDays() * 24 * 60 * 60 * 1000;
+    const lines = fs.readFileSync(filePath, "utf8").split("\n").filter(Boolean);
+    const keptLines = [];
+    let removed = 0;
+
+    for (const line of lines) {
+      let record;
+      try {
+        record = JSON.parse(line);
+      } catch {
+        removed += 1; // corrupt line -- drop it, same tolerance as getPastFailures()
+        continue;
+      }
+      const loggedAtMs = record.loggedAt ? Date.parse(record.loggedAt) : NaN;
+      if (Number.isFinite(loggedAtMs) && loggedAtMs < cutoff) {
+        removed += 1;
+      } else {
+        keptLines.push(line);
+      }
+    }
+
+    if (removed > 0) {
+      fs.writeFileSync(filePath, keptLines.length > 0 ? keptLines.join("\n") + "\n" : "");
+    }
+    return { kept: keptLines.length, removed };
+  } catch (err) {
+    console.warn("[generation/execution-log] couldn't prune old executions (continuing anyway):", err.message);
+    return undefined;
+  }
+}
+
+/**
+ * Runs pruneOldExecutions() automatically, but only roughly once per
+ * retention window -- checked via the sentinel file -- so logging
+ * itself doesn't pay the cost of re-scanning and rewriting the whole
+ * log on every single execution. This is what makes cleanup a
+ * framework capability rather than a cron job someone has to remember
+ * to set up: it piggybacks on ordinary usage (any call to
+ * logExecution), so as long as Phoenix is being run at all, the log
+ * stays bounded with zero separate scheduling step.
+ */
+function maybePruneOldExecutions() {
+  try {
+    const sentinel = sentinelPath();
+    const dueMs = retentionDays() * 24 * 60 * 60 * 1000;
+    let lastPrunedMs = 0;
+    if (fs.existsSync(sentinel)) {
+      lastPrunedMs = Date.parse(fs.readFileSync(sentinel, "utf8").trim()) || 0;
+    }
+    if (Date.now() - lastPrunedMs < dueMs) return; // not due yet
+
+    pruneOldExecutions();
+    fs.writeFileSync(sentinel, new Date().toISOString());
+  } catch (err) {
+    // Never let a cleanup-scheduling problem block the actual log write.
+    console.warn("[generation/execution-log] couldn't check/update prune schedule (continuing anyway):", err.message);
+  }
+}
+
+/**
+ * Appends one execution record. NEVER throws -- logging is a
+ * side-channel; a disk-full or permissions error here must not fail
+ * the actual test action it's describing. Returns true/false for
+ * whether the write succeeded, purely informational.
+ *
+ * Also opportunistically runs the automatic retention cleanup (see
+ * maybePruneOldExecutions()) -- cheap on every call (one sentinel file
+ * read) and only actually rewrites the log on the rare call where the
+ * retention window has elapsed, so this stays automatic without
+ * needing a separate scheduled process.
+ *
+ * @param {Object} record - caller-built record (see
+ *   buildExecutionRecord below for the shape used by the semantic
+ *   layer specifically). Logged as-is, plus a `loggedAt` timestamp.
+ * @returns {boolean}
+ */
+function logExecution(record) {
+  try {
+    const filePath = logPath();
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    const line = JSON.stringify({ ...record, loggedAt: new Date().toISOString() });
+    fs.appendFileSync(filePath, line + "\n");
+    maybePruneOldExecutions();
+    return true;
+  } catch (err) {
+    // Fail-soft and loud-ish (console, not throw) -- see module doc.
+    console.warn("[generation/execution-log] couldn't write execution record (continuing anyway):", err.message);
+    return false;
+  }
+}
+
+/**
+ * Builds the record logged for one executeSemanticAction() call, from
+ * its inputs and result. Centralized here (not duplicated at every
+ * call site) so the schema only needs to change in one place.
+ *
+ * Credential safety, same standard as mergeResolvedSelectors
+ * (run-batch-executions.js): a "type" step's `options.text` is, after
+ * substitution, a REAL value -- a real phone number or password when
+ * it came from `${PHOENIX_BATCH_LOGIN_PASSWORD}` etc. This NEVER logs
+ * that value, only whether one was given and its length, so a training
+ * dataset built from these logs can never leak a credential even if
+ * the test-case author used one as a literal instead of an env
+ * placeholder.
+ *
+ * @param {string} instruction
+ * @param {Object} options - the options object executeSemanticAction()
+ *   received (kind, text, cachedSelector, useVisualGrounding, etc).
+ * @param {Object} result - whatever executeSemanticAction() is about
+ *   to return.
+ * @returns {Object}
+ */
+function buildExecutionRecord(instruction, options, result) {
+  return {
+    instruction,
+    kind: options.kind || "tap",
+    hadText: typeof options.text === "string",
+    textLength: typeof options.text === "string" ? options.text.length : undefined,
+    usedVisualGrounding: Boolean(options.useVisualGrounding),
+    hadCachedSelector: Boolean(options.cachedSelector),
+    // Outcome -- the actual training signal. `success`/`diffSummary`
+    // are the ground truth a future fine-tune or regression-eval would
+    // learn from or check against; usedCache/selfHealedNoOp/skipped
+    // say which code path produced it, so "worked because the cache
+    // already knew the answer" isn't confused with "the model resolved
+    // it fresh and got it right."
+    success: Boolean(result.success),
+    reason: result.success ? undefined : result.reason,
+    selector: result.selector,
+    diffSummary: result.diffSummary,
+    usedCache: Boolean(result.usedCache),
+    healedFromCache: Boolean(result.healedFromCache),
+    selfHealedNoOp: Boolean(result.selfHealedNoOp),
+    skipped: Boolean(result.skipped),
+  };
+}
+
+/**
+ * Reads back past failures for the SAME instruction, so a fresh
+ * resolveSemanticAction() call can take them into account -- the other
+ * half of "automatic, no human in the loop" that just logging misses:
+ * a log nobody reads back is a diary, not a feedback loop. This is the
+ * part of continuous improvement that genuinely runs instantly, on any
+ * hardware, with no training job and no GPU -- it's a plain file read
+ * plus a filter, not a model update. See docs/CONTINUOUS_TRAINING.md
+ * §2(b) for why this (prompt-level retrieval) is the realistic
+ * "learns from every execution" mechanism on CPU-only hardware, versus
+ * §2(a) (actual weight fine-tuning, which is NOT instant regardless of
+ * data cleanliness -- a compute-bound cost, not a data-quality one).
+ *
+ * Deliberately soft, not a hard filter: a past failure is a HINT passed
+ * into the prompt ("this was tried before and didn't work"), never a
+ * silent exclusion of a candidate. The screen can genuinely change
+ * between runs (an app update, a different account state) such that a
+ * previously-wrong element becomes the right one -- hard-excluding it
+ * forever from a log entry would risk permanently blinding the
+ * resolver to a real match for a reason that no longer holds. Scoped
+ * to exact instruction-string matches only (test-case wording is
+ * static), and only genuine failures (success: false) -- a self-healed
+ * run already found a working answer another way (cached next time),
+ * so there's no actionable "what went wrong" to surface from it today
+ * without deeper plumbing to capture the pre-heal attempt separately
+ * (noted as a follow-up in docs/CONTINUOUS_TRAINING.md).
+ *
+ * @param {string} instruction
+ * @param {Object} [options]
+ * @param {number} [options.limit] - most recent N failures to return
+ *   (default 3) -- enough to be useful context, not so many the prompt
+ *   balloons or old, since-fixed failures crowd out the current ones.
+ * @returns {Array<{reason: string|undefined, diffSummary: string|undefined, selector: Object|undefined, loggedAt: string}>}
+ */
+function getPastFailures(instruction, options = {}) {
+  const limit = options.limit || 3;
+  try {
+    const filePath = logPath();
+    if (!fs.existsSync(filePath)) return [];
+    const lines = fs.readFileSync(filePath, "utf8").split("\n").filter(Boolean);
+    const failures = [];
+    // Walk from the end -- most recent first -- so a stale early
+    // failure doesn't crowd out a more recent, more relevant one once
+    // `limit` is reached.
+    for (let i = lines.length - 1; i >= 0 && failures.length < limit; i -= 1) {
+      let record;
+      try {
+        record = JSON.parse(lines[i]);
+      } catch {
+        continue; // tolerate a corrupt/partial line rather than failing the whole read
+      }
+      if (record.instruction === instruction && record.success === false) {
+        failures.push({
+          reason: record.reason,
+          diffSummary: record.diffSummary,
+          selector: record.selector,
+          loggedAt: record.loggedAt,
+        });
+      }
+    }
+    return failures;
+  } catch (err) {
+    // Fail-soft, same contract as logExecution: a corrupt/unreadable
+    // log must never block resolution, only lose this one piece of
+    // helpful context.
+    console.warn("[generation/execution-log] couldn't read past failures (continuing without them):", err.message);
+    return [];
+  }
+}
+
+module.exports = { logExecution, buildExecutionRecord, logPath, getPastFailures, pruneOldExecutions, retentionDays };

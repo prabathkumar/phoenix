@@ -29,6 +29,7 @@
 
 const { buildGroundedSnapshot, snapshotToText, findByRef } = require("./semantic-snapshot");
 const { callOllamaJson } = require("./llm");
+const { getPastFailures } = require("./execution-log");
 
 /**
  * @typedef {Object} SemanticActionResult
@@ -176,6 +177,18 @@ function toSelector(element, options = {}) {
  *   loop live, during the run, with no human needed to notice from a
  *   log afterwards. Optional and defaults to excluding nothing, so
  *   existing callers are unaffected.
+ *
+ * ACROSS runs (not just within one), this function also automatically
+ * reads generation/execution-log.js's getPastFailures(instruction) --
+ * no option needed, always on -- and includes a short "this failed
+ * before, here's why" note in the prompt when there's history for this
+ * exact instruction. This is the read half of the automatic logging
+ * engine/semantic-act-executor.js writes on every call: a past failure
+ * is surfaced to the model as a soft hint (never a hard exclusion --
+ * the screen can genuinely change between runs) with zero human step in
+ * between. See docs/CONTINUOUS_TRAINING.md for the full picture of what
+ * this is (instant, works on any hardware) and isn't (model weights
+ * don't change; that's a separate, periodic, GPU-dependent process).
  * @returns {Promise<SemanticActionResult>}
  */
 async function resolveSemanticAction(pageSourceXml, instruction, options = {}) {
@@ -212,6 +225,16 @@ async function resolveSemanticAction(pageSourceXml, instruction, options = {}) {
 
   const fused = Boolean(options.screenshotBase64);
 
+  // Automatic feedback from past runs -- the read half of the logging
+  // this layer now also writes on every call (execution-log.js). This
+  // is what makes "learns from every execution" genuinely automatic
+  // rather than a diary nobody reads back: no human has to notice a
+  // repeated failure and hand-author a fix for it to at least be
+  // surfaced to the model as context on the next attempt. Deliberately
+  // a soft hint in the prompt, never a hard exclusion -- see
+  // getPastFailures()'s own doc comment for why.
+  const pastFailures = getPastFailures(instruction);
+
   try {
     const prompt = [
       "You are resolving a natural-language mobile test instruction against",
@@ -232,6 +255,14 @@ async function resolveSemanticAction(pageSourceXml, instruction, options = {}) {
       "Snapshot:",
       snapshotToText(elements, { includeBounds: fused }),
       "",
+      pastFailures.length > 0
+        ? [
+            `Note: on ${pastFailures.length} past run(s), this exact instruction failed:`,
+            ...pastFailures.map((f, i) => `  ${i + 1}. ${f.reason || f.diffSummary || "failed, no reason recorded"}`),
+            "The screen may have changed since then, so don't rule out a candidate just because it resembles one of these -- but if you're about to repeat the same mistake for the same reason, prefer declining over guessing again.",
+            "",
+          ].join("\n")
+        : undefined,
       "A wrong guess is far more costly than correctly declining: a bad tap",
       "can navigate away, open an unrelated screen, or submit something, and",
       "nothing downstream can undo it. Match only an element whose own label,",

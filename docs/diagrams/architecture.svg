@@ -1,0 +1,174 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="980" viewBox="0 0 1240 980" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <defs>
+    <filter id="cardShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="6" flood-color="#0f172a" flood-opacity="0.10"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowTeal" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#0d9488"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#dc2626"/>
+    </marker>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f8fafc"/>
+      <stop offset="1" stop-color="#eef2f7"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="1240" height="980" fill="url(#bgGrad)"/>
+
+  <!-- ============ HEADER ============ -->
+  <text x="48" y="52" font-size="25" font-weight="700" fill="#0f172a" letter-spacing="-0.3">Phoenix architecture</text>
+  <text x="48" y="78" font-size="14" fill="#64748b">Four layers, one engine, one shared AI runtime — Guided recording → Semantic resolution → Vision fusion → Autonomous loop</text>
+
+  <!-- ============ LAYER 1: GUIDED ============ -->
+  <g filter="url(#cardShadow)">
+    <rect x="48" y="112" width="552" height="176" rx="14" fill="#ffffff"/>
+    <rect x="48" y="112" width="552" height="6" rx="3" fill="#2563eb"/>
+  </g>
+  <circle cx="78" cy="152" r="16" fill="#eff6ff"/>
+  <path d="M71,152 l5,5 l10,-11" stroke="#2563eb" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="102" y="149" font-size="11" font-weight="700" fill="#2563eb" letter-spacing="0.5">LAYER 1 · SHIPPED</text>
+  <text x="102" y="168" font-size="16.5" font-weight="700" fill="#0f172a">Guided recording</text>
+  <text x="78" y="196" font-size="12.5" fill="#475569">A human walks the flow once, live, in the browser.</text>
+  <text x="78" y="216" font-size="12.5" fill="#475569"><tspan fill="#334155" font-weight="600">capture/recorder.js</tspan> records each tap/type/scroll as</text>
+  <text x="78" y="234" font-size="12.5" fill="#475569">an exact, deterministic selector (resource-id / a11y-id).</text>
+  <text x="78" y="254" font-size="12.5" fill="#475569"><tspan fill="#334155" font-weight="600">generation/pipeline.js</tspan> infers assertions from the real</text>
+  <text x="78" y="272" font-size="12.5" fill="#475569">diff and synthesizes a runnable WebDriver script.</text>
+  <text x="78" y="292" font-size="11" fill="#94a3b8" font-style="italic">No model call at runtime — the only layer that never touches Ollama.</text>
+
+  <!-- ============ LAYER 2: SEMANTIC ============ -->
+  <g filter="url(#cardShadow)">
+    <rect x="48" y="312" width="552" height="258" rx="14" fill="#ffffff"/>
+    <rect x="48" y="312" width="552" height="6" rx="3" fill="#0d9488"/>
+  </g>
+  <circle cx="78" cy="352" r="16" fill="#f0fdfa"/>
+  <path d="M71,352 a7,7 0 1,0 14,0 a7,7 0 1,0 -14,0 M78,347 v10 M73,352 h10" stroke="#0d9488" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+  <text x="102" y="349" font-size="11" font-weight="700" fill="#0d9488" letter-spacing="0.5">LAYER 2 · SHIPPED, PROVEN ON HARDWARE</text>
+  <text x="102" y="368" font-size="16.5" font-weight="700" fill="#0f172a">Semantic resolution</text>
+  <text x="78" y="396" font-size="12.5" fill="#475569">A plain-language instruction ("tap the LOGIN button")</text>
+  <text x="78" y="414" font-size="12.5" fill="#475569">replaces a hand-authored selector. <tspan fill="#334155" font-weight="600">semantic-act.js</tspan>'s</text>
+  <text x="78" y="432" font-size="12.5" fill="#475569">resolveSemanticAction() grounds the live accessibility</text>
+  <text x="78" y="450" font-size="12.5" fill="#0d9488" font-weight="600">tree into a numbered element list and asks Ollama to pick</text>
+  <text x="78" y="468" font-size="12.5" fill="#0d9488" font-weight="600">one — or say "unresolved," never guess.</text>
+  <text x="78" y="490" font-size="12.5" fill="#475569"><tspan fill="#334155" font-weight="600">semantic-act-executor.js</tspan> then acts live via the same</text>
+  <text x="78" y="508" font-size="12.5" fill="#475569">WebDriver calls the guided path uses, and diffs the</text>
+  <text x="78" y="526" font-size="12.5" fill="#475569">screen before/after to know what really happened.</text>
+  <rect x="70" y="538" width="508" height="22" rx="6" fill="#fef2f2"/>
+  <text x="80" y="553" font-size="11.5" fill="#b91c1c" font-weight="600">⟲ Self-heal: a "No visible change" tap retries once, live, excluding the dead element.</text>
+
+  <!-- ============ LAYER 3: VISION ============ -->
+  <g filter="url(#cardShadow)">
+    <rect x="648" y="112" width="552" height="216" rx="14" fill="#ffffff"/>
+    <rect x="648" y="112" width="552" height="6" rx="3" fill="#d97706"/>
+  </g>
+  <circle cx="678" cy="152" r="16" fill="#fffbeb"/>
+  <circle cx="678" cy="152" r="6" fill="none" stroke="#d97706" stroke-width="1.8"/>
+  <circle cx="678" cy="152" r="2" fill="#d97706"/>
+  <text x="702" y="149" font-size="11" font-weight="700" fill="#b45309" letter-spacing="0.5">LAYER 3 · SHIPPED, OPT-IN</text>
+  <text x="702" y="168" font-size="16.5" font-weight="700" fill="#0f172a">Vision fusion</text>
+  <text x="678" y="196" font-size="12.5" fill="#475569">Text alone is ambiguous on icon-only controls — an</text>
+  <text x="678" y="214" font-size="12.5" fill="#475569">unlabeled "Right Icon" that's actually Logout, or two</text>
+  <text x="678" y="232" font-size="12.5" fill="#475569">sibling buttons sharing a generic id pattern.</text>
+  <text x="678" y="254" font-size="12.5" fill="#475569">When a screenshot is available, <tspan fill="#334155" font-weight="600">semantic-act.js</tspan></text>
+  <text x="678" y="272" font-size="12.5" fill="#b45309" font-weight="600">sends it alongside the element list via Ollama's</text>
+  <text x="678" y="290" font-size="12.5" fill="#b45309" font-weight="600">multimodal `images` field, and the model confirms its</text>
+  <text x="678" y="308" font-size="12.5" fill="#475569">match against what the screen actually looks like.</text>
+
+  <!-- ============ LAYER 4: LOOP ============ -->
+  <g filter="url(#cardShadow)">
+    <rect x="648" y="346" width="552" height="224" rx="14" fill="#ffffff"/>
+    <rect x="648" y="346" width="552" height="6" rx="3" fill="#7c3aed"/>
+  </g>
+  <circle cx="678" cy="386" r="16" fill="#f5f3ff"/>
+  <path d="M672,386 a6,6 0 1,1 12,0 a6,6 0 1,1 -12,0 M684,386 l4,-4 M684,386 l4,4" stroke="#7c3aed" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+  <text x="702" y="383" font-size="11" font-weight="700" fill="#7c3aed" letter-spacing="0.5">LAYER 4 · BETA</text>
+  <text x="702" y="402" font-size="16.5" font-weight="700" fill="#0f172a">Autonomous loop</text>
+  <text x="678" y="430" font-size="12.5" fill="#475569"><tspan fill="#334155" font-weight="600">semantic-loop.js</tspan> takes a goal instead of a step list:</text>
+  <text x="678" y="448" font-size="12.5" fill="#475569">read the snapshot → ask Ollama to decide the single</text>
+  <text x="678" y="466" font-size="12.5" fill="#475569">next action (or stop) → execute it through the same</text>
+  <text x="678" y="484" font-size="12.5" fill="#475569">executor as layer 2 → feed the diff back in → repeat.</text>
+  <text x="678" y="504" font-size="12.5" fill="#475569">Stops explicitly on: goal reached, model asks to stop,</text>
+  <text x="678" y="522" font-size="12.5" fill="#475569">a failed/unresolved action, or a hard step limit.</text>
+  <rect x="670" y="534" width="508" height="22" rx="6" fill="#f5f3ff"/>
+  <text x="680" y="549" font-size="11.5" fill="#6d28d9" font-weight="600">Wired into run-batch-executions.js's "loop" mode; hardens through real usage.</text>
+
+  <!-- ============ SHARED AI RUNTIME ============ -->
+  <g filter="url(#cardShadow)">
+    <rect x="48" y="596" width="1152" height="104" rx="14" fill="#ffffff"/>
+    <rect x="48" y="596" width="6" height="104" rx="3" fill="#0d9488"/>
+  </g>
+  <text x="78" y="628" font-size="15" font-weight="700" fill="#0d9488">Shared AI runtime — one model, three callers, zero retraining required to use it</text>
+  <text x="78" y="652" font-size="12.5" fill="#475569"><tspan fill="#334155" font-weight="600">generation/llm.js</tspan>'s callOllamaJson() is the ONLY place any layer talks to a model — a self-hosted Ollama server (local today; pointing it at frothAI is a</text>
+  <text x="78" y="670" font-size="12.5" fill="#475569">config change, not a code change). Layers 2–4 all call it; layer 1 never does. Every call can return "can't tell" rather than a guess.</text>
+  <text x="78" y="690" font-size="12.5" fill="#0d9488" font-weight="600">execution-log.js closes the loop: every call logs itself automatically, and future resolutions read past failures back as prompt context.</text>
+
+  <!-- ============ KNOWN GAP ============ -->
+  <g filter="url(#cardShadow)">
+    <rect x="48" y="724" width="1152" height="150" rx="14" fill="#ffffff"/>
+    <rect x="48" y="724" width="6" height="150" rx="3" fill="#dc2626"/>
+  </g>
+  <text x="78" y="756" font-size="15" font-weight="700" fill="#dc2626">What ties all four together — and the gap being closed one annotation at a time</text>
+  <text x="78" y="782" font-size="12.5" fill="#475569">Every layer reports honestly rather than guessing: "unresolved" beats a confident wrong click, every time, across all four. <tspan fill="#334155" font-weight="600">engine/auto-heal.js</tspan> is where</text>
+  <text x="78" y="800" font-size="12.5" fill="#475569">layer 1 and layer 2 meet — a guided script's recorded selector falls back to a fresh semantic resolution if it stops matching, or matches the wrong element.</text>
+  <text x="78" y="826" font-size="12.5" fill="#991b1b" font-weight="600">"Succeeded" alone means no step errored, not that the real goal was reached — a step can click a real, functioning, WRONG element and still report success.</text>
+  <text x="78" y="844" font-size="12.5" fill="#991b1b" font-weight="600"><tspan fill="#334155" font-weight="700">outcome-verification.js</tspan> now checks a step's declared outcome against the real diff — opt-in per step (`expect`), not yet applied everywhere.</text>
+
+  <!-- ============ Connectors ============ -->
+  <!-- All structural connectors are clean right-angle routes anchored at
+       card edges, never crossing through a card's body text, and the
+       cross-cutting "calls Ollama" connectors stay in the open gutter
+       to the right of every card (x=1200..1224) rather than brushing
+       past card borders. -->
+
+  <!-- 1. Guided -> Semantic: straight, same column, the only two cards
+       stacked directly on top of each other. -->
+  <path d="M324,288 L324,310" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 2. Semantic -> Vision fusion: vision fusion is literally part of
+       the SAME resolveSemanticAction() call (a screenshot option), not
+       a downstream stage — routed and labeled to say exactly that,
+       starting from a clear point on layer 2's own edge (below its
+       header, above its body text) so it reads as "from layer 2",
+       never "from layer 1". -->
+  <path d="M600,324 H626 V206 H646" stroke="#d97706" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <text x="606" y="318" font-size="9.5" fill="#b45309">same call,</text>
+  <text x="606" y="329" font-size="9.5" fill="#b45309">fused mode</text>
+
+  <!-- 3. Vision -> Loop: straight, same column, cards stacked directly. -->
+  <path d="M924,328 L924,344" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 4. Semantic -> Loop: the loop reuses layer 2's executor for every
+       action it takes. Both anchor points sit at the same height, so
+       this is a single straight line straight across the gutter, not
+       an elbow — nothing to misread. -->
+  <path d="M600,480 L646,480" stroke="#0d9488" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="623" y="474" font-size="9.5" fill="#0d9488" text-anchor="middle">reuses</text>
+
+  <!-- 5. Semantic / Loop -> shared AI runtime: both exit straight down
+       from each card's own bottom edge into the runtime strip directly
+       beneath them — no ambiguity about which card each belongs to. -->
+  <path d="M324,570 L324,594" stroke="#0d9488" stroke-width="2.5" marker-end="url(#arrowTeal)"/>
+  <path d="M924,570 L924,594" stroke="#0d9488" stroke-width="2.5" marker-end="url(#arrowTeal)"/>
+
+  <!-- 6. Vision -> shared AI runtime: vision fusion's card isn't
+       directly above the runtime strip (layer 4 sits between them), so
+       this routes around in the open gutter to the RIGHT of every
+       card (x=1220, a full 20px clear of every card's x=1200 right
+       edge) rather than hugging/crossing card borders — it is never
+       closer than 20px to any box. -->
+  <path d="M1200,180 H1220 V646 H1200" stroke="#0d9488" stroke-width="2.5" fill="none" marker-end="url(#arrowTeal)"/>
+
+  <!-- 7. Shared AI runtime -> the known-gap callout beneath it: straight,
+       same column, stacked directly. -->
+  <path d="M624,700 L624,722" stroke="#dc2626" stroke-width="2" marker-end="url(#arrowRed)"/>
+
+  <!-- ============ FOOTER / CODE MAP ============ -->
+  <line x1="48" y1="898" x2="1200" y2="898" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="48" y="922" font-size="11.5" fill="#94a3b8">Code map: capture/recorder.js + generation/pipeline.js (layer 1)  ·  generation/semantic-act.js + engine/semantic-act-executor.js (layer 2, incl. self-heal)  ·</text>
+  <text x="48" y="940" font-size="11.5" fill="#94a3b8">generation/llm.js + execution-log.js (shared runtime + feedback loop)  ·  engine/semantic-loop.js (layer 4)  ·  engine/auto-heal.js (bridges 1↔2)</text>
+  <text x="48" y="962" font-size="11.5" fill="#94a3b8">Full detail: docs/PHOENIX_SPEC.md (architecture) · docs/STATUS.md (every bug, real evidence) · docs/CONTINUOUS_TRAINING.md (the feedback loop)</text>
+</svg>

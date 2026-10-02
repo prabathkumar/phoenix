@@ -183,6 +183,11 @@
       "resolvedSelector": {
         "strategy": "resource-id",
         "value": "my.yes.yes4g:id/buyAddonLayout"
+      },
+      "expect": {
+        "appeared": [
+          "Add-On"
+        ]
       }
     },
     {
@@ -216,7 +221,12 @@
         "strategy": "accessibility-id",
         "value": "Right Icon"
       },
-      "note": "CONFIRMED real bug on addons-run-android-4.log (wrong theory: thought Logout was below the fold in the scrollable menu -- see the scroll step above) and addons-run-android-14.log (17th bug, the real cause, found only because the user sent a screenshot of the actual Profile screen): Logout is not a text-labeled menu item at all. It's an icon in the Profile screen's top app bar, to the right of the 'Profile' title (an arrow-out-of-a-box glyph) -- confirmed from run 14's page source as a clickable ImageView with content-desc=\"Right Icon\" (bounds [936,111][1062,237], top-right corner) and NO text anywhere in the accessibility tree relating it to 'logout' at all. A plain-language resolver can never reliably find this: there's no semantic signal to match 'LOGOUT or Log Out button' against a control labeled only 'Right Icon' by generic position, not purpose. Converted straight to tapIfExists on the user's own real-device confirmation rather than attempting another wording fix that, like the scroll theory before it, would have no real evidence behind it. CONFIRMED CORRECT on addons-run-android-15.log: tapping it opened a real native 'Are you sure you want to logout from the app?' confirmation dialog (Confirmation/YES/NO) -- proof this is the genuine Logout control, not another mis-fire."
+      "note": "CONFIRMED real bug on addons-run-android-4.log (wrong theory: thought Logout was below the fold in the scrollable menu -- see the scroll step above) and addons-run-android-14.log (17th bug, the real cause, found only because the user sent a screenshot of the actual Profile screen): Logout is not a text-labeled menu item at all. It's an icon in the Profile screen's top app bar, to the right of the 'Profile' title (an arrow-out-of-a-box glyph) -- confirmed from run 14's page source as a clickable ImageView with content-desc=\"Right Icon\" (bounds [936,111][1062,237], top-right corner) and NO text anywhere in the accessibility tree relating it to 'logout' at all. A plain-language resolver can never reliably find this: there's no semantic signal to match 'LOGOUT or Log Out button' against a control labeled only 'Right Icon' by generic position, not purpose. Converted straight to tapIfExists on the user's own real-device confirmation rather than attempting another wording fix that, like the scroll theory before it, would have no real evidence behind it. CONFIRMED CORRECT on addons-run-android-15.log: tapping it opened a real native 'Are you sure you want to logout from the app?' confirmation dialog (Confirmation/YES/NO) -- proof this is the genuine Logout control, not another mis-fire.",
+      "expect": {
+        "appeared": [
+          "Confirmation"
+        ]
+      }
     },
     {
       "kind": "tapIfExists",
@@ -225,7 +235,15 @@
         "strategy": "resource-id",
         "value": "android:id/button1"
       },
-      "note": "CONFIRMED real gap on addons-run-android-15.log: the LOGOUT icon step above correctly triggered a native confirmation dialog ('Are you sure you want to logout from the app?', NO=android:id/button2, YES=android:id/button1 -- confirmed from that run's own page source) that the test case had no step to dismiss. The run reported Succeeded: 1 even though the app was never actually logged out -- it was sitting on this unconfirmed dialog when the session ended, the same kind of report/reality gap flagged in bug #16's note (a 'succeeded' report is not proof of the intended real-world end state). Same adjacent-sibling-button risk as bug #14's CANCEL/SETTINGS dialog (button1/button2 reused generically across this app's dialogs), so tapIfExists with the exact confirmed id for YES specifically, never a resolver guess between the two."
+      "note": "CONFIRMED real gap on addons-run-android-15.log: the LOGOUT icon step above correctly triggered a native confirmation dialog ('Are you sure you want to logout from the app?', NO=android:id/button2, YES=android:id/button1 -- confirmed from that run's own page source) that the test case had no step to dismiss. The run reported Succeeded: 1 even though the app was never actually logged out -- it was sitting on this unconfirmed dialog when the session ended, the same kind of report/reality gap flagged in bug #16's note (a 'succeeded' report is not proof of the intended real-world end state). Same adjacent-sibling-button risk as bug #14's CANCEL/SETTINGS dialog (button1/button2 reused generically across this app's dialogs), so tapIfExists with the exact confirmed id for YES specifically, never a resolver guess between the two.",
+      "expect": {
+        "appeared": [
+          "LOGIN"
+        ],
+        "disappeared": [
+          "Confirmation"
+        ]
+      }
     }
   ]
 }

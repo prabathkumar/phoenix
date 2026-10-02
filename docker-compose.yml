@@ -1,0 +1,28 @@
+# TestOps Mobile (Phoenix) -- reference compose file.
+#
+# This is a convenience wrapper around `docker build`/`docker run`, not a
+# requirement -- the user explicitly left process management/deployment
+# target unspecified ("[No preference]"), so nothing here is load-bearing.
+# TestOps's own deployment tooling can ignore this file entirely and run
+# the image directly; it's provided so a developer can get a container up
+# in one command while evaluating the image.
+#
+# Usage:
+#   cp .env.example .env   # fill in the required values, see .env.example
+#   docker compose up --build
+#
+# This does NOT start an Appium server, an emulator, or a real device --
+# see the Dockerfile's header comment and docs/TESTOPS_MOBILE_DOCKER.md for
+# why, and point PHOENIX_APPIUM_HOST/PORT (or the BrowserStack
+# PHOENIX_APPIUM_PROVIDER=browserstack vars) at wherever that already runs.
+
+services:
+  testops-mobile:
+    build: .
+    image: testops-mobile:latest
+    env_file:
+      - .env
+    ports:
+      - "8090:8090"
+      - "8091:8091"
+    restart: unless-stopped

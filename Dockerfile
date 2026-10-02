@@ -25,6 +25,17 @@
 
 FROM node:20-slim
 
+# Distribution label only -- this does not rename any package, module, or
+# code identifier inside the repo (nothing in engine/, generation/,
+# capture/, live-view/, or frontend/ changes). "TestOps Mobile" is the name
+# this image is handed to the TestOps dev team under; the code underneath
+# is still Phoenix. See docs/TESTOPS_MOBILE_DOCKER.md for the full handoff
+# workflow (build, save/load without a registry, and the separate
+# GitHub-pull path for the source code itself).
+LABEL org.opencontainers.image.title="TestOps Mobile" \
+      org.opencontainers.image.description="Phoenix semantic mobile-automation pipeline, packaged for TestOps integration" \
+      org.opencontainers.image.vendor="YTL / Robotico"
+
 WORKDIR /app
 
 # Install each subproject's own dependencies (they're independent

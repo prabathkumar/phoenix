@@ -9,17 +9,18 @@ Testers record a flow once, inside TestOps — no Appium Inspector, no local ins
 
 **Live: [prabathkumar.github.io/phoenix](https://prabathkumar.github.io/phoenix/)** — the actual recording UI, connecting to a Phoenix backend running against a real device.
 
-| Doc | For |
-|---|---|
-| [`docs/PHOENIX_SPEC.md`](docs/PHOENIX_SPEC.md) | Full architecture and roadmap |
-| [`docs/SETUP.md`](docs/SETUP.md) | Standing up a Phoenix instance |
-| [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) | Recording a flow and getting a script |
-| [`docs/REAL_DEVICE_BATCH_TESTING.md`](docs/REAL_DEVICE_BATCH_TESTING.md) | `run-batch-executions.js` runbook |
-| [`docs/TESTOPS_WORKFLOW_UX.md`](docs/TESTOPS_WORKFLOW_UX.md) | Dev team: the UI/UX workflow for integrating `test-case` mode into TestOps (library → cycle → app → run) |
-| [`docs/TESTOPS_INTEGRATION_GUIDE.md`](docs/TESTOPS_INTEGRATION_GUIDE.md) | Dev team: data model/fields, frothAI (Ollama) wiring, server install |
-| [`docs/TESTOPS_MOBILE_DOCKER.md`](docs/TESTOPS_MOBILE_DOCKER.md) | Downloadable "TestOps Mobile" Docker image: build, export, and run without a registry |
-| [`docs/COMPETITIVE_LANDSCAPE.md`](docs/COMPETITIVE_LANDSCAPE.md) | Full write-up vs. Appium-MCP and other AI-agent competitors |
-| [`docs/STATUS.md`](docs/STATUS.md) | Detailed engineering status: every capability, real bugs found/fixed, what's still open |
+| Doc | For | What's in it |
+|---|---|---|
+| [`docs/PHOENIX_SPEC.md`](docs/PHOENIX_SPEC.md) | Anyone wanting the full picture | The original spec: why guided-first, the Act 1/2/3 roadmap, what each phase is and isn't |
+| [`docs/STATUS.md`](docs/STATUS.md) | Engineering — the source of truth | Every capability, every real bug found and fixed with root cause and evidence, what's still open. If a claim anywhere else in these docs needs checking, this is where it's backed up |
+| [`docs/SETUP.md`](docs/SETUP.md) | An infra engineer standing Phoenix up | Local Appium host vs. BrowserStack, credentials, env vars, one checklist from a cold machine |
+| [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) | A tester or dev recording a flow | Walkthrough: record once in the browser, get a runnable script back |
+| [`docs/REAL_DEVICE_BATCH_TESTING.md`](docs/REAL_DEVICE_BATCH_TESTING.md) | Running batches on real hardware | The `run-batch-executions.js` runbook — guided/semantic/loop/test-case modes, env vars, reading the report |
+| [`docs/CONTINUOUS_TRAINING.md`](docs/CONTINUOUS_TRAINING.md) | Understanding how the model improves | What's automatic today (execution logging, past-failure feedback, log retention) vs. what a real fine-tune pipeline would need (GPU infra, a regression gate) — written against the actual frothAI hardware |
+| [`docs/TESTOPS_WORKFLOW_UX.md`](docs/TESTOPS_WORKFLOW_UX.md) | TestOps dev team — UI/UX | The screen-by-screen flow (library → cycle → app → run) to build TestOps's own UI against `test-case` mode |
+| [`docs/TESTOPS_INTEGRATION_GUIDE.md`](docs/TESTOPS_INTEGRATION_GUIDE.md) | TestOps dev team — backend integration | The data model/fields their UI needs, frothAI (Ollama) wiring, server installation |
+| [`docs/TESTOPS_MOBILE_DOCKER.md`](docs/TESTOPS_MOBILE_DOCKER.md) | TestOps dev team — getting the code running | Building/exporting the "TestOps Mobile" Docker image and pulling the source into their own GitHub org |
+| [`docs/COMPETITIVE_LANDSCAPE.md`](docs/COMPETITIVE_LANDSCAPE.md) | Evaluating Phoenix against alternatives | Full comparison vs. Appium-MCP and other AI-agent test tooling |
 
 | ![Live recording](docs/screenshots/frontend-live-recording.png) | ![Upload screen](docs/screenshots/frontend-upload-screen.png) |
 |:---:|:---:|
@@ -89,17 +90,21 @@ The diagram above is the guided-recording pipeline (Act 1) in isolation. Phoenix
 
 ## Market comparison
 
-How Phoenix (target state, not yet fully built — see [`docs/STATUS.md`](docs/STATUS.md)) compares to what testers use today for mobile automation, and to the AI-agent tooling closest to Phoenix's own semantic layer.
+How Phoenix compares to what testers use today for mobile automation, and to the AI-agent tooling closest to Phoenix's own semantic layer. This is the case *for* building Phoenix, not a claim that every row is already fully proven in this repo — see [`docs/STATUS.md`](docs/STATUS.md) for exactly what's proven on real hardware today vs. still in progress.
 
 | Capability | **Phoenix** | Appium + Inspector | BrowserStack App Automate | Katalon / mabl / Testim |
 |---|:---:|:---:|:---:|:---:|
 | No local tool install for the tester | ✅ | ❌ | ❌ | ✅ |
-| Guided record → AI-generated script, from a **live, in-browser** device mirror | ✅ | ❌ | ❌ | ⚠️ (record/playback, minimal AI, not in-browser) |
+| Guided record → AI-generated script, from a **live, in-browser** device mirror | ✅ | ❌ | ❌ | ⚠️ record/playback, minimal AI, not in-browser |
+| Plain-language step resolution (no selector authored by hand) | ✅ | ❌ | ❌ | ⚠️ limited, vendor-locked |
+| Self-healing selectors, learned and cached automatically run-to-run | ✅ | ❌ | ❌ | ⚠️ some vendors, closed-source |
 | Full control over the underlying engine (fork, extend, fix) | ✅ | ✅ | ❌ | ❌ |
 | No per-seat / per-minute vendor licensing, no vendor lock-in | ✅ | ✅ | ❌ | ❌ |
-| Runs on real devices + emulators/simulators | ✅ | ✅ | ✅ | ✅ (limited range) |
+| Runs on real devices + emulators/simulators | ✅ | ✅ | ✅ | ✅ limited range |
 
-⚠️ = partial support / workaround required. This is the case *for* building Phoenix, not a claim that today's repo already beats these tools. Phoenix's semantic/autonomous layer (Act 2, below) is also compared against `appium-mcp` and similar AI-agent projects — full table in [`docs/COMPETITIVE_LANDSCAPE.md`](docs/COMPETITIVE_LANDSCAPE.md).
+⚠️ = partial support or a workaround required.
+
+Phoenix's semantic/autonomous layer is also compared head-to-head against `appium-mcp` and similar AI-agent projects — full table in [`docs/COMPETITIVE_LANDSCAPE.md`](docs/COMPETITIVE_LANDSCAPE.md).
 
 ## Status
 
@@ -112,6 +117,7 @@ How Phoenix (target state, not yet fully built — see [`docs/STATUS.md`](docs/S
 - **Data-driven test cases (`test-case` mode) — the generalized form of the above, proven path for adopting Phoenix.** A test case is a plain JSON step list (`test-cases/login.json` is the proven login sequence, extracted byte-for-byte, unchanged), run via `engine/test-case-runner.js` against the exact same per-instruction resolver already proven on real hardware — a new flow is a new JSON file, not a new commit. `login-script` mode above is now just this mode pointed at the one built-in login file. **Recommended adoption order: start a new test case on this layer (Act 2/3) — write the steps as a JSON file, let the resolver self-heal against whatever's actually on screen. Fall back to guided recording (Act 1) only for a specific flow if the semantic layer genuinely can't resolve something on it.**
 - **Selector caching/self-healing + `tapIfExists` — the architecture-level fix for test-case reliability, proven bug-by-bug on real hardware across a full multi-screen flow.** A test case's steps now self-heal: `resolvedSelector` caches a selector proven correct on a prior run and replays it deterministically (no LLM call) until it genuinely misses, at which point full semantic resolution runs once and the new answer is persisted back to the JSON file — `"${ENV_VAR}"` credential placeholders are never what's written, only the learned selector. Separately, a new `tapIfExists` step kind removes the LLM from conditional/optional "is this maybe-present thing here" steps entirely: a hand-authored, evidence-backed exact selector either exists (tapped) or doesn't (silently skipped) — no judgment call, no possibility of a confident wrong guess. This was forced by real evidence, not designed up front: a resolver repeatedly, confidently mismatched between two visually/semantically similar on-screen elements (a dialog's own CANCEL vs. its adjacent SETTINGS button; a screen's correctly-labeled Profile tab vs. an unrelated card it had just clicked) no matter how the instruction was reworded — three separate rounds of prompt hardening each failed the same way on the next real run. `test-cases/addons.json`, a brand-new multi-screen flow (login → dashboard → Add-ons purchase screen → close its popup → Profile menu → confirm Logout) authored blind with zero prior real-hardware verification, has had 18 real bugs found and fixed this way end to end on real BrowserStack Android hardware, including every conditional step in the file converted to `tapIfExists` and every reachable screen in the flow resolved. Full bug-by-bug trail in [`docs/STATUS.md`](docs/STATUS.md).
 - **Live self-heal, wired into the semantic layer itself — not a script, not tied to one log source or one machine.** `generation/semantic-act.js`/`engine/semantic-act-executor.js` now catch one concrete, provable failure mode automatically, during the run: a `tap` that resolves to an element which exists and clicks without error, but produces `"No visible change."` — a confident pick that was actually a dead end. On that exact signal, the resolver retries once, live, with that element excluded from the candidate list, before ever reporting the step done. No log has to be pasted back for this class of failure; it heals itself the same way wherever Phoenix runs (local emulator, any cloud device provider, CI). **Scope, stated plainly:** this does not fix a click that's visibly "successful" but hits the *wrong* element (most of the `addons.json` bugs above) — there's no diff-based way to tell "the right button" from "a different, equally real button." That class still needs an evidence-backed `tapIfExists` selector or genuine outcome verification against an expected end state, which is the still-unbuilt requirement-traceability layer, not this increment.
+- **Automatic execution logging + feedback loop — every semantic-layer call learns from, and teaches, every other one, with zero manual step.** `generation/execution-log.js` is called from inside `engine/semantic-act-executor.js` itself: every resolution automatically writes a structured, credential-safe record (never a typed password's real value, only that one was given). `generation/semantic-act.js` automatically reads that history back — a repeated failure for the exact same instruction is surfaced to the model as a soft hint on the very next attempt, no human reading a log in between. Old records past a 15-day retention window are pruned automatically too (`PHOENIX_TRAINING_LOG_RETENTION_DAYS`), via a sentinel file, no cron job required. **Scope, stated plainly:** this is prompt-level feedback, not model fine-tuning — no weights change, and it's deliberately a soft hint rather than a hard exclusion, since the screen can genuinely change between runs. See [`docs/CONTINUOUS_TRAINING.md`](docs/CONTINUOUS_TRAINING.md) for what an actual weight-level training pipeline would need (GPU infra, a periodic job, an automatic regression gate) versus what's already automatic today.
 - **iOS** is proven at the same bar as Android across the board: engine layer, full record-to-script pipeline, typed input, and now login automation, all confirmed on real hardware (Simulator and BrowserStack real devices).
 - **BrowserStack App Automate** is the confirmed path when there's no local device host — upload, record, generate all proven end to end on real hardware.
 
@@ -119,7 +125,7 @@ Full detail — every capability, real bugs found and fixed with root causes, sa
 
 ## Quick start
 
-**Upload a build through the page (matches TestOps's own flow):**
+**Option A — upload a build through the page (matches TestOps's own flow):**
 
 ```bash
 cd frontend && npm install && cd ..
@@ -128,4 +134,15 @@ node frontend/server.js
 
 Open **http://localhost:8091/**, drag in a `.apk`/`.ipa`, and click "Start recording session." See [`docs/STATUS.md#uploading-an-app-directly`](docs/STATUS.md#uploading-an-app-directly) for what's happening under the hood, and [`docs/SETUP.md`](docs/SETUP.md) for BrowserStack credentials / local Appium host setup.
 
-For the env-var-configured flow, running the engine directly, and the public GitHub Pages URL, see [`docs/STATUS.md`](docs/STATUS.md).
+**Option B — run an existing test case against real hardware (recommended for adopting Phoenix on a new flow — see Status above):**
+
+```bash
+PHOENIX_APPIUM_PROVIDER=browserstack \
+PHOENIX_BATCH_MODES=test-case \
+PHOENIX_TEST_CASE_FILE=test-cases/login.json \
+node run-batch-executions.js
+```
+
+Point `PHOENIX_TEST_CASE_FILE` at a new JSON step list to automate a new flow — no new code, no new commit. See [`docs/REAL_DEVICE_BATCH_TESTING.md`](docs/REAL_DEVICE_BATCH_TESTING.md) for every mode (`guided`/`semantic`/`loop`/`test-case`/`login-script`) and the full env-var reference, and [`docs/SETUP.md`](docs/SETUP.md) for credentials.
+
+For running the engine directly and the public GitHub Pages URL, see [`docs/STATUS.md`](docs/STATUS.md).

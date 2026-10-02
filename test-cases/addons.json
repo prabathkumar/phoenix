@@ -5,30 +5,26 @@
   "steps": [
     {
       "kind": "tap",
-      "instruction": "tap the Allow button to dismiss a system permission dialog",
-      "optional": true
+      "instruction": "tap the LOGIN button on the home screen to open the login form",
+      "note": "REMOVED the speculative \"tap Allow\" step (and its dedicated CLOSE-recovery) that used to run before this one. Across 8 real runs, a pre-login Allow dialog never once actually appeared here -- every attempt at that step was either a correct no-op skip or, twice (addons-run-android-6.log: the ACTIVATE SIM container; addons-run-android-8.log: the home screen's \"More Icon\", opening an unrelated More-menu overlay), the resolver confidently guessing a totally unrelated element instead of declining, each time blocking this required LOGIN step from finding anything. A step with zero confirmed real use and two confirmed real harms is pure liability -- removed outright rather than patched again. The two recovery steps below now have to cover both of this step's own confirmed mis-fire targets (ACTIVATE SIM's dialog, and now the More-menu overlay too), since this is the step actually prone to them."
     },
     {
       "kind": "tap",
       "instruction": "tap the CLOSE button to dismiss a popup asking to update the app to access a feature",
       "optional": true,
-      "note": "CONFIRMED real bug on addons-run-android-6.log: the step above (\"tap Allow\", with no actual Allow dialog present yet on a freshly-loaded home screen) resolved confidently to the wrong element anyway -- the ACTIVATE SIM container -- instead of correctly returning unresolved, a worse case than bug #3's near-identical-pair confusion since \"Allow\" doesn't even textually resemble \"ACTIVATE SIM\". This is model overconfidence (guessing instead of declining), not something a test case can prevent at the source. Added defensively: the same CLOSE-recovery step already used after the LOGIN tap below, placed here too so a mis-tap anywhere on the home screen gets cleaned up before the required LOGIN step runs against a screen it can't see through a dialog. The prior run's actual failure reason was unhelpfully just \"...\" -- fixed separately at the resolver level (generation/semantic-act.js: the prompt's own example reason was a literal \"...\" placeholder the model sometimes echoed back verbatim instead of writing a real explanation)."
+      "note": "CONFIRMED real bug on addons-run-android-3.log, a different kind than the others: the home screen has two visually-similar unlabeled containers side by side (a plain View with a child TextView \"LOGIN\", and an identical-shaped View with child TextView \"ACTIVATE SIM\") -- this time the resolver's model picked the wrong one (ACTIVATE SIM), confirmed by the resolved xpath ending in View[2] instead of the View[1] a successful run used. Tapping it triggered an unrelated native \"update the app to access SIM Activation\" dialog (CLOSE/UPDATE APP buttons) instead of opening the login form. This is LLM resolution nondeterminism on an ambiguous pair of candidates, not a wording or sequencing bug like the others in this file. Recovery: close that dialog if it appears, then retry the LOGIN tap below (harmless no-op if the first tap actually succeeded, since the login form would already be open and this retry simply finds nothing to match)."
     },
     {
       "kind": "tap",
-      "instruction": "tap the LOGIN button on the home screen to open the login form"
-    },
-    {
-      "kind": "tap",
-      "instruction": "tap the CLOSE button to dismiss a popup asking to update the app to access a feature",
+      "instruction": "tap the More Close button to close the More menu popup",
       "optional": true,
-      "note": "CONFIRMED real bug on addons-run-android-3.log, a different kind than the others: the home screen has two visually-similar unlabeled containers side by side (a plain View with a child TextView \"LOGIN\", and an identical-shaped View with child TextView \"ACTIVATE SIM\") -- this time the resolver's model picked the wrong one (ACTIVATE SIM), confirmed by the resolved xpath ending in View[2] instead of the View[1] a successful run used. Tapping it triggered an unrelated native \"update the app to access SIM Activation\" dialog (CLOSE/UPDATE APP buttons) instead of opening the login form. This is LLM resolution nondeterminism on an ambiguous pair of candidates, not a wording or sequencing bug like the others in this file. Recovery: close that dialog if it appears, then retry the LOGIN tap right below (harmless no-op if the first tap actually succeeded, since the login form would already be open and this retry simply finds nothing to match)."
+      "note": "CONFIRMED real bug on addons-run-android-8.log: the LOGIN tap above mis-resolved to the home screen's bottom-nav \"More Icon\" instead (accessibility id \"More Icon\"), opening an unrelated in-app menu overlay (SIM Status, Porting Status, Track Order, YesRoam Rates, Pay for Others) with a close icon of its own (content-desc \"More Close\"). A second confirmed mis-fire target for the same LOGIN-tap step, alongside the SIM-activation dialog above -- both get an optional dismiss step here before the LOGIN retry below."
     },
     {
       "kind": "tap",
       "instruction": "tap the LOGIN button on the home screen to open the login form",
       "optional": true,
-      "note": "Retry of the step above, only exercised when the first attempt mis-tapped ACTIVATE SIM instead (see the note above) -- optional so it's a no-op once the login form is already open."
+      "note": "Retry of the step above, only exercised when the first attempt mis-tapped ACTIVATE SIM or the More menu instead (see the two notes above) -- optional so it's a no-op once the login form is already open."
     },
     {
       "kind": "type",

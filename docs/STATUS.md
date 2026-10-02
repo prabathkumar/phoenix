@@ -466,3 +466,15 @@ Implementation: `engine/semantic-act-executor.js`'s `SUPPORTED_KINDS` gained `"t
 `test-cases/addons.json`'s More-Close recovery step was converted to `tapIfExists` with the exact selector confirmed in this run's own page source (`content-desc="More Close"`). The CLOSE-dialog recovery step for the ACTIVATE SIM case was removed outright instead of converted: across every run it has ever fired in, it has zero confirmed correct firings and two confirmed harmful ones (runs 9 and 10) — the same "zero confirmed use, confirmed harm → remove" rule already applied earlier in this file to the speculative pre-login "tap Allow" step — and its target dialog's real selector has never actually been captured in any page-source dump available, so there is no evidence to hand-author a `tapIfExists` replacement for it yet. The LOGIN-retry step that follows still covers that case by simply re-attempting the real LOGIN tap.
 
 Not yet re-run against real hardware. Full suite green (12 files, all passing) including the new `tapIfExists` coverage.
+
+## A caching gap found from run 10's own output: "succeeded" is not "was correct"
+
+Run 10's local copy of `test-cases/addons.json` (seen via `git diff` after a merge conflict, never run through the new `tapIfExists` code) showed the selector cache had learned THREE selectors, not one:
+
+- LOGIN tap → the real, correct xpath (confirmed across runs 2/4/9/10). Seeded into `addons.json` for real.
+- CLOSE-dialog step → `resource-id("ivBackArrow")`. This is not a CLOSE button. It's the login form's own Back Arrow icon -- the mis-fire itself, recorded as if it had been a correct resolution.
+- More-Close step → `accessibility-id("More Icon")`. Also not the right element -- the OPEN icon, the mis-fire itself.
+
+The gap: `executeSemanticAction`'s cache only checks whether the resolved element existed and the click didn't throw -- that's "mechanically succeeded," not "was semantically correct." For a required step that's a reasonable proxy (a wrong required-step resolution usually breaks a later step and fails the run before persisting). For an *optional* step, a confidently-wrong click can itself "succeed" (the wrong element exists and is clickable) with no later step ever catching it, so the wrong answer gets written back to disk and would be replayed deterministically forever after -- worse than re-resolving, since re-resolving at least has a chance of getting it right next time.
+
+Both affected steps are already outside this risk as of the `tapIfExists` change above: the More-Close step is now `tapIfExists` (no cache, no LLM, ever), and the CLOSE-dialog step was removed outright. But the gap is general and worth remembering for any future optional/recovery step that's still plain `tap` + `resolvedSelector` caching rather than `tapIfExists`: caching trusts "the click succeeded" as a stand-in for "this was the right element," and that stand-in is only safe for steps a later step's failure would actually catch if they're wrong.

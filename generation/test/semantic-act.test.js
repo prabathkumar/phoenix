@@ -583,6 +583,45 @@ async function test(name, fn) {
     }
   });
 
+  await test("resolveSemanticAction's excludedRefs removes a candidate from the snapshot before the model ever sees it", async () => {
+    const calls = [];
+    const { semanticAct, restore } = loadWithFakeOllama(async (prompt) => {
+      calls.push(prompt);
+      // The only other candidate confident enough to match.
+      return { ref: 1 };
+    });
+    try {
+      // Ref 3 is the login_button in ANDROID_LOGIN_SCREEN's natural ref
+      // order (see the first test in this file).
+      const result = await semanticAct.resolveSemanticAction(ANDROID_LOGIN_SCREEN, "tap something", { excludedRefs: [3] });
+      assert.strictEqual(result.resolved, true);
+      // Excluded from the prompt text entirely -- not just skipped by the model.
+      assert.ok(!calls[0].includes("Log In"));
+      assert.ok(!calls[0].includes("[3]"));
+    } finally {
+      restore();
+    }
+  });
+
+  await test("resolveSemanticAction reports unresolved (never throws) when excludedRefs removes every candidate", async () => {
+    const ONE_BUTTON_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy>
+  <android.widget.FrameLayout>
+    <android.widget.Button resource-id="com.phoenix.demo:id/only_button" text="Only" bounds="[100,560][980,660]" />
+  </android.widget.FrameLayout>
+</hierarchy>`;
+    const { semanticAct, restore } = loadWithFakeOllama(async () => {
+      throw new Error("callOllamaJson should never be called with zero candidates");
+    });
+    try {
+      const result = await semanticAct.resolveSemanticAction(ONE_BUTTON_SCREEN, "tap Only", { excludedRefs: [1] });
+      assert.strictEqual(result.resolved, false);
+      assert.ok(result.reason.includes("no labeled/identified elements"));
+    } finally {
+      restore();
+    }
+  });
+
   if (process.exitCode) {
     console.error("\ngeneration/semantic-act tests FAILED");
     process.exit(1);

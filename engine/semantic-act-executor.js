@@ -246,6 +246,59 @@ async function executeSemanticAction(driver, instruction, options = {}) {
   if (!outcome.success) {
     return outcome;
   }
+
+  // Framework-level self-heal: a "tap" that produced literally no
+  // change to the screen is a concrete, already-observed signal (not a
+  // guess) that the resolved element was the wrong one -- a dead-end
+  // control, or one that looked like a confident match but does
+  // nothing. Rather than report this "success" and let a caller (or a
+  // human reading a log afterwards) discover the mistake later, retry
+  // resolution ONCE, live, on the SAME captured screen, with that exact
+  // element excluded (resolveSemanticAction's excludedRefs) so the
+  // model can't just pick it again. Scoped to "tap" only: a "type"
+  // producing no visible change is a different, separately-handled
+  // situation (see docs/STATUS.md/semantic-loop.js's own no-op
+  // handling), and scroll/tapIfExists never reach this path at all.
+  // This does NOT catch a wrong-but-functional click (one that *does*
+  // visibly change the screen, just not the way the instruction meant
+  // -- docs/STATUS.md bugs #13-#18) -- there is no diff-based signal
+  // that a click was "successful but semantically wrong" the way there
+  // is for "did literally nothing". That class still needs either
+  // tapIfExists (an exact, evidence-backed selector, no judgment call)
+  // or real outcome verification against an expected end state (the
+  // still-unbuilt requirement-traceability layer) -- this is a narrower,
+  // already-provable fix for a narrower, already-provable failure mode.
+  if (kind === "tap" && outcome.diffSummary === "No visible change.") {
+    const retryResolution = await resolveSemanticAction(pageSourceBefore, instruction, {
+      screenshotBase64,
+      kind,
+      excludedRefs: [resolution.element.ref],
+    });
+    if (retryResolution.resolved) {
+      const retrySelectorString = buildSelector(retryResolution.selector, platform);
+      if (retrySelectorString) {
+        let retryVetoReason;
+        if (typeof options.beforeAct === "function") {
+          retryVetoReason = options.beforeAct({ selector: retryResolution.selector, selectorString: retrySelectorString, kind, text: options.text });
+        }
+        if (!retryVetoReason) {
+          const retryOutcome = await actAndDiff(driver, retrySelectorString, kind, options.text, pageSourceBefore);
+          if (retryOutcome.success && retryOutcome.diffSummary !== "No visible change.") {
+            return {
+              ...retryOutcome,
+              selector: retryResolution.selector,
+              healedFromCache: Boolean(options.cachedSelector),
+              selfHealedNoOp: true,
+            };
+          }
+        }
+      }
+    }
+    // No better alternative found (nothing else resolved, the retry
+    // was also a no-op, or it was vetoed) -- fall through and report
+    // the original, honest outcome rather than inventing a result.
+  }
+
   return {
     ...outcome,
     selector: resolution.selector,

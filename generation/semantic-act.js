@@ -163,10 +163,24 @@ function toSelector(element, options = {}) {
  *   label text instead (which then fails at execution time -- text
  *   isn't editable). Optional and defaults to no hint at all, so
  *   existing callers that don't pass it are unaffected.
+ * @param {number[]} [options.excludedRefs] - refs (from a PRIOR call to
+ *   this same function on the SAME pageSourceXml -- a ref is only
+ *   stable within one snapshot) to remove from the candidate list
+ *   entirely before the model ever sees them. This is the framework-
+ *   level self-heal hook: engine/semantic-act-executor.js calls back in
+ *   here with the just-tried element excluded when a tap produced "No
+ *   visible change." -- a concrete, already-observed signal that the
+ *   first pick was a dead end, not a guess that it might be. Without
+ *   this, a resolver with no history has no way to avoid repeating the
+ *   exact same wrong-but-confident pick it just made; this closes that
+ *   loop live, during the run, with no human needed to notice from a
+ *   log afterwards. Optional and defaults to excluding nothing, so
+ *   existing callers are unaffected.
  * @returns {Promise<SemanticActionResult>}
  */
 async function resolveSemanticAction(pageSourceXml, instruction, options = {}) {
-  const allElements = buildGroundedSnapshot(pageSourceXml);
+  const allElements = buildGroundedSnapshot(pageSourceXml)
+    .filter((el) => !(options.excludedRefs && options.excludedRefs.includes(el.ref)));
 
   if (allElements.length === 0) {
     return { resolved: false, reason: "grounded snapshot has no labeled/identified elements to act on" };

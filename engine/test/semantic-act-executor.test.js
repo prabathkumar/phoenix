@@ -567,6 +567,12 @@ function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl,
           selector: { strategy: "text", value: "Log In" },
         };
       },
+      // Not testing the diff here, just the screenshot-failure fallback
+      // -- forced to "changed" so this doesn't also trip the no-op
+      // self-heal retry (the real diffSnapshots would call these plain
+      // placeholder page sources "No visible change.", which is a
+      // separate, dedicated test below).
+      diffSnapshotsImpl: () => ({ appeared: [], disappeared: [], changed: true }),
     });
     try {
       const { driver, calls } = makeFakeDriver({
@@ -653,6 +659,94 @@ function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl,
       assert.strictEqual(result.reason, "refusing to overwrite a field a previous step already set");
       assert.strictEqual(calls.setValue.length, 0);
       assert.strictEqual(calls.click, 0);
+    } finally {
+      restore();
+    }
+  });
+
+  await run("executeSemanticAction self-heals a \"No visible change\" tap by retrying once with the dead element excluded", async () => {
+    const resolveCalls = [];
+    const { executor, restore } = freshExecutorWithFakes({
+      resolveSemanticActionImpl: async (pageSource, instruction, options) => {
+        resolveCalls.push(options.excludedRefs);
+        if (!options.excludedRefs) {
+          // First attempt: a confident but dead-end pick.
+          return { resolved: true, element: { ref: 1, role: "View", label: "Dead End" }, selector: { strategy: "text", value: "Dead End" } };
+        }
+        // Retry: a different, real candidate.
+        return { resolved: true, element: { ref: 2, role: "Button", label: "Real Button" }, selector: { strategy: "text", value: "Real Button" } };
+      },
+      diffSnapshotsImpl: (() => {
+        let call = 0;
+        return () => {
+          call += 1;
+          return call === 1 ? { appeared: [], disappeared: [], changed: false } : { appeared: [{ label: "Success" }], disappeared: [], changed: true };
+        };
+      })(),
+    });
+    try {
+      const { driver, calls } = makeFakeDriver({ pageSources: ["<hierarchy>before</hierarchy>", "<hierarchy>before</hierarchy>", "<hierarchy>after</hierarchy>"] });
+      const result = await executor.executeSemanticAction(driver, "tap the button");
+
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(result.selfHealedNoOp, true);
+      assert.deepStrictEqual(result.selector, { strategy: "text", value: "Real Button" });
+      assert.strictEqual(result.diffSummary, "changed");
+      assert.strictEqual(calls.click, 2);
+      // First call excludes nothing; the retry excludes the dead element's ref.
+      assert.deepStrictEqual(resolveCalls, [undefined, [1]]);
+    } finally {
+      restore();
+    }
+  });
+
+  await run("executeSemanticAction reports the original \"No visible change\" outcome when self-heal finds no better alternative", async () => {
+    const { executor, restore } = freshExecutorWithFakes({
+      resolveSemanticActionImpl: async (pageSource, instruction, options) => {
+        if (!options.excludedRefs) {
+          return { resolved: true, element: { ref: 1, role: "View", label: "Dead End" }, selector: { strategy: "text", value: "Dead End" } };
+        }
+        // Retry: nothing else on screen is a confident match either.
+        return { resolved: false, reason: "no other confident match" };
+      },
+      diffSnapshotsImpl: () => ({ appeared: [], disappeared: [], changed: false }),
+    });
+    try {
+      const { driver, calls } = makeFakeDriver({ pageSources: ["<hierarchy>before</hierarchy>", "<hierarchy>before</hierarchy>"] });
+      const result = await executor.executeSemanticAction(driver, "tap the button");
+
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(result.selfHealedNoOp, undefined);
+      assert.deepStrictEqual(result.selector, { strategy: "text", value: "Dead End" });
+      assert.strictEqual(result.diffSummary, "No visible change.");
+      // Only the original attempt clicked -- the failed retry resolution never got to act.
+      assert.strictEqual(calls.click, 1);
+    } finally {
+      restore();
+    }
+  });
+
+  await run("executeSemanticAction's self-heal retry also honors beforeAct, without double-reporting the original outcome as healed", async () => {
+    const { executor, restore } = freshExecutorWithFakes({
+      resolveSemanticActionImpl: async (pageSource, instruction, options) => {
+        if (!options.excludedRefs) {
+          return { resolved: true, element: { ref: 1, role: "View", label: "Dead End" }, selector: { strategy: "text", value: "Dead End" } };
+        }
+        return { resolved: true, element: { ref: 2, role: "Button", label: "Real Button" }, selector: { strategy: "text", value: "Real Button" } };
+      },
+      diffSnapshotsImpl: () => ({ appeared: [], disappeared: [], changed: false }),
+    });
+    try {
+      const { driver, calls } = makeFakeDriver({ pageSources: ["<hierarchy>before</hierarchy>", "<hierarchy>before</hierarchy>"] });
+      const result = await executor.executeSemanticAction(driver, "tap the button", {
+        beforeAct: (attempt) => (attempt.selector.value === "Real Button" ? "refusing the retry candidate" : undefined),
+      });
+
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(result.selfHealedNoOp, undefined);
+      assert.deepStrictEqual(result.selector, { strategy: "text", value: "Dead End" });
+      // The original tap clicked; the vetoed retry never did.
+      assert.strictEqual(calls.click, 1);
     } finally {
       restore();
     }

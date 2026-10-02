@@ -9,10 +9,18 @@
     {
       "kind": "tap",
       "instruction": "tap the LOGIN button on the home screen to open the login form",
-      "note": "REMOVED the speculative \"tap Allow\" step (and its dedicated CLOSE-recovery) that used to run before this one. Across 8 real runs, a pre-login Allow dialog never once actually appeared here -- every attempt at that step was either a correct no-op skip or, twice (addons-run-android-6.log: the ACTIVATE SIM container; addons-run-android-8.log: the home screen's \"More Icon\", opening an unrelated More-menu overlay), the resolver confidently guessing a totally unrelated element instead of declining, each time blocking this required LOGIN step from finding anything. A step with zero confirmed real use and two confirmed real harms is pure liability -- removed outright rather than patched again. A later plain-language CLOSE-dialog recovery step added for the ACTIVATE SIM case was REMOVED too (addons-run-android-10.log), by the same rule: zero confirmed correct firings across every run it ever ran in, and two confirmed harmful mis-fires onto the login form's own Back Arrow icon (addons-run-android-9.log, addons-run-android-10.log). The ACTIVATE SIM dialog's own real selector has never actually been captured in a page-source dump, so there is no evidence to hand-author an exact tapIfExists step for it yet -- only the LOGIN-retry step below covers that case for now, by simply re-attempting the real LOGIN tap.",
+      "note": "REMOVED the speculative \"tap Allow\" step (and its dedicated CLOSE-recovery) that used to run before this one. Across 8 real runs, a pre-login Allow dialog never once actually appeared here -- every attempt at that step was either a correct no-op skip or, twice (addons-run-android-6.log: the ACTIVATE SIM container; addons-run-android-8.log: the home screen's \"More Icon\", opening an unrelated More-menu overlay), the resolver confidently guessing a totally unrelated element instead of declining, each time blocking this required LOGIN step from finding anything. A step with zero confirmed real use and two confirmed real harms is pure liability -- removed outright rather than patched again. A later plain-language CLOSE-dialog recovery step added for the ACTIVATE SIM case was REMOVED too (addons-run-android-10.log), by the same rule: zero confirmed correct firings across every run it ever ran in, and two confirmed harmful mis-fires onto the login form's own Back Arrow icon (addons-run-android-9.log, addons-run-android-10.log). The ACTIVATE SIM dialog's own real selector has never actually been captured in a page-source dump, so there is no evidence to hand-author an exact tapIfExists step for it yet -- only the LOGIN-retry step below covers that case for now, by simply re-attempting the real LOGIN tap. Evidence mined from addons-run-android-docker-5.log (the Docker closing-verification run): the click's own next getPageSource dump shows the home screen's ACTIVATE SIM card gone and the login form's USE TAC tab present.",
       "resolvedSelector": {
         "strategy": "xpath",
         "value": "/hierarchy[1]/android.widget.FrameLayout[1]/android.widget.LinearLayout[1]/android.widget.FrameLayout[1]/android.widget.LinearLayout[1]/android.widget.FrameLayout[1]/androidx.compose.ui.platform.ComposeView[1]/android.view.View[1]/android.view.View[1]/android.view.View[1]/android.view.View[1]"
+      },
+      "expect": {
+        "appeared": [
+          "USE TAC"
+        ],
+        "disappeared": [
+          "ACTIVATE SIM"
+        ]
       }
     },
     {
@@ -28,10 +36,18 @@
       "kind": "tap",
       "instruction": "tap the LOGIN button on the home screen to open the login form",
       "optional": true,
-      "note": "Retry of the LOGIN tap, only exercised when the first attempt mis-tapped ACTIVATE SIM instead, or the More-menu tapIfExists step above closed an overlay that had covered the login form -- optional so it's a no-op once the login form is already open.",
+      "note": "Retry of the LOGIN tap, only exercised when the first attempt mis-tapped ACTIVATE SIM instead, or the More-menu tapIfExists step above closed an overlay that had covered the login form -- optional so it's a no-op once the login form is already open. Evidence mined from addons-run-android-docker-5.log: in that run this optional retry tap landed on the TAC/Password mode toggle (resolvedSelector resolves to a different element than step 0's, deeper inside the now-open form's ScrollView) and actually fired -- its own next page-source dump shows FORGOT PASSWORD appearing and the USE TAC tab disappearing as the form switches into password-entry layout.",
       "resolvedSelector": {
         "strategy": "xpath",
         "value": "/hierarchy[1]/android.widget.FrameLayout[1]/android.widget.LinearLayout[1]/android.widget.FrameLayout[1]/android.widget.LinearLayout[1]/android.widget.FrameLayout[1]/android.widget.RelativeLayout[1]/android.widget.ScrollView[1]/android.widget.LinearLayout[1]/android.view.ViewGroup[2]/androidx.compose.ui.platform.ComposeView[1]/android.view.View[1]/android.view.View[1]"
+      },
+      "expect": {
+        "appeared": [
+          "FORGOT PASSWORD"
+        ],
+        "disappeared": [
+          "USE TAC"
+        ]
       }
     },
     {
@@ -49,7 +65,13 @@
       "resolvedSelector": {
         "strategy": "xpath",
         "value": "/hierarchy[1]/android.widget.FrameLayout[1]/android.widget.LinearLayout[1]/android.widget.FrameLayout[1]/android.widget.LinearLayout[1]/android.widget.FrameLayout[1]/android.widget.RelativeLayout[1]/android.widget.ScrollView[1]/android.widget.LinearLayout[1]/android.view.ViewGroup[2]/android.widget.LinearLayout[2]/android.widget.EditText[1]"
-      }
+      },
+      "expect": {
+        "disappeared": [
+          "Never share your TAC with anyone. Whoever has this code can access your account, and Yes will never ask for your TAC."
+        ]
+      },
+      "note": "Evidence mined from addons-run-android-docker-5.log: tapping the PASSWORD tab's own next page-source dump shows only the TAC safety-warning banner disappearing (the rest of the form is unchanged), consistent with leaving TAC-login mode."
     },
     {
       "kind": "tap",
@@ -57,7 +79,13 @@
       "resolvedSelector": {
         "strategy": "text",
         "value": "01166114421"
-      }
+      },
+      "expect": {
+        "appeared": [
+          "Never share your TAC with anyone. Whoever has this code can access your account, and Yes will never ask for your TAC."
+        ]
+      },
+      "note": "Evidence mined from addons-run-android-docker-5.log: focusing the password field's own next page-source dump shows the TAC safety-warning banner reappearing (the view re-renders/scrolls on focus) with nothing else changed -- odd-looking but this is the actual observed diff from a real passing run, not a guess."
     },
     {
       "kind": "type",
@@ -74,7 +102,13 @@
       "resolvedSelector": {
         "strategy": "xpath",
         "value": "/hierarchy[1]/android.widget.FrameLayout[1]/android.widget.LinearLayout[1]/android.widget.FrameLayout[1]/android.widget.LinearLayout[1]/android.widget.FrameLayout[1]/android.widget.RelativeLayout[1]/android.widget.ScrollView[1]/android.widget.LinearLayout[1]/android.view.ViewGroup[2]/androidx.compose.ui.platform.ComposeView[1]/android.view.View[1]/android.view.View[1]"
-      }
+      },
+      "expect": {
+        "disappeared": [
+          "Yes Number"
+        ]
+      },
+      "note": "Evidence mined from addons-run-android-docker-5.log: the login submit click's own immediate next page-source dump already shows the entire login form gone (Yes Number field label, Password field, FORGOT PASSWORD, the LOGIN button itself) with nothing yet appeared -- the real post-login content (the Allow-notifications system dialog, then the home dashboard) only renders a few polls later, during step 8's wait, so 'disappeared' is the only outcome this step's own diff reliably carries; appeared was left undeclared rather than guessed at a later step's evidence."
     },
     {
       "kind": "wait",
@@ -89,7 +123,15 @@
         "strategy": "resource-id",
         "value": "com.android.permissioncontroller:id/permission_allow_button"
       },
-      "note": "CONFIRMED real bug on addons-run-android-1.log: this app fires a native Android runtime-permission dialog (\"Allow MyYes to send you notifications?\", Allow/Don't allow buttons) right after login submit, not a custom in-app popup with a close/X button. addons-run-android-11.log's page-source finally captured this dialog's real resource-id (com.android.permissioncontroller:id/permission_allow_button, confirmed, with the sibling Don't-allow button at .../permission_deny_button) -- the plain-language version resolved correctly on that run, but converting now removes the same latent adjacent-sibling-button risk that caused bug #14 (CANCEL/SETTINGS) just one dialog later in this same file, before it has a chance to also regress here."
+      "note": "CONFIRMED real bug on addons-run-android-1.log: this app fires a native Android runtime-permission dialog (\"Allow MyYes to send you notifications?\", Allow/Don't allow buttons) right after login submit, not a custom in-app popup with a close/X button. addons-run-android-11.log's page-source finally captured this dialog's real resource-id (com.android.permissioncontroller:id/permission_allow_button, confirmed, with the sibling Don't-allow button at .../permission_deny_button) -- the plain-language version resolved correctly on that run, but converting now removes the same latent adjacent-sibling-button risk that caused bug #14 (CANCEL/SETTINGS) just one dialog later in this same file, before it has a chance to also regress here. Evidence mined from addons-run-android-docker-5.log: tapping Allow's own next page-source dump shows the permission dialog gone and the first tutorial coach-mark tooltip (NEXT button + 'Your Account overview...' caption) appeared.",
+      "expect": {
+        "appeared": [
+          "Your Account overview is easily accessible in the middle of the screen."
+        ],
+        "disappeared": [
+          "Allow MyYes to send you notifications?"
+        ]
+      }
     },
     {
       "kind": "tapIfExists",
@@ -98,7 +140,15 @@
         "strategy": "resource-id",
         "value": "my.yes.yes4g:id/ivClose"
       },
-      "note": "PROACTIVELY converted to tapIfExists (not from a new failure -- from re-auditing this file after the More-Close/CLOSE-dialog regressions, on the reasoning that any other plain-language 'maybe-present dialog' step in this file is the same latent risk, just not yet caught in a run). The exact resource-id (ivClose) was already confirmed on real hardware (addons-run-android-7.log's page-source, cited in this step's prior note) but had never been used -- this step was still being resolved by the LLM on every run despite the real selector being known. See docs/STATUS.md's \"Thirteenth bug\" for why a plain-language instruction is the wrong tool for a conditional step at all, independent of whether this exact one has misfired yet."
+      "note": "PROACTIVELY converted to tapIfExists (not from a new failure -- from re-auditing this file after the More-Close/CLOSE-dialog regressions, on the reasoning that any other plain-language 'maybe-present dialog' step in this file is the same latent risk, just not yet caught in a run). The exact resource-id (ivClose) was already confirmed on real hardware (addons-run-android-7.log's page-source, cited in this step's prior note) but had never been used -- this step was still being resolved by the LLM on every run despite the real selector being known. See docs/STATUS.md's \"Thirteenth bug\" for why a plain-language instruction is the wrong tool for a conditional step at all, independent of whether this exact one has misfired yet. Evidence mined from addons-run-android-docker-5.log: in this run the tutorial carousel's NEXT steps never fired (no coach-mark was left to advance), so this ivClose tap's own settled page-source dump (the next one captured, since the following several steps were no-ops with no fresh diff) shows the tutorial tooltip's NEXT button gone and the real home dashboard (Hotspot, Profile, Account, etc.) rendered.",
+      "expect": {
+        "appeared": [
+          "Hotspot"
+        ],
+        "disappeared": [
+          "NEXT"
+        ]
+      }
     },
     {
       "kind": "tapIfExists",
@@ -197,7 +247,15 @@
         "strategy": "resource-id",
         "value": "my.yes.yes4g:id/ivClose"
       },
-      "note": "See the Add-ons-tap step's note above for the full real-bug evidence (addons-run-android-13.log). Without this step, the popup opened by tapping the dashboard's 'Buy Add-On' card blocks the Profile tab and leaves the required Logout step to confidently mis-click something else instead of failing cleanly."
+      "note": "See the Add-ons-tap step's note above for the full real-bug evidence (addons-run-android-13.log). Without this step, the popup opened by tapping the dashboard's 'Buy Add-On' card blocks the Profile tab and leaves the required Logout step to confidently mis-click something else instead of failing cleanly. Evidence mined from addons-run-android-docker-5.log: closing the Add-Ons purchase-details popup's own settled page-source dump shows the popup's BUY NOW button gone and the home dashboard's Buy Add-On card visible again underneath.",
+      "expect": {
+        "appeared": [
+          "Buy Add-On"
+        ],
+        "disappeared": [
+          "BUY NOW"
+        ]
+      }
     },
     {
       "kind": "tapIfExists",
@@ -206,7 +264,15 @@
         "strategy": "resource-id",
         "value": "my.yes.yes4g:id/profileLayout"
       },
-      "note": "CONFIRMED working on addons-run-android-4.log with the plain-language version: the coach-mark/carousel fix got the run all the way past Add-ons into the Profile tab (bottom-nav item, resource-id ivProfile/tvProfile), landing on a menu screen (Billing Info, E-Bills, FAQs, General, Get Help, Settings, etc.). CONFIRMED real bug on addons-run-android-12.log (15th bug): with a clearly labeled, unambiguous 'Profile' bottom-nav tab (text=\"Profile\", resource-id=\"my.yes.yes4g:id/profileLayout\") sitting right on screen, the plain-language resolver instead clicked \"my.yes.yes4g:id/buyAddonLayout\" -- an unrelated Buy-Addon card on the SAME Add-ons screen, with no textual or semantic relation to 'Profile', 'Account', or 'logout' at all. This opened an add-on purchase details popup (Hotspot 50GB/BUY NOW) instead of navigating anywhere near Profile, stranding the run there until the Logout step failed outright with no Logout button ever on screen. Not an adjacent-sibling-button mixup like bugs #13/#14 -- a flatly wrong match with a correct, clearly labeled candidate available. Converted to tapIfExists with the confirmed bottom-nav resource-id (stable across runs 4 and 12) so no LLM judgment call is possible here either."
+      "note": "CONFIRMED working on addons-run-android-4.log with the plain-language version: the coach-mark/carousel fix got the run all the way past Add-ons into the Profile tab (bottom-nav item, resource-id ivProfile/tvProfile), landing on a menu screen (Billing Info, E-Bills, FAQs, General, Get Help, Settings, etc.). CONFIRMED real bug on addons-run-android-12.log (15th bug): with a clearly labeled, unambiguous 'Profile' bottom-nav tab (text=\"Profile\", resource-id=\"my.yes.yes4g:id/profileLayout\") sitting right on screen, the plain-language resolver instead clicked \"my.yes.yes4g:id/buyAddonLayout\" -- an unrelated Buy-Addon card on the SAME Add-ons screen, with no textual or semantic relation to 'Profile', 'Account', or 'logout' at all. This opened an add-on purchase details popup (Hotspot 50GB/BUY NOW) instead of navigating anywhere near Profile, stranding the run there until the Logout step failed outright with no Logout button ever on screen. Not an adjacent-sibling-button mixup like bugs #13/#14 -- a flatly wrong match with a correct, clearly labeled candidate available. Converted to tapIfExists with the confirmed bottom-nav resource-id (stable across runs 4 and 12) so no LLM judgment call is possible here either. Evidence mined from addons-run-android-docker-5.log: tapping the Profile tab's own settled page-source dump shows the home dashboard's Buy Add-On card gone and the Profile menu (Settings, FAQs, Billing Info, etc.) rendered.",
+      "expect": {
+        "appeared": [
+          "Settings"
+        ],
+        "disappeared": [
+          "Buy Add-On"
+        ]
+      }
     },
     {
       "kind": "scroll",

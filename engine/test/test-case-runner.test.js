@@ -350,6 +350,75 @@ function writeTempJson(content) {
     assert.deepStrictEqual(steps[0].resolvedSelector, { strategy: "xpath", value: "//View[1]" });
   });
 
+  await run('loadTestCaseSteps accepts a "tapIfExists" step with a valid selector', async () => {
+    const file = writeTempJson([
+      { kind: "tapIfExists", instruction: "tap More Close if open", selector: { strategy: "accessibility-id", value: "More Close" } },
+    ]);
+    const steps = loadTestCaseSteps(file);
+    assert.strictEqual(steps[0].kind, "tapIfExists");
+    assert.deepStrictEqual(steps[0].selector, { strategy: "accessibility-id", value: "More Close" });
+  });
+
+  await run('loadTestCaseSteps rejects a "tapIfExists" step with no selector', async () => {
+    const file = writeTempJson([{ kind: "tapIfExists", instruction: "tap More Close if open" }]);
+    assert.throws(() => loadTestCaseSteps(file), /"tapIfExists" step but has no valid "selector"/);
+  });
+
+  await run('loadTestCaseSteps rejects a "tapIfExists" step with a malformed selector', async () => {
+    const file = writeTempJson([{ kind: "tapIfExists", instruction: "tap More Close if open", selector: { strategy: "accessibility-id" } }]);
+    assert.throws(() => loadTestCaseSteps(file), /"tapIfExists" step but has no valid "selector"/);
+  });
+
+  await run('runScriptSteps passes a "tapIfExists" step\'s selector through as exactSelector, never as cachedSelector', async () => {
+    const calls = [];
+    const steps = [
+      { kind: "tapIfExists", instruction: "tap More Close if open", selector: { strategy: "accessibility-id", value: "More Close" } },
+    ];
+    await runScriptSteps({}, steps, {
+      platform: "android",
+      executeSemanticAction: async (driver, instruction, options) => {
+        calls.push(options);
+        return { success: true, skipped: true, diffSummary: "skipped" };
+      },
+    });
+    assert.deepStrictEqual(calls[0].exactSelector, { strategy: "accessibility-id", value: "More Close" });
+    assert.strictEqual(calls[0].cachedSelector, undefined);
+  });
+
+  await run('runScriptSteps\'s updatedSteps never writes a "tapIfExists" step\'s hand-authored selector into resolvedSelector', async () => {
+    const steps = [
+      { kind: "tapIfExists", instruction: "tap More Close if open", selector: { strategy: "accessibility-id", value: "More Close" } },
+    ];
+    const result = await runScriptSteps({}, steps, {
+      platform: "android",
+      executeSemanticAction: async () => ({
+        success: true,
+        selector: { strategy: "accessibility-id", value: "More Close" },
+        diffSummary: "did it",
+      }),
+    });
+    assert.strictEqual(result.updatedSteps[0].resolvedSelector, undefined);
+    assert.deepStrictEqual(result.updatedSteps[0].selector, { strategy: "accessibility-id", value: "More Close" });
+  });
+
+  await run('runScriptSteps treats a "tapIfExists" skip as success and continues to the next step', async () => {
+    const calls = [];
+    const steps = [
+      { kind: "tapIfExists", instruction: "tap More Close if open", selector: { strategy: "accessibility-id", value: "More Close" } },
+      { kind: "tap", instruction: "tap LOGIN" },
+    ];
+    const result = await runScriptSteps({}, steps, {
+      platform: "android",
+      executeSemanticAction: async (driver, instruction) => {
+        calls.push(instruction);
+        if (instruction.includes("More Close")) return { success: true, skipped: true, diffSummary: "skipped" };
+        return { success: true, diffSummary: "did: " + instruction };
+      },
+    });
+    assert.strictEqual(result.success, true);
+    assert.deepStrictEqual(calls, ["tap More Close if open", "tap LOGIN"]);
+  });
+
   await run("persistResolvedSelectors preserves other top-level keys on an object-shaped test case file", async () => {
     const file = writeTempJson({ name: "demo", description: "a demo case", steps: [{ kind: "tap", instruction: "tap LOGIN" }] });
     persistResolvedSelectors(file, [

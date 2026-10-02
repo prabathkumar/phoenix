@@ -32,7 +32,7 @@ const { diffSnapshots, diffToText } = require("../generation/semantic-diff");
 const { inferSemanticAssertions } = require("../generation/semantic-assertions");
 const { buildSelector } = require("../generation/pipeline");
 
-const SUPPORTED_KINDS = new Set(["tap", "type", "scroll"]);
+const SUPPORTED_KINDS = new Set(["tap", "type", "scroll", "tapIfExists"]);
 
 /**
  * @typedef {Object} SemanticActionExecutionResult
@@ -67,6 +67,26 @@ const SUPPORTED_KINDS = new Set(["tap", "type", "scroll"]);
  *   screenshot failure here falls back to text-only rather than
  *   failing the whole action -- the point of the screenshot is to help
  *   resolution, not to be a new way for it to fail.
+ * @param {{strategy: string, value: string}} [options.exactSelector] -
+ *   REQUIRED when kind is "tapIfExists", ignored otherwise. A literal,
+ *   hand-authored (or previously-learned) selector for an element that
+ *   may or may not be on screen -- a conditional recovery/dismiss step
+ *   (a dialog that only sometimes appears, an overlay's close icon).
+ *   Unlike every other kind, this NEVER calls resolveSemanticAction and
+ *   NEVER falls back to semantic guessing: the element either exists
+ *   (tapped) or it doesn't (silently skipped, still `success: true`).
+ *   This exists because asking an LLM resolver to judge "is this
+ *   specific thing present" for a conditional step proved, on real
+ *   hardware, impossible to make reliable through prompt wording alone
+ *   -- docs/STATUS.md bugs #6/#7/#9/#11/#12/"Thirteenth" are all the
+ *   SAME two elements (a login form's own Back Arrow icon, and the
+ *   already-open "More Icon") getting mistaken for an unrelated
+ *   dialog's dismiss button, across three separate rounds of
+ *   instruction rewording and prompt hardening. A step whose job is
+ *   "decide whether to act" is the wrong kind of step to hand to a
+ *   component that can be confidently wrong; `tapIfExists` removes the
+ *   judgment call entirely by replacing it with a plain WebDriver
+ *   existence check against a selector no LLM ever chose at runtime.
  * @param {{strategy: string, value: string}} [options.cachedSelector] -
  *   a selector already proven to resolve this exact instruction on a
  *   previous run (see test-case-runner.js's selector cache). When
@@ -88,7 +108,7 @@ async function executeSemanticAction(driver, instruction, options = {}) {
   const platform = options.platform === "ios" ? "ios" : "android";
 
   if (!SUPPORTED_KINDS.has(kind)) {
-    return { success: false, reason: `unsupported action kind "${kind}" (expected "tap", "type", or "scroll")` };
+    return { success: false, reason: `unsupported action kind "${kind}" (expected "tap", "type", "scroll", or "tapIfExists")` };
   }
   if (kind === "type" && typeof options.text !== "string") {
     return { success: false, reason: 'kind "type" requires options.text' };
@@ -110,6 +130,49 @@ async function executeSemanticAction(driver, instruction, options = {}) {
   // in this layer could move the viewport to reach it).
   if (kind === "scroll") {
     return performScroll(driver, pageSourceBefore, options, platform);
+  }
+
+  // "tapIfExists": a conditional recovery step authored with a known,
+  // literal selector -- NEVER resolved by the LLM, not even as a
+  // fallback. See the option's doc comment above for why: this is the
+  // one kind that must be incapable of guessing, because guessing on a
+  // "is this maybe-present thing here" step is exactly what kept
+  // regressing (docs/STATUS.md). A missing/malformed exactSelector is a
+  // test-case authoring error, not a runtime "not found" -- reported as
+  // a failure rather than silently skipped, so it's caught immediately
+  // rather than masquerading as "the dialog just wasn't there."
+  if (kind === "tapIfExists") {
+    if (!options.exactSelector || !options.exactSelector.strategy || !options.exactSelector.value) {
+      return { success: false, reason: 'kind "tapIfExists" requires options.exactSelector ({strategy, value})' };
+    }
+    const exactSelectorString = buildSelector(options.exactSelector, platform);
+    if (!exactSelectorString) {
+      return { success: false, reason: `couldn't build a selector for ${JSON.stringify(options.exactSelector)}` };
+    }
+    let element;
+    let exists = false;
+    try {
+      element = await driver.$(exactSelectorString);
+      exists = await element.isExisting();
+    } catch (err) {
+      return { success: false, reason: `couldn't check for (${exactSelectorString}): ${err.message}` };
+    }
+    if (!exists) {
+      // Not present -- exactly the expected, common case for a
+      // conditional step. Never a failure, never a fallback resolution.
+      return { success: true, skipped: true, diffSummary: `skipped: (${exactSelectorString}) not present` };
+    }
+    if (typeof options.beforeAct === "function") {
+      const vetoReason = options.beforeAct({ selector: options.exactSelector, selectorString: exactSelectorString, kind: "tap", text: undefined });
+      if (vetoReason) {
+        return { success: false, reason: vetoReason };
+      }
+    }
+    const outcome = await actAndDiff(driver, exactSelectorString, "tap", undefined, pageSourceBefore);
+    if (!outcome.success) {
+      return outcome;
+    }
+    return { ...outcome, selector: options.exactSelector };
   }
 
   // Deterministic replay path: a selector already proven correct for

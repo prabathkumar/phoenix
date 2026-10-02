@@ -48,12 +48,13 @@ const ENV_PLACEHOLDER_RE = /^\$\{([A-Z0-9_]+)\}$/;
 
 /**
  * Loads and validates a test-case JSON file. Each step must have a
- * `kind` ("tap", "type", "scroll", or "wait") and an `instruction` (the plain-language
- * text handed to the same resolver `executeSemanticAction` already
- * uses); "type" steps also need a `text` field. `optional: true` marks
- * a step that's allowed to not match anything on screen without
- * failing the whole run (e.g. a system dialog that doesn't always
- * appear -- see test-cases/login.json's first step).
+ * `kind` ("tap", "type", "scroll", "wait", or "tapIfExists") and an
+ * `instruction` (the plain-language text handed to the same resolver
+ * `executeSemanticAction` already uses); "type" steps also need a
+ * `text` field. `optional: true` marks a step that's allowed to not
+ * match anything on screen without failing the whole run (e.g. a
+ * system dialog that doesn't always appear -- see
+ * test-cases/login.json's first step).
  *
  * An optional `resolvedSelector: {strategy, value}` field is this
  * module's half of the selector-caching/self-healing architecture
@@ -65,8 +66,22 @@ const ENV_PLACEHOLDER_RE = /^\$\{([A-Z0-9_]+)\}$/;
  * with no `resolvedSelector` simply always resolves fresh, same as
  * before this field existed.
  *
+ * A "tapIfExists" step is different in kind, not degree: it requires a
+ * `selector: {strategy, value}` field (NOT resolved/learned -- a
+ * literal, hand-authored locator from real evidence) and NEVER goes
+ * through the LLM resolver, not even as a fallback. It exists because
+ * recovery/conditional steps phrased as plain-language instructions
+ * ("tap CLOSE if a dialog is showing") kept getting confidently
+ * mis-resolved to an unrelated element on real hardware, across
+ * multiple rounds of rewording the instruction and hardening the
+ * resolver's prompt (docs/STATUS.md bugs #6/#7/#9/#11/#12/"Thirteenth" --
+ * all the same two elements misread as something else). A `tapIfExists`
+ * step cannot guess: the exact element either exists (tapped) or
+ * doesn't (silently skipped) -- see executeSemanticAction's
+ * `exactSelector` option for the implementation.
+ *
  * @param {string} filePath - absolute or relative path to a .json file
- * @returns {Array<{kind: string, instruction: string, text?: string, optional?: boolean, resolvedSelector?: {strategy: string, value: string}}>}
+ * @returns {Array<{kind: string, instruction: string, text?: string, optional?: boolean, resolvedSelector?: {strategy: string, value: string}, selector?: {strategy: string, value: string}}>}
  */
 function loadTestCaseSteps(filePath) {
   const raw = fs.readFileSync(filePath, "utf8");
@@ -80,16 +95,23 @@ function loadTestCaseSteps(filePath) {
   if (!Array.isArray(steps)) {
     throw new Error(`test case file "${filePath}" must be a JSON array of steps, or an object with a "steps" array`);
   }
+  const VALID_KINDS = new Set(["tap", "type", "scroll", "wait", "tapIfExists"]);
   steps.forEach((step, i) => {
     if (!step || typeof step !== "object") throw new Error(`test case file "${filePath}": step ${i} is not an object`);
-    if (step.kind !== "tap" && step.kind !== "type" && step.kind !== "scroll" && step.kind !== "wait") {
-      throw new Error(`test case file "${filePath}": step ${i} has invalid "kind" (must be "tap", "type", "scroll", or "wait"): ${step.kind}`);
+    if (!VALID_KINDS.has(step.kind)) {
+      throw new Error(`test case file "${filePath}": step ${i} has invalid "kind" (must be "tap", "type", "scroll", "wait", or "tapIfExists"): ${step.kind}`);
     }
     if (typeof step.instruction !== "string" || !step.instruction) {
       throw new Error(`test case file "${filePath}": step ${i} is missing a non-empty "instruction"`);
     }
     if (step.kind === "type" && typeof step.text !== "string") {
       throw new Error(`test case file "${filePath}": step ${i} is a "type" step but has no "text"`);
+    }
+    if (step.kind === "tapIfExists") {
+      const sel = step.selector;
+      if (!sel || typeof sel !== "object" || typeof sel.strategy !== "string" || typeof sel.value !== "string") {
+        throw new Error(`test case file "${filePath}": step ${i} is a "tapIfExists" step but has no valid "selector" ({strategy, value} strings)`);
+      }
     }
     if (step.resolvedSelector !== undefined) {
       const sel = step.resolvedSelector;
@@ -206,7 +228,7 @@ function resolveSteps(steps) {
  * this function never touches the filesystem itself.
  *
  * @param {Object} driver - a started WebdriverIO session
- * @param {Array<{kind: string, instruction: string, text?: string, direction?: string, durationMs?: number, optional?: boolean, resolvedSelector?: {strategy: string, value: string}}>} steps
+ * @param {Array<{kind: string, instruction: string, text?: string, direction?: string, durationMs?: number, optional?: boolean, resolvedSelector?: {strategy: string, value: string}, selector?: {strategy: string, value: string}}>} steps
  * @param {{platform: string, executeSemanticAction: Function, sleepFn?: Function}} options -
  *   `executeSemanticAction` is injected (not required() here) so
  *   callers/tests can fake it the same way existing tests already do
@@ -231,13 +253,20 @@ async function runScriptSteps(driver, steps, { platform, executeSemanticAction, 
       text: step.text,
       platform,
       direction: step.direction,
-      cachedSelector: step.resolvedSelector,
+      // "tapIfExists" is given a literal, hand-authored selector and
+      // never the AI-learned cache -- see loadTestCaseSteps' doc
+      // comment on why these two are deliberately different fields.
+      cachedSelector: step.kind === "tapIfExists" ? undefined : step.resolvedSelector,
+      exactSelector: step.kind === "tapIfExists" ? step.selector : undefined,
     });
     if (!result.success) {
       if (step.optional) continue;
       return { success: false, detail: `step "${step.instruction}" failed: ${result.reason}`, updatedSteps };
     }
-    if (result.selector) {
+    // A "tapIfExists" step's selector is hand-authored evidence, not a
+    // learned cache entry -- never let it get overwritten/duplicated
+    // into `resolvedSelector` by the generic selector-learning below.
+    if (result.selector && step.kind !== "tapIfExists") {
       updatedSteps[i] = { ...updatedSteps[i], resolvedSelector: result.selector };
     }
     lastResult = result;

@@ -364,6 +364,87 @@ function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl,
     }
   });
 
+  await run('executeSemanticAction kind "tapIfExists" taps and diffs when the exact selector exists, never calling resolveSemanticAction', async () => {
+    const { executor, restore } = freshExecutorWithFakes({
+      resolveSemanticActionImpl: async () => {
+        throw new Error('resolveSemanticAction should never be called for kind "tapIfExists"');
+      },
+      diffSnapshotsImpl: () => ({ appeared: [], disappeared: [], changed: true }),
+    });
+    try {
+      const { driver, calls } = makeFakeDriver({ pageSources: ["<hierarchy>before</hierarchy>", "<hierarchy>after</hierarchy>"] });
+      const result = await executor.executeSemanticAction(driver, "tap More Close if the More menu overlay is open", {
+        kind: "tapIfExists",
+        exactSelector: { strategy: "accessibility-id", value: "More Close" },
+      });
+
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(result.skipped, undefined);
+      assert.deepStrictEqual(result.selector, { strategy: "accessibility-id", value: "More Close" });
+      assert.strictEqual(calls.click, 1);
+      // Queried twice: once for the existence check, once inside
+      // actAndDiff's own (separate) element lookup before acting.
+      assert.deepStrictEqual(calls.selectorsQueried, ["~More Close", "~More Close"]);
+    } finally {
+      restore();
+    }
+  });
+
+  await run('executeSemanticAction kind "tapIfExists" skips cleanly (still success: true) when the exact selector is not present -- never falls back to guessing', async () => {
+    const { executor, restore } = freshExecutorWithFakes({
+      resolveSemanticActionImpl: async () => {
+        throw new Error('resolveSemanticAction should never be called for kind "tapIfExists", not even on a miss');
+      },
+    });
+    try {
+      const { driver, calls } = makeFakeDriver({
+        pageSources: ["<hierarchy>before</hierarchy>"],
+        elementBehavior: { isExisting: async () => false },
+      });
+      const result = await executor.executeSemanticAction(driver, "tap More Close if the More menu overlay is open", {
+        kind: "tapIfExists",
+        exactSelector: { strategy: "accessibility-id", value: "More Close" },
+      });
+
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(result.skipped, true);
+      assert.strictEqual(calls.click, 0);
+    } finally {
+      restore();
+    }
+  });
+
+  await run('executeSemanticAction kind "tapIfExists" fails clearly (an authoring error) when exactSelector is missing', async () => {
+    const { executor, restore } = freshExecutorWithFakes();
+    try {
+      const { driver } = makeFakeDriver({ pageSources: ["<hierarchy />"] });
+      const result = await executor.executeSemanticAction(driver, "tap something conditionally", { kind: "tapIfExists" });
+
+      assert.strictEqual(result.success, false);
+      assert.ok(/requires options.exactSelector/.test(result.reason));
+    } finally {
+      restore();
+    }
+  });
+
+  await run('executeSemanticAction kind "tapIfExists" honors beforeAct veto before clicking', async () => {
+    const { executor, restore } = freshExecutorWithFakes();
+    try {
+      const { driver, calls } = makeFakeDriver({ pageSources: ["<hierarchy />"] });
+      const result = await executor.executeSemanticAction(driver, "tap More Close", {
+        kind: "tapIfExists",
+        exactSelector: { strategy: "accessibility-id", value: "More Close" },
+        beforeAct: () => "vetoed by caller",
+      });
+
+      assert.strictEqual(result.success, false);
+      assert.strictEqual(result.reason, "vetoed by caller");
+      assert.strictEqual(calls.click, 0);
+    } finally {
+      restore();
+    }
+  });
+
   await run("executeSemanticAction passes through resolveSemanticAction's unresolved reason unchanged", async () => {
     const { executor, restore } = freshExecutorWithFakes({
       resolveSemanticActionImpl: async () => ({ resolved: false, reason: "no element matches 'the checkout button'" }),

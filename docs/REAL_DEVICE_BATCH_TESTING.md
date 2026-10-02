@@ -137,13 +137,14 @@ Write a test case as a JSON file with a `steps` array:
 }
 ```
 
-- `kind`: `"tap"`, `"type"`, `"scroll"`, or `"wait"`.
+- `kind`: `"tap"`, `"type"`, `"scroll"`, `"wait"`, or `"tapIfExists"`.
 - `instruction`: plain language, resolved exactly the way a standalone `executeSemanticAction` call already is — no selector, no element reference. For a `"scroll"` step this is still required (for readability/logging) but isn't resolved against anything on screen — a scroll has no single target element, it just moves the viewport.
 - `text` (type steps only): a literal string, or a whole-string `"${ENV_VAR_NAME}"` placeholder resolved from the environment at run time — never commit a real credential into a test-case file; reference it by env var name instead, the same way `test-cases/login.json` does for `PHOENIX_BATCH_LOGIN_PHONE`/`PHOENIX_BATCH_LOGIN_PASSWORD`. Partial interpolation (`"prefix-${VAR}"`) is deliberately not supported, to keep a half-written credential from ever looking like it belongs in a committed file.
 - `direction` (scroll steps only): `"down"` (default) or `"up"`. Issues a native `mobile: scrollGesture` (Android) / `mobile: scroll` (iOS) gesture — no element resolution involved. Added after a real run found an element (Logout, in `test-cases/addons.json`) sitting below the fold in a scrollable screen, which nothing in the engine could previously reach.
 - `durationMs` (wait steps only): milliseconds to pause, default `3000`. A `"wait"` step is a pure timing pause — no screen resolution, no device action, not even a call into `executeSemanticAction`. Added after a real run found that the post-login-submit notification-permission dialog appears at a variable delay: fast enough in one run for the following "tap Allow" steps to catch it, still not up by the next step in another (`addons.json`). No step-sequence rewording can fix a timing race; an explicit pause can.
 - `optional` (any kind): `true` if the step is allowed to not match/do anything without failing the run (a system dialog that doesn't always appear, or a scroll that's a no-op when the target is already on screen).
 - `resolvedSelector` (tap/type/scroll steps only, usually never hand-written): `{ "strategy": "...", "value": "..." }`, a concrete WebDriver selector this exact step previously resolved to on real hardware. See "Selector caching and self-healing" below.
+- `selector` (`tapIfExists` steps only, REQUIRED, always hand-written): `{ "strategy": "...", "value": "..." }`, a literal selector from real evidence (never a guess). See "Conditional steps: `tapIfExists`" below.
 
 ### Selector caching and self-healing
 
@@ -160,6 +161,24 @@ This is deliberately the same architecture mature browser/mobile test tools (Pla
 A `"${ENV_VAR}"`-style credential placeholder is always safe here: persisting selectors only ever overlays the `resolvedSelector` field onto the ORIGINAL step loaded from disk (placeholder intact) — the literal, resolved secret value a run actually typed is never the thing written back to the file. See `run-batch-executions.js`'s `mergeResolvedSelectors` and its test coverage if you're changing this code.
 
 A fresh test case (hand-written, no `resolvedSelector` anywhere) works exactly as before — this is purely additive. The very first run against a new or changed screen always resolves everything fresh; every run after that gets cheaper and more deterministic for whichever steps already proved out.
+
+### Conditional steps: `tapIfExists`
+
+Caching and self-healing still only matter for a step that's supposed to run. A different class of step — "tap X if some dialog/overlay happens to be open, otherwise do nothing" — turned out to be the wrong kind of thing to hand to an AI resolver at all, even with caching: the first run against a conditional step has no cache yet, so it still goes through full semantic resolution, and resolution for a *maybe-absent* target means asking the model to confidently say "nothing here" — which on real hardware it kept failing to do, no matter how the instruction was worded (`docs/STATUS.md`'s "Thirteenth bug": the same two elements misread as something else, across three separate rounds of rewording and prompt hardening).
+
+`tapIfExists` is a step kind with no judgment call in it at all:
+
+```json
+{
+  "kind": "tapIfExists",
+  "instruction": "close the More-menu overlay if it's open (More Close icon)",
+  "selector": { "strategy": "accessibility-id", "value": "More Close" }
+}
+```
+
+- `selector` is REQUIRED and always hand-written from real evidence (a page-source dump that actually shows the element) — never a guess, and never filled in automatically the way `resolvedSelector` is.
+- `executeSemanticAction` never calls the LLM resolver for this kind, not even as a fallback. It does one direct WebDriver existence check against `selector`: found → tap it, diff, report success; not found → report success anyway (`skipped: true`), no fallback, no guess.
+- Use it for exactly the steps that used to be "optional" plain-language recovery instructions — a dialog or overlay that only sometimes appears, where you already know its real selector from a prior run's evidence. Don't use it for a step that must succeed and has no selector yet; that's what the AI resolver (optionally backed by `resolvedSelector` caching) is for.
 
 Run it:
 

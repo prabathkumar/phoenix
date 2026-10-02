@@ -412,6 +412,58 @@ async function executeSemanticActionInner(driver, instruction, options = {}) {
  *   PHOENIX_OUTCOME_SETTLE_POLL_MS).
  * @returns {Promise<{success: boolean, reason?: string, diff?: object, diffSummary?: string, assertions?: Array}>}
  */
+
+/**
+ * Confirms a "type" action actually landed in a real input field,
+ * rather than trusting setValue()'s lack of a thrown error. See the
+ * doc comment at this function's call site in actAndDiff() for the
+ * real bug (addons-run-ios-docker-8.log, bug #6) this closes.
+ *
+ * Best-effort and permissive by design -- this is a safety net against
+ * a clearly-wrong resolution, not a strict assertion on every driver
+ * shim: an older/minimal fake driver (most of this file's own test
+ * fixtures) with no `getText()` at all, or a real one where reading it
+ * back genuinely fails (a transition mid-flight), is treated as
+ * "can't verify" and passed through rather than failed -- the read-
+ * back is extra assurance, not a new way for a perfectly good action
+ * to be reported as broken.
+ *
+ * Credential-safe, same standard as generation/execution-log.js's
+ * buildExecutionRecord(): the failure reason this returns NEVER
+ * includes the real typed text or the field's real displayed value,
+ * only their lengths -- a mismatch on a password/phone-number field
+ * must never leak the credential into a log line.
+ *
+ * @param {Object} element - the WebdriverIO-shaped element just acted on.
+ * @param {string} text - what was sent to setValue().
+ * @returns {Promise<{ok: boolean, reason?: string}>}
+ */
+async function verifyTypedValue(element, text) {
+  if (typeof element.getText !== "function") {
+    return { ok: true };
+  }
+  let actual;
+  try {
+    actual = await element.getText();
+  } catch (_err) {
+    return { ok: true };
+  }
+  if (typeof actual !== "string" || actual === text) {
+    return { ok: true };
+  }
+  // A masked secure field never echoes the real text back -- iOS/
+  // Android both display a run of identical mask characters (bullets,
+  // dots, asterisks) in its place. Same length, no alphanumerics:
+  // treat as the expected masked echo, not a mismatch.
+  if (actual.length === text.length && actual.length > 0 && /^(.)\1*$/.test(actual) && !/[a-zA-Z0-9]/.test(actual)) {
+    return { ok: true };
+  }
+  return {
+    ok: false,
+    reason: `typed text was not found in the field afterward (sent ${text.length} character(s), field now shows ${actual.length} character(s)) -- the resolved element may not be the real input field`,
+  };
+}
+
 async function actAndDiff(driver, selectorString, kind, text, pageSourceBefore, settleOptions = {}) {
   const sleep = settleOptions.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   const envSettleMs = Number(process.env.PHOENIX_ACT_SETTLE_MS);
@@ -432,6 +484,32 @@ async function actAndDiff(driver, selectorString, kind, text, pageSourceBefore, 
       await element.click();
     } else {
       await element.setValue(text);
+    }
+
+    // Read-back verification -- found for real on a live BrowserStack
+    // iOS run (addons-run-ios-docker-8.log, bug #6): "type the phone
+    // number" resolved to a genuinely dead, hidden element (an
+    // XCUIElementTypeOther with visible="false" accessible="false", the
+    // keyboard's own hidden input accessory). setValue() against it
+    // returned successfully -- no WebDriver error at all -- so the step
+    // was reported as a success while the real field almost certainly
+    // never got the right value. That bug is now fixed upstream
+    // (buildGroundedSnapshot() excludes that specific dead-element
+    // shape), but relying solely on "the candidate list was clean" is
+    // fragile against the next not-yet-seen variant of the same
+    // failure mode: a resolved-but-wrong element whose setValue() call
+    // simply doesn't throw. This closes the gap generically, for any
+    // future case, by checking the actual result rather than trusting
+    // a silent success: immediately after typing, read the field's own
+    // displayed value back and confirm it reflects what was sent,
+    // rather than discovering the mismatch minutes later as an
+    // unrelated downstream failure (there, a real "Invalid
+    // username/password entered" from the app itself).
+    if (kind === "type") {
+      const verification = await verifyTypedValue(element, text);
+      if (!verification.ok) {
+        return { success: false, reason: verification.reason };
+      }
     }
   } catch (err) {
     return { success: false, reason: `action failed: ${err.message}` };

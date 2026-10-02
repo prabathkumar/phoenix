@@ -105,6 +105,11 @@ function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl,
       setValue: async (text) => {
         calls.setValue.push(text);
       },
+      // Only attached when a test explicitly supplies it -- most
+      // fixtures in this file have no getText() at all, and
+      // verifyTypedValue() (engine/semantic-act-executor.js) must treat
+      // that as "can't verify, pass through" rather than throwing.
+      ...(behavior.getText ? { getText: behavior.getText } : {}),
     };
   }
 
@@ -185,6 +190,127 @@ function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl,
       assert.strictEqual(result.success, true);
       assert.strictEqual(calls.click, 0);
       assert.deepStrictEqual(calls.setValue, ["prabath@example.com"]);
+    } finally {
+      restore();
+    }
+  });
+
+  // Real bug: addons-run-ios-docker-8.log, bug #6 -- "type the phone
+  // number" resolved to a genuinely dead element (an invisible,
+  // inaccessible keyboard accessory, not a real field). setValue()
+  // against it returned successfully, no WebDriver error at all, so
+  // the step was reported as a success while the real field never got
+  // the right value -- only surfacing much later as an unrelated
+  // downstream login failure. The upstream resolution bug is fixed
+  // (generation/semantic-snapshot.js), but this read-back check closes
+  // the same failure class generically, for any future not-yet-seen
+  // variant: confirm the field's own displayed value afterward instead
+  // of trusting setValue()'s lack of a thrown error.
+  await run("executeSemanticAction FAILS a \"type\" step when the field's read-back value doesn't match what was sent (real bug: addons-run-ios-docker-8.log, bug #6 -- setValue() against a dead element silently 'succeeded')", async () => {
+    const { executor, restore } = freshExecutorWithFakes({
+      resolveSemanticActionImpl: async () => ({
+        resolved: true,
+        element: { ref: 1, role: "XCUIElementTypeOther" },
+        selector: { strategy: "accessibility-id", value: "inputView" },
+      }),
+    });
+    try {
+      const { driver } = makeFakeDriver({
+        pageSources: ["<hierarchy>before</hierarchy>", "<hierarchy>before</hierarchy>"],
+        // The dead element's own displayed text never changes, no
+        // matter what was sent to setValue() -- the real symptom.
+        elementBehavior: { getText: async () => "" },
+      });
+      const result = await executor.executeSemanticAction(driver, "type the phone number", { kind: "type", text: "01166114421" });
+
+      assert.strictEqual(result.success, false);
+      assert.ok(result.reason.includes("was not found in the field afterward"));
+      // Credential safety: the real typed value must never appear in
+      // the failure reason, only its length.
+      assert.ok(!result.reason.includes("01166114421"));
+      assert.ok(result.reason.includes("11 character"));
+    } finally {
+      restore();
+    }
+  });
+
+  await run("executeSemanticAction PASSES a \"type\" step whose read-back value exactly matches what was sent", async () => {
+    const { executor, restore } = freshExecutorWithFakes({
+      resolveSemanticActionImpl: async () => ({
+        resolved: true,
+        element: { ref: 1, role: "EditText" },
+        selector: { strategy: "resource-id", value: "com.phoenix.demo:id/username_input" },
+      }),
+    });
+    try {
+      const { driver } = makeFakeDriver({
+        pageSources: ["<hierarchy>before</hierarchy>", "<hierarchy>before</hierarchy>"],
+        elementBehavior: { getText: async () => "01166114421" },
+      });
+      const result = await executor.executeSemanticAction(driver, "type the phone number", { kind: "type", text: "01166114421" });
+      assert.strictEqual(result.success, true);
+    } finally {
+      restore();
+    }
+  });
+
+  await run("executeSemanticAction PASSES a \"type\" step into a masked secure field (read-back is mask characters, not the real text)", async () => {
+    const { executor, restore } = freshExecutorWithFakes({
+      resolveSemanticActionImpl: async () => ({
+        resolved: true,
+        element: { ref: 1, role: "XCUIElementTypeSecureTextField" },
+        selector: { strategy: "accessibility-id", value: "PASSWORD" },
+      }),
+    });
+    try {
+      const { driver } = makeFakeDriver({
+        pageSources: ["<hierarchy>before</hierarchy>", "<hierarchy>before</hierarchy>"],
+        // "@Ytlc1234" is 9 characters -- a masked field echoes back 9
+        // mask characters, never the real text.
+        elementBehavior: { getText: async () => "•••••••••" },
+      });
+      const result = await executor.executeSemanticAction(driver, "type the password", { kind: "type", text: "@Ytlc1234" });
+      assert.strictEqual(result.success, true, "a same-length run of mask characters must be treated as the expected masked echo, not a mismatch");
+    } finally {
+      restore();
+    }
+  });
+
+  await run("executeSemanticAction skips read-back verification entirely when the resolved element has no getText() at all (older/minimal driver shim)", async () => {
+    const { executor, restore } = freshExecutorWithFakes({
+      resolveSemanticActionImpl: async () => ({
+        resolved: true,
+        element: { ref: 1, role: "EditText" },
+        selector: { strategy: "resource-id", value: "com.phoenix.demo:id/username_input" },
+      }),
+    });
+    try {
+      // No elementBehavior.getText supplied -- makeFakeDriver's default
+      // element has no getText property at all, same as every other
+      // test in this file predating this check.
+      const { driver } = makeFakeDriver({ pageSources: ["<hierarchy>before</hierarchy>", "<hierarchy>before</hierarchy>"] });
+      const result = await executor.executeSemanticAction(driver, "type the phone number", { kind: "type", text: "01166114421" });
+      assert.strictEqual(result.success, true, "no getText() means no way to verify -- must pass through, not fail");
+    } finally {
+      restore();
+    }
+  });
+
+  await run("executeSemanticAction skips read-back verification (passes through) when getText() itself throws", async () => {
+    const { executor, restore } = freshExecutorWithFakes({
+      resolveSemanticActionImpl: async () => ({
+        resolved: true,
+        element: { ref: 1, role: "EditText" },
+        selector: { strategy: "resource-id", value: "com.phoenix.demo:id/username_input" },
+      }),
+    });
+    try {
+      const { driver } = makeFakeDriver({
+        pageSources: ["<hierarchy>before</hierarchy>", "<hierarchy>before</hierarchy>"],
+        elementBehavior: { getText: async () => { throw new Error("stale element reference"); } },
+      });
+      const result = await executor.executeSemanticAction(driver, "type the phone number", { kind: "type", text: "01166114421" });
+      assert.strictEqual(result.success, true, "a read-back failure doesn't mean the type itself failed -- best-effort, not a new failure mode");
     } finally {
       restore();
     }

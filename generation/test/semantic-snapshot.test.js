@@ -11,6 +11,7 @@
 
 const assert = require("assert");
 const { buildGroundedSnapshot, snapshotToText, findByRef, buildFusedSnapshot } = require("../semantic-snapshot");
+const { toSelector } = require("../semantic-act");
 
 const ANDROID_LOGIN_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
 <hierarchy>
@@ -563,6 +564,82 @@ test("buildGroundedSnapshot does NOT flag a plain home-screen LOGIN button as am
     const button = elements.find((el) => el.role === "XCUIElementTypeButton" && el.label === name);
     assert.strictEqual(button.ambiguousAccessibilityId, undefined, `${name} must not be falsely flagged ambiguous`);
   }
+});
+
+// Investigated as a suspected bug #3 for test-cases/addons.ios.json
+// (docs/STATUS.md): run 3 (addons-run-ios-docker-3.log) got past bug #1
+// (step-ordering) and bug #2 (the nested-StaticText ambiguousAccessibilityId
+// false positive fixed above) -- LOGIN resolved and clicked, the phone
+// number was typed -- but the very next step, "tap the PASSWORD tab to
+// switch the form into password-entry mode," failed with "The instruction
+// specifies 'PASSWORD tab', but no element on the screen has this label or
+// role." The real page-source XML captured in that exact run, right before
+// this failure, is trimmed here (real attribute values kept byte-for-byte)
+// to the OTP/password screen's relevant container.
+//
+// Feeding this real XML through buildGroundedSnapshot() (and replicating
+// resolveSemanticAction()'s own "tap" candidate filter on top of it) shows
+// the PASSWORD button DOES appear, correctly, as an unambiguous, resolvable
+// candidate: same nested-button-with-matching-StaticText-child shape as the
+// LOGIN button bug #2 fixed, and NOT flagged ambiguousAccessibilityId (its
+// only same-named sibling in the tree is its own nested StaticText child,
+// an ancestor/descendant pair, not an unrelated duplicate -- "USE TAC" is a
+// different accessibility id entirely). It also isn't a known non-clickable
+// dead end (no `clickable` attribute on iOS at all) and toSelector() builds
+// a perfectly ordinary accessibility-id selector from it. So this is NOT a
+// snapshot-building or resolution-engine bug -- the real, correct candidate
+// reaches the exact same candidate list resolveSemanticAction() passes into
+// the LLM prompt. The "no element ... has this label or role" refusal is
+// the local Ollama model's own decision on that correctly-populated prompt
+// (plausibly because the instruction says "tab" while the candidate's own
+// role is rendered as "XCUIElementTypeButton", and the prompt's wording
+// pushes the model to require role correspondence, not just label
+// correspondence) -- a model/prompting-level issue, not a code defect. This
+// test pins down the code-level half of that finding: it must keep passing
+// so this specific real screen is never again wrongly filtered or flagged
+// by a future change to this module.
+const IOS_REAL_PASSWORD_TAB_SCREEN = `<?xml version="1.0" encoding="UTF-8"?><AppiumAUT><XCUIElementTypeApplication type="XCUIElementTypeApplication" name="MyYes" label="MyYes" enabled="true" visible="true" accessible="false" x="0" y="0" width="393" height="852" index="0" traits="" processId="626" bundleId="my.yes.yes4g">
+  <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="20" y="102" width="353" height="74" index="0" traits="">
+    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Yes Number" name="Yes Number" label="Yes Number" enabled="true" visible="true" accessible="true" x="41" y="224" width="311" height="21" index="0" traits="StaticText"/>
+    <XCUIElementTypeTextField type="XCUIElementTypeTextField" value="01166114421" label="" enabled="true" visible="true" accessible="true" x="54" y="265" width="257" height="20" index="0" placeholderValue="" traits=""/>
+  </XCUIElementTypeOther>
+  <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="40" y="330" width="313" height="41" index="1" traits="">
+    <XCUIElementTypeButton type="XCUIElementTypeButton" name="PASSWORD" label="PASSWORD" enabled="true" visible="true" accessible="true" x="40" y="327" width="144" height="46" index="0" traits="Button">
+      <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="PASSWORD" name="PASSWORD" label="PASSWORD" enabled="true" visible="true" accessible="false" x="61" y="341" width="101" height="19" index="0" traits="StaticText"/>
+    </XCUIElementTypeButton>
+    <XCUIElementTypeButton type="XCUIElementTypeButton" name="USE TAC" label="USE TAC" enabled="true" visible="true" accessible="true" x="209" y="327" width="144" height="47" index="1" traits="Button">
+      <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="USE TAC" name="USE TAC" label="USE TAC" enabled="true" visible="true" accessible="false" x="249" y="341" width="64" height="19" index="0" traits="StaticText"/>
+    </XCUIElementTypeButton>
+  </XCUIElementTypeOther>
+</XCUIElementTypeApplication></AppiumAUT>`;
+
+test("buildGroundedSnapshot surfaces the real PASSWORD tab button as an unambiguous, resolvable candidate (addons-run-ios-docker-3.log investigation: the 'no element has this label or role' failure is a model/prompting issue, not a snapshot-building bug -- see comment above)", () => {
+  const elements = buildGroundedSnapshot(IOS_REAL_PASSWORD_TAB_SCREEN);
+
+  const passwordButton = elements.find((el) => el.role === "XCUIElementTypeButton" && el.label === "PASSWORD");
+  assert.ok(passwordButton, "the real PASSWORD tab button must appear in the snapshot");
+  assert.strictEqual(passwordButton.ambiguousAccessibilityId, undefined, "its only same-named sibling is its own nested StaticText child, not a real duplicate");
+  assert.strictEqual(passwordButton.classChain, undefined, "an unambiguous button needs no classChain fallback");
+  assert.notStrictEqual(passwordButton.clickable, false, "iOS carries no clickable attribute at all -- must not be filtered as a known dead end");
+
+  // Replicates resolveSemanticAction()'s own "tap" candidate filter: an
+  // iOS element's `clickable` is always undefined, so nothing here should
+  // ever remove it.
+  const tapCandidates = elements.filter((el) => !(el.clickable === false && !el.clickableAncestorXPath));
+  assert.ok(
+    tapCandidates.some((el) => el.ref === passwordButton.ref),
+    "the PASSWORD button must survive resolveSemanticAction()'s tap-candidate filter"
+  );
+
+  const selector = toSelector(passwordButton, { kind: "tap" });
+  assert.deepStrictEqual(selector, { strategy: "accessibility-id", value: "PASSWORD" });
+
+  // Its sibling "USE TAC" button (a genuinely different control) must
+  // remain distinct and likewise unambiguous.
+  const useTacButton = elements.find((el) => el.role === "XCUIElementTypeButton" && el.label === "USE TAC");
+  assert.ok(useTacButton);
+  assert.strictEqual(useTacButton.ambiguousAccessibilityId, undefined);
+  assert.notStrictEqual(useTacButton.ref, passwordButton.ref);
 });
 
 setImmediate(() => {

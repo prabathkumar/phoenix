@@ -1,6 +1,7 @@
 # Phoenix — containerizes the Node-side pipeline only:
 # run-session.js (engine/session.js spawn-path client + live-view + capture +
-# generation) and frontend/server.js.
+# generation), run-batch-executions.js (test-case/batch mode, including the
+# BrowserStack provider path), and frontend/server.js.
 #
 # What this deliberately does NOT contain, and why:
 #   - An Android emulator or device. Emulators need KVM/hardware acceleration
@@ -58,6 +59,8 @@ COPY generation/ ./generation/
 COPY live-view/ ./live-view/
 COPY frontend/ ./frontend/
 COPY run-session.js ./run-session.js
+COPY run-batch-executions.js ./run-batch-executions.js
+COPY test-cases/ ./test-cases/
 
 # live-view + frontend ports (see .env.example for what each does).
 EXPOSE 8090 8091
@@ -65,9 +68,15 @@ EXPOSE 8090 8091
 # PHOENIX_STAGE0_APP_PATH must point at a .apk reachable from wherever the
 # Appium server this container talks to actually runs — not from inside
 # this container — since the server/device installs and launches it, not us.
+# Not applicable when PHOENIX_APPIUM_PROVIDER=browserstack, which uses
+# PHOENIX_BROWSERSTACK_APP_URL instead (see .env.example).
 #
 # Runs run-session.js (the live-view/session/recorder/generation pipeline)
-# by default. To serve the local frontend instead of using the public
-# GitHub Pages deploy, override the command:
-#   docker run ... phoenix node frontend/server.js
+# by default. To run batch/test-case mode instead (the mode that drives
+# test-cases/*.json against BrowserStack or a local Appium server), override
+# the command:
+#   docker run ... testops-mobile:latest node run-batch-executions.js
+# To serve the local frontend instead of using the public GitHub Pages
+# deploy, override the command:
+#   docker run ... testops-mobile:latest node frontend/server.js
 CMD ["node", "run-session.js"]

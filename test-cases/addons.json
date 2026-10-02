@@ -62,25 +62,13 @@
       "kind": "tap",
       "instruction": "tap the Allow button to dismiss a system permission dialog",
       "optional": true,
-      "note": "CONFIRMED real bug on addons-run-android-1.log: this app fires a native Android runtime-permission dialog (\"Allow MyYes to send you notifications?\", Allow/Don't allow buttons) right after login submit, not a custom in-app popup with a close/X button -- the original guess here (\"tap the close or X button...\") never matched it, leaving the dialog on screen and blocking the Add-ons tap underneath it. Fixed by reusing the exact, already-proven \"tap the Allow button...\" instruction from step 1 above (same resolver match, same dialog shape), repeated here for whichever permission prompt(s) appear post-login."
-    },
-    {
-      "kind": "tap",
-      "instruction": "tap the Allow button to dismiss a system permission dialog",
-      "optional": true,
-      "note": "Repeated in case a second permission dialog (e.g. contacts/location) stacks up after the notifications one -- still unconfirmed whether more than one actually appears; delete if a run shows only one."
-    },
-    {
-      "kind": "tap",
-      "instruction": "tap the Add-ons tab or menu item",
-      "optional": false,
-      "note": "CONFIRMED working on addons-run-android-2.log -- the guessed instruction resolved and clicked correctly; the run got past this step to the next (new) failure."
+      "note": "CONFIRMED real bug on addons-run-android-1.log: this app fires a native Android runtime-permission dialog (\"Allow MyYes to send you notifications?\", Allow/Don't allow buttons) right after login submit, not a custom in-app popup with a close/X button -- the original guess here (\"tap the close or X button...\") never matched it, leaving the dialog on screen and blocking the Add-ons tap underneath it. Fixed by reusing the exact, already-proven \"tap the Allow button...\" instruction from step 1 above (same resolver match, same dialog shape)."
     },
     {
       "kind": "tap",
       "instruction": "tap the X button to close the coach mark tutorial popup",
       "optional": true,
-      "note": "CONFIRMED real bug on addons-run-android-2.log: after reaching the Add-ons/Account area, a coach-mark tutorial overlay appears (\"Your Account overview is easily accessible in the middle of the screen.\", with a close icon at resource-id ivClose and a NEXT button at btnNext) sitting on top of the screen -- this was never guessed in the original draft, so it silently blocked every tap step after it, including the Profile/Logout ones below, each of which quietly failed to resolve against the real screen underneath. Fixed per direct confirmation of the real element (ivClose) by adding this step to tap it."
+      "note": "CONFIRMED real bug on addons-run-android-2.log, MOVED here from after the Add-ons tap on addons-run-android-7.log's evidence: after dismissing the native Allow dialog above, the app shows a coach-mark tutorial overlay (\"Your Account overview is easily accessible in the middle of the screen.\", close icon ivClose, NEXT button btnNext) IMMEDIATELY on the post-login Dashboard/home screen -- not specifically after tapping Add-ons as originally assumed. Run 7's page-source confirmed this directly: the coach mark was already showing right after the Allow-dismiss step, before Add-ons was ever tapped. It happened to still work when placed after Add-ons in earlier runs only because the overlay persists across that navigation; moved here so it's handled at the point it actually first appears, and so a second blind \"tap Allow\" retry (removed -- see below) is no longer needed."
     },
     {
       "kind": "tap",
@@ -123,6 +111,18 @@
       "instruction": "tap the X button to close the coach mark tutorial popup",
       "optional": true,
       "note": "Final X tap in case the carousel ends on its last page with only a close/X control and no further NEXT (common pattern: last page swaps NEXT for 'Got it'/X) -- optional no-op if the overlay is already gone."
+    },
+    {
+      "kind": "tap",
+      "instruction": "tap the CANCEL button to dismiss a popup asking to turn on notifications in Settings",
+      "optional": true,
+      "note": "CONFIRMED real bug on addons-run-android-7.log: a SECOND, different notifications prompt from the native 'Allow MyYes to send you notifications?' dialog above -- a custom in-app dialog titled 'Turn on Notifications' ('Notifications are turned off. Change your settings to allow notifications from MyYes app.', CANCEL/SETTINGS buttons) appeared after the coach-mark step, blocking the Add-ons tap below (the resolver correctly declined to misuse CANCEL/SETTINGS as an Add-ons match, unlike earlier runs' overconfidence bugs -- a good sign, but the dialog still needed its own dismiss step since Add-ons isn't optional). Tapping CANCEL, not SETTINGS, since the test should not navigate out to the device's system Settings app. This run also removed the previous second blind 'tap Allow' retry step, which run 7's evidence showed was actively harmful: with no second native Allow dialog ever confirmed to exist, that retry was resolving against the coach-mark screen instead (which has no 'Allow' button at all) and risked mis-tapping something on it -- the same resolver-overconfidence class as bug #7, this time removed at the source rather than patched around."
+    },
+    {
+      "kind": "tap",
+      "instruction": "tap the Add-ons tab or menu item",
+      "optional": false,
+      "note": "CONFIRMED working on addons-run-android-2.log -- the guessed instruction resolved and clicked correctly; the run got past this step to the next (new) failure."
     },
     {
       "kind": "tap",

@@ -603,6 +603,97 @@ function writeTempJson(content) {
     }
   });
 
+  await run("the real test-cases/addons.ios.json loads cleanly, is behaviorally parallel to addons.json, and is wired for iOS-generic execution", async () => {
+    const iosFile = path.join(__dirname, "..", "..", "test-cases", "addons.ios.json");
+    const androidFile = path.join(__dirname, "..", "..", "test-cases", "addons.json");
+    const iosSteps = loadTestCaseSteps(iosFile);
+    const androidSteps = loadTestCaseSteps(androidFile);
+
+    // Same step count and same narrative sequence (login -> dismiss
+    // dialogs/tutorial -> Add-ons -> logout) as the proven Android
+    // file -- "behaviorally parallel", not a different flow. Wording
+    // can differ slightly where iOS's own UI conventions genuinely
+    // differ (e.g. iOS's native notification-permission alert vs.
+    // Android's permissioncontroller dialog), so instructions aren't
+    // required to match verbatim -- only the kind sequence (modulo the
+    // tapIfExists->tap substitution below) and the step count.
+    //
+    // Kind can legitimately differ for a conditional dialog-dismiss
+    // step: Android's hand-authored "tapIfExists" requires an exact,
+    // already-confirmed selector (loadTestCaseSteps enforces this),
+    // which no iOS run has produced yet, so those steps are authored
+    // as optional "tap" (semantic-resolution, skippable) instead --
+    // same intent (tap it if present, don't fail the run if not),
+    // same position in the sequence.
+    assert.strictEqual(iosSteps.length, androidSteps.length);
+    iosSteps.forEach((step, i) => {
+      const androidKind = androidSteps[i].kind;
+      if (androidKind === "tapIfExists") {
+        assert.strictEqual(step.kind, "tap", `step ${i} ("${step.instruction}") should be an optional "tap" on iOS, standing in for Android's selector-requiring "tapIfExists"`);
+        assert.strictEqual(step.optional, true, `step ${i} ("${step.instruction}") must be optional, matching tapIfExists's skip-if-absent behavior`);
+      } else {
+        assert.strictEqual(step.kind, androidKind, `step ${i} ("${step.instruction}") kind should match the Android file`);
+      }
+    });
+
+    // Authored, not evidence-backed: no Android-specific selector or
+    // expect value is carried over -- every step relies purely on
+    // `instruction` for semantic resolution, exactly like a
+    // freshly-authored, never-yet-executed test case.
+    for (const step of iosSteps) {
+      assert.strictEqual(step.resolvedSelector, undefined, `step "${step.instruction}" must not carry a resolvedSelector before a real run`);
+      assert.strictEqual(step.selector, undefined, `step "${step.instruction}" must not carry a selector before a real run`);
+      assert.strictEqual(step.expect, undefined, `step "${step.instruction}" must not carry an expect before a real run`);
+      assert.ok(typeof step.instruction === "string" && step.instruction.length > 0);
+    }
+
+    // requiredEnv (the login credentials) mirrors the Android file --
+    // same app, same login flow, same env-var contract.
+    assert.deepStrictEqual(requiredEnvVars(iosSteps), requiredEnvVars(androidSteps));
+  });
+
+  await run("runScriptSteps executes test-cases/addons.ios.json's steps end to end against a fake driver with platform: \"ios\" threaded through to every resolver call", async () => {
+    const steps = loadTestCaseSteps(path.join(__dirname, "..", "..", "test-cases", "addons.ios.json"));
+    const originalPhone = process.env.PHOENIX_BATCH_LOGIN_PHONE;
+    const originalPassword = process.env.PHOENIX_BATCH_LOGIN_PASSWORD;
+    process.env.PHOENIX_BATCH_LOGIN_PHONE = "0123456789";
+    process.env.PHOENIX_BATCH_LOGIN_PASSWORD = "secret";
+    let resolved;
+    try {
+      resolved = resolveSteps(steps);
+    } finally {
+      process.env.PHOENIX_BATCH_LOGIN_PHONE = originalPhone;
+      process.env.PHOENIX_BATCH_LOGIN_PASSWORD = originalPassword;
+    }
+
+    const seenPlatforms = [];
+    const fakeExecuteSemanticAction = async (driver, instruction, options) => {
+      seenPlatforms.push(options && options.platform);
+      return {
+        success: true,
+        selector: { strategy: "accessibility-id", value: "whatever" },
+        diffSummary: "Some change.",
+        diff: { appeared: [], disappeared: [] },
+      };
+    };
+
+    const result = await runScriptSteps({}, resolved, {
+      platform: "ios",
+      executeSemanticAction: fakeExecuteSemanticAction,
+      sleepFn: async () => {},
+    });
+
+    assert.strictEqual(result.success, true);
+    // Every resolver call for this file's tap/type/tapIfExists steps
+    // (the scroll step doesn't call the resolver -- see
+    // engine/semantic-act-executor.js's performScroll) was made with
+    // platform: "ios", confirming the existing generic runner wiring
+    // (no iOS-specific branch needed in the runner itself) actually
+    // reaches the resolver for this test case.
+    assert.ok(seenPlatforms.length > 0);
+    assert.ok(seenPlatforms.every((p) => p === "ios"));
+  });
+
   if (process.exitCode) {
     console.error("\nengine/test-case-runner tests FAILED");
     process.exit(1);

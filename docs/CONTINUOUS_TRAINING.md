@@ -181,3 +181,7 @@ written today, not a confirmed/tested one. Retention pruning
 (`pruneOldExecutions()`'s sentinel-file check) is similarly untouched by
 concurrency for the same reason — worth a real concurrent run to
 confirm before leaning on it operationally.
+
+## 5. iOS test-case parity, and what it means for this training loop
+
+`test-cases/addons.ios.json` (see `docs/STATUS.md`'s "iOS parity for `test-cases/addons.json`" entry) is new this session, authored the same semantic-instruction way as every Android test case, with no selectors pre-filled. It has never actually run, so none of the mechanisms in §1/§2 above -- execution logging, dead-selector/expect-failed exclusion, positive replay -- have anything to learn from it yet; all of that starts the first time it's actually executed against real iOS hardware, exactly the same bootstrapping `addons.json` itself went through from its own first blind draft (`4f5be37`) onward. Nothing about those mechanisms needed to change for iOS specifically -- `generation/execution-log.js` and `generation/semantic-act.js`'s exclusion logic are already platform-agnostic (keyed on `instruction` + `kind`, not on any Android-specific selector shape), so the same training loop will apply to iOS executions once there are any to log.

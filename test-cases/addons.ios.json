@@ -1,0 +1,141 @@
+{
+  "name": "addons-ios",
+  "description": "UNVERIFIED FIRST DRAFT, iOS -- behaviorally parallel to the proven test-cases/addons.json (Android), authored from the same plain-language narrative (login -> dismiss post-login dialogs/tutorial -> view Add-ons -> log out) but NEVER run against a real iOS Simulator, device, or BrowserStack iOS session. test-cases/addons.json's resolvedSelector/selector/expect values are Android-specific (UiAutomator2 xpath, Android resource-ids like my.yes.yes4g:id/btnNext, Android's permissioncontroller package) and do not apply on iOS's XCUITest tree, so none of them are carried over or guessed at here -- every step below relies on instruction text for Phoenix's semantic-resolution layer (generation/semantic-act.js) to resolve at runtime against the real iOS element tree, exactly like a freshly-authored, not-yet-executed test case (see test-cases/addons.json's own git history at commit 4f5be37, its first unverified draft, for the same bare instruction-only shape). Run once via PHOENIX_PLATFORM=ios, PHOENIX_BATCH_MODES=test-case, PHOENIX_TEST_CASE_FILE=test-cases/addons.ios.json (plus PHOENIX_IOS_APP_PATH/PHOENIX_IOS_DEVICE_NAME/PHOENIX_IOS_PLATFORM_VERSION for a local Simulator, or PHOENIX_APPIUM_PROVIDER=browserstack with PHOENIX_BROWSERSTACK_APP_URL pointed at a real iOS .ipa build for BrowserStack App Automate -- no iOS app binary or BrowserStack iOS app URL has been available in this environment, so this file has not been run) and report back whatever the log/report actually shows so steps can be corrected from real evidence, the same bug-by-bug discipline that closed addons.json, rather than another guess.",
+  "requiredEnv": [
+    "PHOENIX_BATCH_LOGIN_PHONE",
+    "PHOENIX_BATCH_LOGIN_PASSWORD"
+  ],
+  "steps": [
+    {
+      "kind": "tap",
+      "instruction": "tap the LOGIN button on the home screen to open the login form"
+    },
+    {
+      "kind": "tap",
+      "instruction": "close the More-menu overlay if it's open (More Close icon)",
+      "optional": true,
+      "note": "GUESS, iOS: mirrors addons.json step 1's Android More-menu-overlay recovery. No iOS evidence yet that this screen or control exists on iOS at all -- kept as a no-op-safe tapIfExists rather than dropped, same reasoning addons.json itself used before it had a confirmed selector."
+    },
+    {
+      "kind": "tap",
+      "instruction": "tap the LOGIN button on the home screen to open the login form",
+      "optional": true,
+      "note": "Retry of the LOGIN tap, mirrors addons.json step 2 -- a no-op once the login form is already open."
+    },
+    {
+      "kind": "type",
+      "instruction": "type the phone number into the phone/account number field",
+      "text": "${PHOENIX_BATCH_LOGIN_PHONE}"
+    },
+    {
+      "kind": "tap",
+      "instruction": "tap the PASSWORD tab to switch the form into password-entry mode"
+    },
+    {
+      "kind": "tap",
+      "instruction": "tap the password field to focus it"
+    },
+    {
+      "kind": "type",
+      "instruction": "type the password into the password field",
+      "text": "${PHOENIX_BATCH_LOGIN_PASSWORD}"
+    },
+    {
+      "kind": "tap",
+      "instruction": "tap the LOGIN button to submit the login form"
+    },
+    {
+      "kind": "wait",
+      "instruction": "wait for the login submission to finish and any notification-permission dialog to appear",
+      "durationMs": 3000,
+      "note": "Mirrors addons.json step 8's confirmed Android timing race (a variable-length spinner before the permission dialog renders). Kept as a precaution for iOS too -- unconfirmed whether the same race exists on iOS, but a fixed wait here is cheap and the Android evidence for needing one at this exact point in the flow is real."
+    },
+    {
+      "kind": "tap",
+      "instruction": "tap Allow to dismiss the notification-permission dialog if it's open",
+      "optional": true,
+      "note": "iOS shows its own native 'App Would Like to Send You Notifications' alert with Allow/Don't Allow buttons (a system alert, not an in-app popup) -- different control from Android's permissioncontroller dialog, so addons.json's Android resource-id selector is not reused; left for semantic resolution since no real iOS alert hierarchy has been captured yet."
+    },
+    {
+      "kind": "tap",
+      "instruction": "close the coach mark tutorial popup if it's open (X icon)",
+      "optional": true
+    },
+    {
+      "kind": "tap",
+      "instruction": "advance the tutorial carousel if its NEXT button is showing",
+      "optional": true
+    },
+    {
+      "kind": "tap",
+      "instruction": "advance the tutorial carousel if its NEXT button is showing",
+      "optional": true
+    },
+    {
+      "kind": "tap",
+      "instruction": "advance the tutorial carousel if its NEXT button is showing",
+      "optional": true
+    },
+    {
+      "kind": "tap",
+      "instruction": "advance the tutorial carousel if its NEXT button is showing",
+      "optional": true
+    },
+    {
+      "kind": "tap",
+      "instruction": "advance the tutorial carousel if its NEXT button is showing",
+      "optional": true
+    },
+    {
+      "kind": "tap",
+      "instruction": "advance the tutorial carousel if its NEXT button is showing",
+      "optional": true
+    },
+    {
+      "kind": "tap",
+      "instruction": "advance the tutorial carousel if its NEXT button is showing",
+      "optional": true
+    },
+    {
+      "kind": "tap",
+      "instruction": "close the coach mark tutorial popup if it's open (X icon)",
+      "optional": true
+    },
+    {
+      "kind": "tap",
+      "instruction": "dismiss the 'Turn on Notifications' in-app popup via its CANCEL button if it's open",
+      "optional": true
+    },
+    {
+      "kind": "tap",
+      "instruction": "tap the Add-ons tab or menu item",
+      "optional": false
+    },
+    {
+      "kind": "tap",
+      "instruction": "close the Add-Ons purchase-details popup if it's open (X icon)",
+      "optional": true
+    },
+    {
+      "kind": "tap",
+      "instruction": "tap the Profile or Account menu (bottom-nav tab) to find the logout option",
+      "optional": true
+    },
+    {
+      "kind": "scroll",
+      "instruction": "scroll down on the Profile screen to reveal the Logout option",
+      "direction": "down",
+      "optional": true
+    },
+    {
+      "kind": "tap",
+      "instruction": "tap the LOGOUT icon in the Profile screen's top header (next to the 'Profile' title)",
+      "optional": true
+    },
+    {
+      "kind": "tap",
+      "instruction": "tap YES to confirm the logout confirmation dialog",
+      "optional": true
+    }
+  ]
+}

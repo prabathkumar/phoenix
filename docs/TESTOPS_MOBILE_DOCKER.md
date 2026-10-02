@@ -95,11 +95,17 @@ integration work.
 
 ## 5. Known gaps / things not decided here
 
-- No registry push is set up (deliberately — this sandbox has no
-  credentials or visibility into TestOps's infrastructure). Once they pick
-  one, swapping `scripts/build-testops-mobile.sh`'s export step for a push
-  is a one-line change.
-- No version-pinning/release process beyond "tag by git commit hash" is
-  prescribed, since the user left deployment process unspecified
-  ("[No preference]"). TestOps's own release conventions should take
-  precedence once this moves into their org.
+- **Registry push and version-pinning are now implemented** — see
+  [`docs/RELEASING.md`](RELEASING.md) for the full scheme: a `vX.Y.Z` git
+  tag triggers `.github/workflows/docker-publish.yml`, which builds and
+  pushes to `ghcr.io/<owner>/phoenix` using the `GITHUB_TOKEN` Actions
+  already provides, and the base image is pinned to an exact
+  `node:20.18.1-slim` version rather than the floating `20-slim` tag.
+  **Stated plainly: this is unverified** — no real tag has been pushed
+  from this sandbox (no outbound registry access here), so the push step
+  itself hasn't actually run yet. `scripts/build-testops-mobile.sh`'s
+  no-registry file-handoff path above is unaffected and still works
+  exactly as described for a team that can't reach `ghcr.io/<owner>/phoenix`.
+  If TestOps prefers their own registry (ECR, Harbor, Docker Hub, GCR)
+  instead, swapping it in only touches `docker-publish.yml`'s login/push
+  steps — see `docs/RELEASING.md`'s own notes on that.

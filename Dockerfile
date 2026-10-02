@@ -24,7 +24,28 @@
 # recorder, script generator, and the tester-facing frontend, all built and
 # ready to run against whatever Appium server you point them at.
 
-FROM node:20-slim
+# Pinned to an exact upstream version tag, not the floating "20-slim" tag --
+# "latest"/"20-slim" can silently change under us (a new Debian point
+# release, a new Node 20.x patch) between two builds of the exact same
+# commit, which is the opposite of reproducible. This is the most specific
+# pin available from inside this sandbox: outbound registry access is
+# blocked here (see docs/RELEASING.md), so the exact content digest behind
+# this tag couldn't be resolved and recorded. Once this is built somewhere
+# with real registry access, prefer pinning by digest instead
+# (`node:20.18.1-slim@sha256:<digest>`, from `docker pull node:20.18.1-slim
+# && docker inspect --format '{{index .RepoDigests 0}}' node:20.18.1-slim`)
+# for the strongest guarantee; bump both the tag and digest together on
+# purpose, not by accident.
+FROM node:20.18.1-slim
+
+# Build-time version, threaded through to the OCI label below so a running
+# container can report exactly what it is (`docker inspect` or
+# `LABEL org.opencontainers.image.version`) -- see docs/RELEASING.md for
+# where this value comes from (a `vX.Y.Z` git tag) and how it reaches here
+# (docker-publish.yml's `--build-arg VERSION=...`). Defaults to "dev" for a
+# plain local `docker build` with no --build-arg, so that path still works
+# exactly as before.
+ARG VERSION=dev
 
 # Distribution label only -- this does not rename any package, module, or
 # code identifier inside the repo (nothing in engine/, generation/,
@@ -32,10 +53,13 @@ FROM node:20-slim
 # this image is handed to the TestOps dev team under; the code underneath
 # is still Phoenix. See docs/TESTOPS_MOBILE_DOCKER.md for the full handoff
 # workflow (build, save/load without a registry, and the separate
-# GitHub-pull path for the source code itself).
+# GitHub-pull path for the source code itself), and docs/RELEASING.md for
+# the version-tag/registry-push process.
 LABEL org.opencontainers.image.title="TestOps Mobile" \
       org.opencontainers.image.description="Phoenix semantic mobile-automation pipeline, packaged for TestOps integration" \
-      org.opencontainers.image.vendor="YTL / Robotico"
+      org.opencontainers.image.vendor="YTL / Robotico" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.source="https://github.com/prabathkumar/phoenix"
 
 WORKDIR /app
 

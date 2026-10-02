@@ -1,0 +1,79 @@
+name: Build and publish Docker image
+
+# Builds the "TestOps Mobile" image (see Dockerfile / docs/TESTOPS_MOBILE_DOCKER.md)
+# and pushes it to GitHub Container Registry (ghcr.io) whenever a version
+# tag is pushed. Uses GITHUB_TOKEN, which Actions already provides -- no
+# registry credentials had to be fabricated or stored as a repo secret.
+#
+# IMPORTANT, stated plainly (see docs/RELEASING.md for the full writeup):
+# this workflow is implemented but UNVERIFIED -- no real `vX.Y.Z` tag has
+# been pushed from this sandbox (outbound registry/network access here is
+# blocked, so even testing the push step isn't possible from here), so
+# nothing in this file has actually executed successfully yet. Treat the
+# first real tag push as the first real test of this workflow, and check
+# its Actions run before relying on the resulting image.
+#
+# Tagging scheme pushed to ghcr.io/<owner>/phoenix:
+#   vX.Y.Z (git tag)  -> X.Y.Z, X.Y, X, latest, and the full vX.Y.Z ref
+#   any other push    -> this workflow does not run (see `on:` below)
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to tag the image with (e.g. 1.0.0), for a manual run with no git tag"
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            # Strip the leading "v" from the pushed tag (v1.2.3 -> 1.2.3).
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Derive image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/phoenix
+          tags: |
+            type=semver,pattern={{version}},value=v${{ steps.version.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=v${{ steps.version.outputs.version }}
+            type=semver,pattern={{major}},value=v${{ steps.version.outputs.version }}
+            type=raw,value=latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

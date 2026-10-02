@@ -20,6 +20,7 @@ Testers record a flow once, inside TestOps — no Appium Inspector, no local ins
 | [`docs/TESTOPS_WORKFLOW_UX.md`](docs/TESTOPS_WORKFLOW_UX.md) | TestOps dev team — UI/UX | The screen-by-screen flow (library → cycle → app → run) to build TestOps's own UI against `test-case` mode |
 | [`docs/TESTOPS_INTEGRATION_GUIDE.md`](docs/TESTOPS_INTEGRATION_GUIDE.md) | TestOps dev team — backend integration | The data model/fields their UI needs, frothAI (Ollama) wiring, server installation |
 | [`docs/TESTOPS_MOBILE_DOCKER.md`](docs/TESTOPS_MOBILE_DOCKER.md) | TestOps dev team — getting the code running | Building/exporting the "TestOps Mobile" Docker image and pulling the source into their own GitHub org |
+| [`docs/RELEASING.md`](docs/RELEASING.md) | Cutting a release | The `vX.Y.Z` version-tag scheme and the automated `ghcr.io` build+push workflow — implemented, unverified until the first real tag push |
 | [`docs/COMPETITIVE_LANDSCAPE.md`](docs/COMPETITIVE_LANDSCAPE.md) | Evaluating Phoenix against alternatives | Full comparison vs. Appium-MCP and other AI-agent test tooling |
 
 | ![Live recording](docs/screenshots/frontend-live-recording.png) | ![Upload screen](docs/screenshots/frontend-upload-screen.png) |

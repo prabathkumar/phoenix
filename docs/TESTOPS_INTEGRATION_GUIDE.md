@@ -126,16 +126,17 @@ badge should carry until that verification layer exists.
 
 ## 1. Wiring Phoenix's AI layer to frothAI
 
-Confirmed: frothAI runs on Ollama, serving a Gemma model. **This needs
-zero code changes** — every AI call in Phoenix (the semantic resolver
-used by every tap/type/tapIfExists-adjacent step, the live self-heal
-retry, and the optional script-naming/assertion-refinement pass) goes
-through one function, `generation/llm.js`'s `callOllamaJson`, configured
-entirely by two environment variables:
+Confirmed: frothAI runs on Ollama, serving a Qwen 2.5 model (the "2.5
+7B" in frothAI's naming is the Qwen size/version, not a Gemma one).
+**This needs zero code changes** — every AI call in Phoenix (the
+semantic resolver used by every tap/type/tapIfExists-adjacent step, the
+live self-heal retry, and the optional script-naming/assertion-refinement
+pass) goes through one function, `generation/llm.js`'s `callOllamaJson`,
+configured entirely by two environment variables:
 
 ```bash
 PHOENIX_OLLAMA_HOST=https://<frothAI's Ollama endpoint>
-PHOENIX_OLLAMA_MODEL=<frothAI's exact model tag>   # confirm the precise tag with whoever runs frothAI -- "gemma 2.5 7B" as a name doesn't map to one official Ollama tag (gemma, gemma2, gemma3 families each have several sizes); get the literal tag string frothAI serves (e.g. output of `ollama list` on that host) rather than guessing
+PHOENIX_OLLAMA_MODEL=qwen2.5:7b   # or qwen2.5-coder:7b -- confirm which of the two frothAI serves via `ollama list` on that host; both are the Qwen family FrothTestOps runs
 PHOENIX_LLM_TIMEOUT_MS=8000   # raise if frothAI's network hop is slower than a local instance -- this is a hard per-call timeout, not a suggestion
 ```
 

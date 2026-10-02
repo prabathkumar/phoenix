@@ -116,7 +116,13 @@
       "kind": "tap",
       "instruction": "tap the Add-ons tab or menu item",
       "optional": false,
-      "note": "CONFIRMED working on addons-run-android-2.log -- the guessed instruction resolved and clicked correctly; the run got past this step to the next (new) failure."
+      "note": "CONFIRMED working on addons-run-android-2.log -- the guessed instruction resolved and clicked correctly; the run got past this step to the next (new) failure. CONFIRMED real bug on addons-run-android-12.log/13.log (16th bug, user-reported with a screenshot): this app has no literal 'Add-ons tab' -- the resolver matches the dashboard's 'Buy Add-On' card (resource-id my.yes.yes4g:id/buyAddonLayout), a defensible call given the instruction's wording, which opens an Add-Ons purchase-details POPUP (Hotspot plan tiers, BUY NOW, Add-On Details/Validity) layered OVER the dashboard, not a navigable Add-ons screen. On addons-run-android-13.log this popup fully covered the bottom nav (unlike run 12, where it happened to leave Profile reachable underneath) -- the next tapIfExists Profile-tab step correctly found nothing and skipped (no mis-fire, working as designed), but with nothing left to close the popup, the required LOGOUT step's resolver then had no real button to find and confidently mis-clicked 'VIEW ALL' (my.yes.yes4g:id/tvViewAll) instead of failing -- a required step reporting false success on a wrong click, a new instance of the same resolver-overconfidence class, this time on a non-optional step. The run reported Succeeded: 1 despite never reaching Profile or Logout at all -- caught only because the user checked the actual screen, not from the report. Added a tapIfExists dismiss step directly below (confirmed selector my.yes.yes4g:id/ivClose, same resource-id as the coach-mark close button, reused by this app for its popup X icons generally) to close this popup before Profile is ever attempted."
+    },
+    {
+      "kind": "tapIfExists",
+      "instruction": "close the Add-Ons purchase-details popup if it's open (X icon)",
+      "selector": { "strategy": "resource-id", "value": "my.yes.yes4g:id/ivClose" },
+      "note": "See the Add-ons-tap step's note above for the full real-bug evidence (addons-run-android-13.log). Without this step, the popup opened by tapping the dashboard's 'Buy Add-On' card blocks the Profile tab and leaves the required Logout step to confidently mis-click something else instead of failing cleanly."
     },
     {
       "kind": "tapIfExists",

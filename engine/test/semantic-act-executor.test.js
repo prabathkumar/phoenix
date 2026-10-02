@@ -824,6 +824,82 @@ function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl,
     }
   });
 
+  await run("executeSemanticAction's outcome-settle retry polls past a still-loading screen until the declared `expect` holds", async () => {
+    let diffCalls = 0;
+    const { executor, restore } = freshExecutorWithFakes({
+      resolveSemanticActionImpl: async () => ({ resolved: true, element: { ref: 1, role: "Button", label: "Add-ons" }, selector: { strategy: "text", value: "Add-ons" } }),
+      diffSnapshotsImpl: () => {
+        diffCalls += 1;
+        // First two reads: still a bare loading spinner -- the real
+        // BrowserStack shape that prompted this (see
+        // DEFAULT_OUTCOME_SETTLE_TIMEOUT_MS's comment). Third read: the
+        // declared outcome has finally rendered.
+        if (diffCalls < 3) return { appeared: [{ label: "ProgressBar" }], disappeared: [], changed: true };
+        return { appeared: [{ label: "Add-On" }], disappeared: [], changed: true };
+      },
+    });
+    try {
+      const { driver } = makeFakeDriver({
+        pageSources: ["<hierarchy>before</hierarchy>", "<hierarchy>loading</hierarchy>", "<hierarchy>loading</hierarchy>", "<hierarchy>loaded</hierarchy>"],
+      });
+      const sleepCalls = [];
+      const result = await executor.executeSemanticAction(driver, "tap the Add-ons tab", {
+        expect: { appeared: ["Add-On"] },
+        sleep: async (ms) => sleepCalls.push(ms),
+      });
+
+      assert.strictEqual(result.success, true);
+      assert.deepStrictEqual(result.diff.appeared, [{ label: "Add-On" }], "must hand back the SETTLED diff, not the first, still-loading one");
+      assert.strictEqual(diffCalls, 3, "must keep polling/re-diffing until the declared outcome actually holds");
+      assert.ok(sleepCalls.length >= 1, "must actually wait between polls rather than busy-looping");
+    } finally {
+      restore();
+    }
+  });
+
+  await run("executeSemanticAction's outcome-settle retry gives up and reports the real (still-failing) diff once the timeout elapses", async () => {
+    const { executor, restore } = freshExecutorWithFakes({
+      resolveSemanticActionImpl: async () => ({ resolved: true, element: { ref: 1, role: "Button", label: "Add-ons" }, selector: { strategy: "text", value: "Add-ons" } }),
+      // Never matches "Add-On" -- a genuinely wrong click, not a loading race.
+      diffSnapshotsImpl: () => ({ appeared: [{ label: "ProgressBar" }], disappeared: [], changed: true }),
+    });
+    try {
+      const { driver } = makeFakeDriver({
+        pageSources: ["<hierarchy>before</hierarchy>", "<hierarchy>loading</hierarchy>", "<hierarchy>loading</hierarchy>", "<hierarchy>loading</hierarchy>"],
+      });
+      const result = await executor.executeSemanticAction(driver, "tap the Add-ons tab", {
+        expect: { appeared: ["Add-On"] },
+        sleep: async () => {},
+        // 0 means "the deadline has already passed" -- no polling at
+        // all, so this stays fast and deterministic regardless of real
+        // wall-clock timing.
+        outcomeSettleTimeoutMs: 0,
+      });
+
+      assert.strictEqual(result.success, true);
+      assert.deepStrictEqual(result.diff.appeared, [{ label: "ProgressBar" }], "must report the real, still-wrong diff rather than fabricate a pass");
+    } finally {
+      restore();
+    }
+  });
+
+  await run("executeSemanticAction's outcome-settle retry never engages when the step declares no `expect`", async () => {
+    const { executor, restore } = freshExecutorWithFakes({
+      resolveSemanticActionImpl: async () => ({ resolved: true, element: { ref: 1, role: "Button", label: "Add-ons" }, selector: { strategy: "text", value: "Add-ons" } }),
+      diffSnapshotsImpl: () => ({ appeared: [{ label: "ProgressBar" }], disappeared: [], changed: true }),
+    });
+    try {
+      const { driver } = makeFakeDriver({ pageSources: ["<hierarchy>before</hierarchy>", "<hierarchy>after</hierarchy>"] });
+      const sleepCalls = [];
+      const result = await executor.executeSemanticAction(driver, "tap the Add-ons tab", { sleep: async (ms) => sleepCalls.push(ms) });
+
+      assert.strictEqual(result.success, true);
+      assert.deepStrictEqual(sleepCalls, [], "no expect declared -- must behave exactly as before, no extra wait at all");
+    } finally {
+      restore();
+    }
+  });
+
   if (process.exitCode) {
     console.error("\nengine/semantic-act-executor tests FAILED");
     process.exit(1);

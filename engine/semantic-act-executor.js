@@ -32,6 +32,7 @@ const { diffSnapshots, diffToText } = require("../generation/semantic-diff");
 const { inferSemanticAssertions } = require("../generation/semantic-assertions");
 const { buildSelector } = require("../generation/pipeline");
 const { logExecution, buildExecutionRecord } = require("../generation/execution-log");
+const { verifyExpectedOutcome } = require("../generation/outcome-verification");
 
 const SUPPORTED_KINDS = new Set(["tap", "type", "scroll", "tapIfExists"]);
 
@@ -50,6 +51,31 @@ const SUPPORTED_KINDS = new Set(["tap", "type", "scroll", "tapIfExists"]);
 // the loop's version: typing a character doesn't trigger a full-screen
 // transition the way navigating to a new screen does.
 const DEFAULT_ACT_SETTLE_DELAY_MS = 800;
+
+// The fixed DEFAULT_ACT_SETTLE_DELAY_MS above closed the *animation*
+// version of this race (a tap-triggered transition still rendering).
+// Confirmed live, after that fix shipped, that it does NOT close the
+// *network* version: a real BrowserStack run of the SAME Add-ons-tap
+// step tapped the correct, cached selector (my.yes.yes4g:id/
+// buyAddonLayout), got a real success from WebDriver, waited the full
+// 800ms settle delay, and the post-tap screen was still just a bare
+// ProgressBar -- the Add-On content hadn't come back from the network
+// yet. 800ms is tuned for a UI transition, not a data fetch, and
+// guessing a single bigger fixed number has the same problem
+// DEFAULT_ACT_SETTLE_DELAY_MS's own comment already rejected: it either
+// wastes time on every fast step or still isn't enough for a slow one.
+// Scoped specifically to steps that declare an `expect` (generation/
+// outcome-verification.js) -- a step with no declared expectation gets
+// no extra wait, exactly as before. When `expect` doesn't hold right
+// after the settle delay, keep polling getPageSource()/re-diffing (the
+// same generic signal already used everywhere else in this file) until
+// it does or this timeout elapses, instead of failing a step that was
+// actually still loading. If it never holds, the ORIGINAL diff -- not a
+// fabricated "it passed" -- is what test-case-runner.js's own
+// verifyExpectedOutcome() call ultimately judges, so a genuinely wrong
+// click still fails exactly as it does today.
+const DEFAULT_OUTCOME_SETTLE_TIMEOUT_MS = 8000;
+const DEFAULT_OUTCOME_SETTLE_POLL_MS = 1000;
 
 /**
  * @typedef {Object} SemanticActionExecutionResult
@@ -199,7 +225,7 @@ async function executeSemanticActionInner(driver, instruction, options = {}) {
         return { success: false, reason: vetoReason };
       }
     }
-    const outcome = await actAndDiff(driver, exactSelectorString, "tap", undefined, pageSourceBefore, { settleMs: options.actSettleMs, sleep: options.sleep });
+    const outcome = await actAndDiff(driver, exactSelectorString, "tap", undefined, pageSourceBefore, { settleMs: options.actSettleMs, sleep: options.sleep, expect: options.expect, outcomeSettleTimeoutMs: options.outcomeSettleTimeoutMs, outcomeSettlePollMs: options.outcomeSettlePollMs });
     if (!outcome.success) {
       return outcome;
     }
@@ -221,7 +247,7 @@ async function executeSemanticActionInner(driver, instruction, options = {}) {
           return { success: false, reason: vetoReason };
         }
       }
-      const cachedOutcome = await actAndDiff(driver, cachedSelectorString, kind, options.text, pageSourceBefore, { settleMs: options.actSettleMs, sleep: options.sleep });
+      const cachedOutcome = await actAndDiff(driver, cachedSelectorString, kind, options.text, pageSourceBefore, { settleMs: options.actSettleMs, sleep: options.sleep, expect: options.expect, outcomeSettleTimeoutMs: options.outcomeSettleTimeoutMs, outcomeSettlePollMs: options.outcomeSettlePollMs });
       if (cachedOutcome.success) {
         return { ...cachedOutcome, selector: options.cachedSelector, usedCache: true };
       }
@@ -273,7 +299,7 @@ async function executeSemanticActionInner(driver, instruction, options = {}) {
     }
   }
 
-  const outcome = await actAndDiff(driver, selectorString, kind, options.text, pageSourceBefore, { settleMs: options.actSettleMs, sleep: options.sleep });
+  const outcome = await actAndDiff(driver, selectorString, kind, options.text, pageSourceBefore, { settleMs: options.actSettleMs, sleep: options.sleep, expect: options.expect, outcomeSettleTimeoutMs: options.outcomeSettleTimeoutMs, outcomeSettlePollMs: options.outcomeSettlePollMs });
   if (!outcome.success) {
     return outcome;
   }
@@ -313,7 +339,7 @@ async function executeSemanticActionInner(driver, instruction, options = {}) {
           retryVetoReason = options.beforeAct({ selector: retryResolution.selector, selectorString: retrySelectorString, kind, text: options.text });
         }
         if (!retryVetoReason) {
-          const retryOutcome = await actAndDiff(driver, retrySelectorString, kind, options.text, pageSourceBefore, { settleMs: options.actSettleMs, sleep: options.sleep });
+          const retryOutcome = await actAndDiff(driver, retrySelectorString, kind, options.text, pageSourceBefore, { settleMs: options.actSettleMs, sleep: options.sleep, expect: options.expect, outcomeSettleTimeoutMs: options.outcomeSettleTimeoutMs, outcomeSettlePollMs: options.outcomeSettlePollMs });
           if (retryOutcome.success && retryOutcome.diffSummary !== "No visible change.") {
             return {
               ...retryOutcome,
@@ -371,6 +397,19 @@ async function executeSemanticActionInner(driver, instruction, options = {}) {
  * @param {(ms: number) => Promise<void>} [settleOptions.sleep] - real
  *   timer by default; tests inject a no-op/instant fake so the suite
  *   doesn't actually wait.
+ * @param {Object} [settleOptions.expect] - the step's declared outcome
+ *   (generation/outcome-verification.js's `{appeared?, disappeared?}`
+ *   shape), when the caller has one. "tap" only, same as the settle
+ *   delay above: when given and it doesn't hold right after the settle
+ *   delay, keeps polling/re-diffing (see DEFAULT_OUTCOME_SETTLE_TIMEOUT_MS's
+ *   comment) instead of returning the first, possibly-still-loading diff.
+ * @param {number} [settleOptions.outcomeSettleTimeoutMs] - total extra
+ *   time budget for that polling. Defaults to
+ *   DEFAULT_OUTCOME_SETTLE_TIMEOUT_MS (env override:
+ *   PHOENIX_OUTCOME_SETTLE_TIMEOUT_MS). 0 disables it outright.
+ * @param {number} [settleOptions.outcomeSettlePollMs] - interval between
+ *   polls. Defaults to DEFAULT_OUTCOME_SETTLE_POLL_MS (env override:
+ *   PHOENIX_OUTCOME_SETTLE_POLL_MS).
  * @returns {Promise<{success: boolean, reason?: string, diff?: object, diffSummary?: string, assertions?: Array}>}
  */
 async function actAndDiff(driver, selectorString, kind, text, pageSourceBefore, settleOptions = {}) {
@@ -416,7 +455,35 @@ async function actAndDiff(driver, selectorString, kind, text, pageSourceBefore, 
     return { success: true };
   }
 
-  const diff = diffSnapshots(pageSourceBefore, pageSourceAfter);
+  let diff = diffSnapshots(pageSourceBefore, pageSourceAfter);
+
+  // Outcome-settle retry -- see DEFAULT_OUTCOME_SETTLE_TIMEOUT_MS's
+  // comment. Only engages when the caller declared an `expect` AND it
+  // doesn't already hold; a step with no declared outcome, or one that
+  // already matches, never pays this extra wait.
+  if (kind === "tap" && settleOptions.expect && !verifyExpectedOutcome(diff, settleOptions.expect).ok) {
+    const envTimeoutMs = Number(process.env.PHOENIX_OUTCOME_SETTLE_TIMEOUT_MS);
+    const envPollMs = Number(process.env.PHOENIX_OUTCOME_SETTLE_POLL_MS);
+    const timeoutMs = settleOptions.outcomeSettleTimeoutMs ?? (Number.isFinite(envTimeoutMs) ? envTimeoutMs : DEFAULT_OUTCOME_SETTLE_TIMEOUT_MS);
+    const pollMs = settleOptions.outcomeSettlePollMs ?? (Number.isFinite(envPollMs) ? envPollMs : DEFAULT_OUTCOME_SETTLE_POLL_MS);
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      await sleep(pollMs);
+      let polledPageSource;
+      try {
+        polledPageSource = await driver.getPageSource();
+      } catch (_err) {
+        continue; // mid-transition read failures are expected -- keep polling.
+      }
+      const polledDiff = diffSnapshots(pageSourceBefore, polledPageSource);
+      if (verifyExpectedOutcome(polledDiff, settleOptions.expect).ok) {
+        diff = polledDiff;
+        break;
+      }
+      diff = polledDiff; // keep the most recent read even if it never passes, so a genuine failure still reports real evidence.
+    }
+  }
+
   return {
     success: true,
     diff,

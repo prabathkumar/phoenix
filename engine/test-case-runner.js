@@ -278,6 +278,15 @@ async function runScriptSteps(driver, steps, { platform, executeSemanticAction, 
       // comment on why these two are deliberately different fields.
       cachedSelector: step.kind === "tapIfExists" ? undefined : step.resolvedSelector,
       exactSelector: step.kind === "tapIfExists" ? step.selector : undefined,
+      // Lets executeSemanticAction's outcome-settle retry (engine/
+      // semantic-act-executor.js) keep polling past a still-loading
+      // screen instead of diffing once, immediately, and handing back a
+      // diff that doesn't match `expect` yet purely because the content
+      // hadn't finished loading -- see that module's
+      // DEFAULT_OUTCOME_SETTLE_TIMEOUT_MS comment. verifyExpectedOutcome
+      // below still makes the actual pass/fail call on whatever diff
+      // comes back, unchanged.
+      expect: step.expect,
     });
     if (!result.success) {
       if (step.optional) continue;

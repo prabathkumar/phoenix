@@ -35,6 +35,22 @@ const { logExecution, buildExecutionRecord } = require("../generation/execution-
 
 const SUPPORTED_KINDS = new Set(["tap", "type", "scroll", "tapIfExists"]);
 
+// Found for real on a live BrowserStack run (addons-run-android: the
+// Add-ons-tap step, test-cases/addons.json): `actAndDiff()` clicked a
+// real element and read the page source back with zero delay between
+// the two calls. The screen was still showing a loading spinner at
+// that instant -- the popup the step's own `expect: {appeared:
+// ["Add-On"]}` declares hadn't rendered yet -- so outcome verification
+// correctly reported a failure, but for the wrong underlying reason: a
+// timing race, not a wrong click. Same root cause already fixed once
+// for the autonomous loop (see engine/semantic-loop.js's
+// DEFAULT_TAP_SETTLE_DELAY_MS and its comment) but never applied here,
+// where every test-case tap/type's diff (and now, every `expect`
+// check) is actually computed. Scoped to "tap" only, same reasoning as
+// the loop's version: typing a character doesn't trigger a full-screen
+// transition the way navigating to a new screen does.
+const DEFAULT_ACT_SETTLE_DELAY_MS = 800;
+
 /**
  * @typedef {Object} SemanticActionExecutionResult
  * @property {boolean} success
@@ -183,7 +199,7 @@ async function executeSemanticActionInner(driver, instruction, options = {}) {
         return { success: false, reason: vetoReason };
       }
     }
-    const outcome = await actAndDiff(driver, exactSelectorString, "tap", undefined, pageSourceBefore);
+    const outcome = await actAndDiff(driver, exactSelectorString, "tap", undefined, pageSourceBefore, { settleMs: options.actSettleMs, sleep: options.sleep });
     if (!outcome.success) {
       return outcome;
     }
@@ -205,7 +221,7 @@ async function executeSemanticActionInner(driver, instruction, options = {}) {
           return { success: false, reason: vetoReason };
         }
       }
-      const cachedOutcome = await actAndDiff(driver, cachedSelectorString, kind, options.text, pageSourceBefore);
+      const cachedOutcome = await actAndDiff(driver, cachedSelectorString, kind, options.text, pageSourceBefore, { settleMs: options.actSettleMs, sleep: options.sleep });
       if (cachedOutcome.success) {
         return { ...cachedOutcome, selector: options.cachedSelector, usedCache: true };
       }
@@ -257,7 +273,7 @@ async function executeSemanticActionInner(driver, instruction, options = {}) {
     }
   }
 
-  const outcome = await actAndDiff(driver, selectorString, kind, options.text, pageSourceBefore);
+  const outcome = await actAndDiff(driver, selectorString, kind, options.text, pageSourceBefore, { settleMs: options.actSettleMs, sleep: options.sleep });
   if (!outcome.success) {
     return outcome;
   }
@@ -297,7 +313,7 @@ async function executeSemanticActionInner(driver, instruction, options = {}) {
           retryVetoReason = options.beforeAct({ selector: retryResolution.selector, selectorString: retrySelectorString, kind, text: options.text });
         }
         if (!retryVetoReason) {
-          const retryOutcome = await actAndDiff(driver, retrySelectorString, kind, options.text, pageSourceBefore);
+          const retryOutcome = await actAndDiff(driver, retrySelectorString, kind, options.text, pageSourceBefore, { settleMs: options.actSettleMs, sleep: options.sleep });
           if (retryOutcome.success && retryOutcome.diffSummary !== "No visible change.") {
             return {
               ...retryOutcome,
@@ -336,9 +352,20 @@ async function executeSemanticActionInner(driver, instruction, options = {}) {
  * @param {"tap"|"type"} kind
  * @param {string} [text] - required when kind is "type".
  * @param {string} pageSourceBefore
+ * @param {Object} [settleOptions]
+ * @param {number} [settleOptions.settleMs] - delay before reading the
+ *   post-action page source, "tap" only. Defaults to
+ *   DEFAULT_ACT_SETTLE_DELAY_MS (env override: PHOENIX_ACT_SETTLE_MS).
+ *   0 disables it outright.
+ * @param {(ms: number) => Promise<void>} [settleOptions.sleep] - real
+ *   timer by default; tests inject a no-op/instant fake so the suite
+ *   doesn't actually wait.
  * @returns {Promise<{success: boolean, reason?: string, diff?: object, diffSummary?: string, assertions?: Array}>}
  */
-async function actAndDiff(driver, selectorString, kind, text, pageSourceBefore) {
+async function actAndDiff(driver, selectorString, kind, text, pageSourceBefore, settleOptions = {}) {
+  const sleep = settleOptions.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const envSettleMs = Number(process.env.PHOENIX_ACT_SETTLE_MS);
+  const settleMs = settleOptions.settleMs ?? (Number.isFinite(envSettleMs) ? envSettleMs : DEFAULT_ACT_SETTLE_DELAY_MS);
   try {
     const element = await driver.$(selectorString);
     // Confirm the element is actually there before acting on it -- the
@@ -358,6 +385,13 @@ async function actAndDiff(driver, selectorString, kind, text, pageSourceBefore) 
     }
   } catch (err) {
     return { success: false, reason: `action failed: ${err.message}` };
+  }
+
+  // Only "tap" gets the settle delay -- see DEFAULT_ACT_SETTLE_DELAY_MS's
+  // comment for why (a tap can trigger a full-screen transition/popup
+  // that takes a moment to render; a keystroke doesn't).
+  if (kind === "tap" && settleMs > 0) {
+    await sleep(settleMs);
   }
 
   let pageSourceAfter;

@@ -13,6 +13,16 @@
  * Run with: npm test (from engine/) or `node test/semantic-act-executor.test.js`
  */
 
+// actAndDiff's real-timer settle delay (DEFAULT_ACT_SETTLE_DELAY_MS,
+// added after a real timing-race bug on a live BrowserStack run -- see
+// its comment in ../semantic-act-executor.js) defaults to a real
+// setTimeout, which would otherwise add ~800ms to every "tap" test in
+// this file for no reason: the fake driver below has no real screen
+// transition to wait for. Disabled here the same way the real engine
+// can disable it (PHOENIX_ACT_SETTLE_MS=0), not by special-casing
+// tests in the production code path.
+process.env.PHOENIX_ACT_SETTLE_MS = "0";
+
 const assert = require("assert");
 
 const EXECUTOR_PATH = require.resolve("../semantic-act-executor");
@@ -748,6 +758,58 @@ function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl,
       // The original tap clicked; the vetoed retry never did.
       assert.strictEqual(calls.click, 1);
     } finally {
+      restore();
+    }
+  });
+
+  await run("executeSemanticAction pauses (actSettleMs) before reading the post-tap page source, but not after a type (real bug: Add-ons-tap's outcome-verification read the screen while a popup was still loading)", async () => {
+    const { executor, restore } = freshExecutorWithFakes({
+      resolveSemanticActionImpl: async () => ({ resolved: true, element: { ref: 1, role: "Button", label: "Buy Add-On" }, selector: { strategy: "text", value: "Buy Add-On" } }),
+      diffSnapshotsImpl: () => ({ appeared: [{ label: "Add-On" }], disappeared: [], changed: true }),
+    });
+    try {
+      const { driver } = makeFakeDriver({ pageSources: ["<hierarchy>before</hierarchy>", "<hierarchy>after</hierarchy>"] });
+      const sleepCalls = [];
+      const fakeSleep = async (ms) => {
+        sleepCalls.push(ms);
+      };
+
+      await executor.executeSemanticAction(driver, "tap the Add-ons card", { actSettleMs: 500, sleep: fakeSleep });
+      assert.deepStrictEqual(sleepCalls, [500], "a tap should pause once, for the configured duration, before diffing");
+
+      sleepCalls.length = 0;
+      await executor.executeSemanticAction(driver, "type the phone number", { kind: "type", text: "0123456789", actSettleMs: 500, sleep: fakeSleep });
+      assert.deepStrictEqual(sleepCalls, [], "a type should never pause -- it doesn't trigger a full-screen transition the way a tap can");
+    } finally {
+      restore();
+    }
+  });
+
+  await run("executeSemanticAction's settle delay defaults to PHOENIX_ACT_SETTLE_MS when actSettleMs isn't passed, and skips the pause entirely when it resolves to 0", async () => {
+    const { executor, restore } = freshExecutorWithFakes({
+      resolveSemanticActionImpl: async () => ({ resolved: true, element: { ref: 1, role: "Button", label: "X" }, selector: { strategy: "text", value: "X" } }),
+      // changed: true -- NOT the "No visible change." self-heal case
+      // (semantic-act-executor.test.js's default diffToText fake maps
+      // changed: false to "No visible change.", which would trigger a
+      // second actAndDiff/sleep call and make this test about self-heal
+      // instead of about the settle-delay default/override it's testing).
+      diffSnapshotsImpl: () => ({ appeared: [{ label: "X" }], disappeared: [], changed: true }),
+    });
+    const previousEnv = process.env.PHOENIX_ACT_SETTLE_MS;
+    try {
+      const { driver } = makeFakeDriver({ pageSources: ["<hierarchy>before</hierarchy>", "<hierarchy>after</hierarchy>"] });
+      const sleepCalls = [];
+      process.env.PHOENIX_ACT_SETTLE_MS = "250";
+      await executor.executeSemanticAction(driver, "tap X", { sleep: async (ms) => sleepCalls.push(ms) });
+      assert.deepStrictEqual(sleepCalls, [250], "with no explicit actSettleMs, the env var should be used");
+
+      sleepCalls.length = 0;
+      process.env.PHOENIX_ACT_SETTLE_MS = "0";
+      await executor.executeSemanticAction(driver, "tap X", { sleep: async (ms) => sleepCalls.push(ms) });
+      assert.deepStrictEqual(sleepCalls, [], "PHOENIX_ACT_SETTLE_MS=0 should disable the pause entirely, no sleep call at all");
+    } finally {
+      if (previousEnv === undefined) delete process.env.PHOENIX_ACT_SETTLE_MS;
+      else process.env.PHOENIX_ACT_SETTLE_MS = previousEnv;
       restore();
     }
   });

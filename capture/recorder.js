@@ -25,6 +25,22 @@ const INVISIBLE_CHARS_RE = /[​‌‍﻿]/g;
  * @typedef {Object} CapturedStep
  * @property {number} timestamp
  * @property {{ x: number, y: number }} tapCoordinate
+ * @property {{ xRatio: number, yRatio: number }} [tapRatio] - the SAME tap,
+ *   expressed as a 0..1 fraction of the recording device's screen width/
+ *   height rather than its absolute pixels. Only present when the caller
+ *   (live-view/server.js, which already computes this ratio from the
+ *   tester's click on the rendered mirror image before scaling it up to
+ *   device pixels) supplies it. This is what lets a coordinate-fallback
+ *   locator (see resolveElementAtCoordinate's own doc comment on the
+ *   Canvas/OpenGL case) replay correctly on a DIFFERENT device/resolution
+ *   than the one it was recorded on — generation/pipeline.js's
+ *   synthesizeCode() re-scales this ratio against the replay device's own
+ *   `getWindowSize()` instead of baking in the record-time absolute x/y,
+ *   which only ever happened to be correct on the exact device recorded
+ *   against. Absent entirely for any locator strategy that already
+ *   resolved a real selector (resource-id/accessibility-id/text/xpath) --
+ *   those don't need it, since a selector is resolution-independent by
+ *   construction.
  * @property {ResolvedElement} resolvedElement - chosen per the locator
  *   priority in the spec: resource-id/accessibility-id first, then
  *   text/content-desc, then structural xpath, coordinates as last resort.
@@ -46,11 +62,16 @@ class SessionRecorder {
    * Call this immediately before forwarding a tester's tap to the device.
    * Captures pre-state; caller is responsible for capturing post-state
    * once the tap has been injected and the UI has settled.
+   *
+   * @param {{x: number, y: number}} tapCoordinate - absolute device pixels.
+   * @param {{xRatio: number, yRatio: number}} [tapRatio] - the same tap as
+   *   a 0..1 fraction of screen width/height, when the caller has it (see
+   *   CapturedStep's own doc comment on `tapRatio` for why this matters).
    */
-  async beginStep(tapCoordinate) {
+  async beginStep(tapCoordinate, tapRatio) {
     const screenshotBeforeBase64 = await this.driver.takeScreenshot();
     const pageSourceBefore = await this.driver.getPageSource();
-    return { tapCoordinate, screenshotBeforeBase64, pageSourceBefore, timestamp: Date.now() };
+    return { tapCoordinate, tapRatio, screenshotBeforeBase64, pageSourceBefore, timestamp: Date.now() };
   }
 
   /**
@@ -165,7 +186,19 @@ function buildXPath(element) {
  *   2. accessibility-id      — content-desc, the WebDriver "accessibility id" strategy
  *   3. text / content-desc   — human-readable, can change with copy edits
  *   4. structural xpath      — brittle but always available
- *   5. raw coordinate        — last resort, breaks on any layout change
+ *   5. raw coordinate        — last resort, no accessibility info at all
+ *      found at the tap point (e.g. a custom-drawn Canvas/OpenGL view).
+ *      Still ties the replay to a literal x/y here, but the CALLER
+ *      (live-view/server.js, which already knows the tap's position as a
+ *      0..1 ratio of the rendered screen before scaling it to this
+ *      device's pixels) attaches that ratio to the step too, as
+ *      `tapRatio` — see CapturedStep's doc comment. generation/
+ *      pipeline.js's synthesizeCode() then re-scales the RATIO against
+ *      the replay device's own `getWindowSize()` instead of baking in
+ *      this recording device's absolute pixels, so the single most
+ *      common real failure mode for this tier (replaying on a different
+ *      device/resolution than it was recorded on, e.g. a different
+ *      BrowserStack device) no longer breaks it.
  *
  * Among all elements whose bounds contain the tap point (there will
  * usually be several nested ones — a ListView, then a row, then a
@@ -173,10 +206,13 @@ function buildXPath(element) {
  * specific element actually under the tester's finger, not a large
  * ancestor container that happens to contain it too.
  *
- * TODO(stage 1 follow-up): screenshot-based fallback for elements with
- * no usable accessibility attributes (custom-drawn views, e.g. raw
- * Canvas/OpenGL content) — see spec §4.2/§6. Not needed for standard
- * native widgets, which is everything Stage 1 targets.
+ * Not a full screenshot-based/OCR fallback (spec §4.2/§6 originally
+ * floated one) — recognizing and interacting with arbitrary custom-drawn
+ * content without any accessibility info at all is a fundamentally
+ * different, vision-model-shaped problem, not a resolution-order fix.
+ * What's fixed here is the specific, provable fragility this tier had on
+ * top of that inherent limit: a hardcoded device pixel that only ever
+ * happened to be correct on the one device it was recorded against.
  */
 function resolveElementAtCoordinate(coordinate, pageSourceXml) {
   const { x, y } = coordinate;

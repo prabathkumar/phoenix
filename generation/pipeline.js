@@ -462,10 +462,30 @@ function synthesizeCode(steps, meta) {
       if (param) {
         lines.push(`    await step${index}El.setValue(${toIdentifier(param.name)});`);
       }
+    } else if (step.tapRatio && Number.isFinite(step.tapRatio.xRatio) && Number.isFinite(step.tapRatio.yRatio)) {
+      // Resolution-independent replay: re-scale the RATIO the tap was
+      // recorded at against whatever device actually runs this script,
+      // instead of baking in the recording device's own absolute pixels
+      // (which only ever happened to be right on that exact device/
+      // resolution -- the single biggest reason this fallback tier was
+      // flagged "most fragile" in docs/STATUS.md's backlog: a BrowserStack
+      // run can easily land on a different device than the one recorded
+      // against). Still a coordinate tap under the hood -- there is no
+      // accessibility-tree locator for custom-drawn Canvas/OpenGL content
+      // without OCR/vision, which is out of scope here -- but it now
+      // survives a device/resolution change instead of assuming one.
+      const { xRatio, yRatio } = step.tapRatio;
+      lines.push(`    // No stable locator resolved for this tap (likely custom-drawn content`);
+      lines.push(`    // with no accessibility info, e.g. a Canvas/OpenGL view) -- falling back`);
+      lines.push(`    // to a tap coordinate, re-scaled to THIS device's actual screen size so`);
+      lines.push(`    // it still lands correctly if this device differs from the one recorded on.`);
+      lines.push(`    const step${index}WindowSize = await driver.getWindowSize();`);
+      lines.push(`    await driver.execute(${JSON.stringify(tapExtension)}, { x: Math.round(${xRatio} * step${index}WindowSize.width), y: Math.round(${yRatio} * step${index}WindowSize.height) });`);
     } else {
       const { x, y } = step.tapCoordinate || {};
       lines.push(`    // No stable locator resolved for this tap — falling back to a raw`);
-      lines.push(`    // coordinate. Fragile: will break if this screen's layout changes.`);
+      lines.push(`    // coordinate. Fragile: will break if this screen's layout, device, or`);
+      lines.push(`    // resolution changes (no tap ratio was recorded for this step to re-scale from).`);
       lines.push(`    await driver.execute(${JSON.stringify(tapExtension)}, { x: ${x}, y: ${y} });`);
     }
 

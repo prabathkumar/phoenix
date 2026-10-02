@@ -8,7 +8,7 @@
  */
 
 const assert = require("assert");
-const { resolveElementAtCoordinate, parseAndroidBounds, parseIOSBounds, buildXPath } = require("../recorder");
+const { resolveElementAtCoordinate, parseAndroidBounds, parseIOSBounds, buildXPath, SessionRecorder } = require("../recorder");
 const { DOMParser } = require("@xmldom/xmldom");
 
 // Trimmed version of the tree captured in the Stage 0 run against
@@ -150,9 +150,61 @@ test("buildXPath returns a structural path usable as a last-resort locator", () 
   assert.ok(result.xpath.startsWith("/hierarchy[1]"));
 });
 
-if (process.exitCode) {
-  console.error("\nresolveElementAtCoordinate tests FAILED");
-  process.exit(1);
-} else {
-  console.log("\nresolveElementAtCoordinate tests passed");
+async function asyncTest(name, fn) {
+  try {
+    await fn();
+    console.log(`  ok - ${name}`);
+  } catch (err) {
+    console.error(`  FAIL - ${name}`);
+    console.error(err);
+    process.exitCode = 1;
+  }
 }
+
+function makeFakeDriverForRecorder(pageSourceXml) {
+  return {
+    async takeScreenshot() {
+      return "ZmFrZQ=="; // content unused by these tests
+    },
+    async getPageSource() {
+      return pageSourceXml;
+    },
+  };
+}
+
+(async () => {
+  // SessionRecorder.beginStep/completeStep -- the tapRatio plumbing that
+  // lets a coordinate-fallback locator (resolveElementAtCoordinate's
+  // "strategy: coordinate" case, tested above) survive replay on a
+  // different device/resolution than it was recorded on. See
+  // CapturedStep's own doc comment in ../recorder.js.
+  await asyncTest("SessionRecorder.beginStep attaches the optional tapRatio to the partial step", async () => {
+    const recorder = new SessionRecorder(makeFakeDriverForRecorder(API_DEMOS_TREE));
+    const partialStep = await recorder.beginStep({ x: 540, y: 1200 }, { xRatio: 0.5, yRatio: 0.5 });
+    assert.deepStrictEqual(partialStep.tapCoordinate, { x: 540, y: 1200 });
+    assert.deepStrictEqual(partialStep.tapRatio, { xRatio: 0.5, yRatio: 0.5 });
+  });
+
+  await asyncTest("SessionRecorder.beginStep leaves tapRatio undefined when the caller doesn't supply one", async () => {
+    const recorder = new SessionRecorder(makeFakeDriverForRecorder(API_DEMOS_TREE));
+    const partialStep = await recorder.beginStep({ x: 540, y: 1200 });
+    assert.strictEqual(partialStep.tapRatio, undefined);
+  });
+
+  await asyncTest("SessionRecorder.completeStep carries tapRatio through to the final recorded step", async () => {
+    const recorder = new SessionRecorder(makeFakeDriverForRecorder(API_DEMOS_TREE));
+    const partialStep = await recorder.beginStep({ x: 5000, y: 5000 }, { xRatio: 0.9, yRatio: 0.9 });
+    const step = await recorder.completeStep(partialStep);
+    assert.deepStrictEqual(step.tapRatio, { xRatio: 0.9, yRatio: 0.9 });
+    // Same tap lands outside every element's bounds in API_DEMOS_TREE --
+    // the genuine "strategy: coordinate" case this ratio exists to help.
+    assert.strictEqual(step.resolvedElement.strategy, "coordinate");
+  });
+
+  if (process.exitCode) {
+    console.error("\nresolveElementAtCoordinate tests FAILED");
+    process.exit(1);
+  } else {
+    console.log("\nresolveElementAtCoordinate tests passed");
+  }
+})();

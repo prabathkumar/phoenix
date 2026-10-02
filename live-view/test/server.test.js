@@ -59,8 +59,10 @@ function makeFakeDriver() {
 function makeFakeRecorder() {
   return {
     steps: [],
-    async beginStep(tapCoordinate) {
-      return { tapCoordinate };
+    beginStepCalls: [],
+    async beginStep(tapCoordinate, tapRatio) {
+      this.beginStepCalls.push([tapCoordinate, tapRatio]);
+      return { tapCoordinate, tapRatio };
     },
     async completeStep(partialStep) {
       const step = { ...partialStep, resolvedElement: { strategy: "coordinate", value: "0,0" } };
@@ -124,6 +126,35 @@ async function main() {
       assert.strictEqual(error.reason, "no-step-yet");
       assert.strictEqual(driver.keysCalls.length, 0, "driver.keys() must not be called with no recorded step");
       assert.strictEqual(recorder.steps.length, 0);
+      socket.close();
+    } finally {
+      wss.close();
+    }
+  });
+
+  await testAsync("a tap passes its original xRatio/yRatio through to the recorder, not just the scaled device pixels", async () => {
+    // capture/recorder.js's CapturedStep.tapRatio doc comment explains why:
+    // it's what lets generation/pipeline.js re-scale a coordinate-fallback
+    // tap against a DIFFERENT replay device's screen size, instead of
+    // baking in this (recording) device's absolute pixels. If this ratio
+    // stops reaching the recorder, that fix silently goes dead even though
+    // nothing here would fail loudly -- it would just quietly fall back to
+    // the fragile, device-specific pixel path again.
+    const driver = makeFakeDriver();
+    const recorder = makeFakeRecorder();
+    const port = 18090 + Math.floor(Math.random() * 1000);
+    const wss = startLiveView(driver, recorder, port);
+    try {
+      const socket = await connect(port);
+      const stepRecorded = nextMessageOfType(socket, "step-recorded");
+      socket.send(JSON.stringify({ type: "tap", xRatio: 0.25, yRatio: 0.75 }));
+      await stepRecorded;
+
+      assert.strictEqual(recorder.beginStepCalls.length, 1);
+      const [deviceCoordinate, tapRatio] = recorder.beginStepCalls[0];
+      // driver.getWindowSize() fakes {width: 1080, height: 2400} above.
+      assert.deepStrictEqual(deviceCoordinate, { x: 270, y: 1800 });
+      assert.deepStrictEqual(tapRatio, { xRatio: 0.25, yRatio: 0.75 });
       socket.close();
     } finally {
       wss.close();

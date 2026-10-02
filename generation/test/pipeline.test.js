@@ -303,6 +303,42 @@ test("generateScript emits a TODO and a screenshot save for a step with no acces
   assert.ok(result.scriptSource.includes("saveScreenshot("));
 });
 
+test("generateScript re-scales a coordinate-fallback tap against the replay device's own window size when tapRatio was recorded", async () => {
+  // A real Canvas/OpenGL element with literally no accessibility info --
+  // resolveElementAtCoordinate's genuine "strategy: coordinate" case
+  // (candidates.length === 0, not even a structural xpath available).
+  const coordinateStep = {
+    tapCoordinate: { x: 540, y: 1200 },
+    tapRatio: { xRatio: 0.5, yRatio: 0.5 },
+    resolvedElement: { strategy: "coordinate", value: "540,1200" },
+    pageSourceBefore: "<hierarchy></hierarchy>",
+    pageSourceAfter: "<hierarchy></hierarchy>",
+    screenshotBeforeBase64: "aaaa",
+    screenshotAfterBase64: "aaaa",
+  };
+
+  const result = await generateScript([coordinateStep]);
+  assert.ok(result.scriptSource.includes("await driver.getWindowSize()"), "must look up the REPLAY device's own window size, not assume the recording device's");
+  assert.ok(result.scriptSource.includes("0.5 * step0WindowSize.width"), "must re-scale the recorded ratio, not a hardcoded fraction");
+  assert.ok(result.scriptSource.includes("0.5 * step0WindowSize.height"));
+  assert.ok(!result.scriptSource.includes("{ x: 540, y: 1200 }"), "must not fall back to the record-time absolute pixels when a ratio is available");
+});
+
+test("generateScript falls back to the raw recorded pixel coordinate when no tapRatio was captured (e.g. an older recording)", async () => {
+  const coordinateStepNoRatio = {
+    tapCoordinate: { x: 540, y: 1200 },
+    resolvedElement: { strategy: "coordinate", value: "540,1200" },
+    pageSourceBefore: "<hierarchy></hierarchy>",
+    pageSourceAfter: "<hierarchy></hierarchy>",
+    screenshotBeforeBase64: "aaaa",
+    screenshotAfterBase64: "aaaa",
+  };
+
+  const result = await generateScript([coordinateStepNoRatio]);
+  assert.ok(result.scriptSource.includes("{ x: 540, y: 1200 }"), "with no recorded ratio, must still fall back to the literal pixel coordinate rather than fail");
+  assert.ok(!result.scriptSource.includes("getWindowSize"), "no ratio to re-scale -- must not emit a pointless window-size lookup");
+});
+
 test("extractParameters names parameters from the field's resource-id, stripped of _input", () => {
   const parameters = extractParameters(STEPS);
   assert.strictEqual(parameters.length, 2);

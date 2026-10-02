@@ -58,7 +58,14 @@ function startLiveView(driver, recorder, port = 8090, platform = "android") {
         // image size on the tester's screen — not device pixels.
         const deviceCoordinate = await toDeviceCoordinate(message.xRatio, message.yRatio, driver);
 
-        const partialStep = await recorder.beginStep(deviceCoordinate);
+        // Pass the ORIGINAL ratio through too, not just the device pixels
+        // scaled from it -- capture/recorder.js's CapturedStep.tapRatio
+        // doc comment explains why: it's what lets a coordinate-fallback
+        // locator (no accessibility info at the tap point -- custom-drawn
+        // Canvas/OpenGL content) replay correctly on a different device/
+        // resolution than the one it was recorded on, instead of baking
+        // in this device's absolute pixels as if they applied everywhere.
+        const partialStep = await recorder.beginStep(deviceCoordinate, { xRatio: message.xRatio, yRatio: message.yRatio });
         // NOTE: WebdriverIO's touchAction()/touchPerform() sends the legacy
         // JSONWP touch-actions endpoint, which neither Appium 3 +
         // uiautomator2-driver 3.x nor xcuitest-driver implement (404 unknown

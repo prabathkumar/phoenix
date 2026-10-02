@@ -85,6 +85,22 @@ async function test(name, fn) {
     }
   });
 
+  await test("resolveSemanticAction's prompt tells the model a wrong guess is worse than declining, and warns against category/word-overlap matches (real bug chain: addons-run-android-6/8/9.log -- \"Allow\" matched to ACTIVATE SIM, then to a \"More Icon\", then a \"CLOSE\" recovery step matched an unrelated screen's own Back Arrow)", async () => {
+    let capturedPrompt;
+    const { semanticAct, restore } = loadWithFakeOllama(async (prompt) => {
+      capturedPrompt = prompt;
+      return { ref: 3 };
+    });
+    try {
+      await semanticAct.resolveSemanticAction(ANDROID_LOGIN_SCREEN, "tap the Login button");
+      assert.ok(capturedPrompt.includes("far more costly than correctly declining"));
+      assert.ok(capturedPrompt.includes("not, by"));
+      assert.ok(capturedPrompt.includes("you MUST decline"));
+    } finally {
+      restore();
+    }
+  });
+
   await test("resolveSemanticAction falls back to a real message instead of echoing the prompt's own \"...\" placeholder (real bug: addons-run-android-6.log)", async () => {
     const { semanticAct, restore } = loadWithFakeOllama(async () => ({ ref: null, reason: "..." }));
     try {

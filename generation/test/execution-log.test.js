@@ -21,7 +21,7 @@ const path = require("path");
 const TMP_LOG_PATH = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "phoenix-exec-log-")), "executions.jsonl");
 process.env.PHOENIX_TRAINING_LOG_PATH = TMP_LOG_PATH;
 
-const { logExecution, buildExecutionRecord, logPath } = require("../execution-log");
+const { logExecution, buildExecutionRecord, logPath, pruneOldExecutions, retentionDays } = require("../execution-log");
 
 function test(name, fn) {
   try {
@@ -129,6 +129,135 @@ test("buildExecutionRecord captures which code path produced the result (cache h
 
   const skipped = buildExecutionRecord("close the popup if open", { kind: "tapIfExists" }, { success: true, skipped: true });
   assert.strictEqual(skipped.skipped, true);
+});
+
+test("retentionDays() defaults to 15 and honors PHOENIX_TRAINING_LOG_RETENTION_DAYS", () => {
+  const original = process.env.PHOENIX_TRAINING_LOG_RETENTION_DAYS;
+  try {
+    delete process.env.PHOENIX_TRAINING_LOG_RETENTION_DAYS;
+    assert.strictEqual(retentionDays(), 15);
+    process.env.PHOENIX_TRAINING_LOG_RETENTION_DAYS = "30";
+    assert.strictEqual(retentionDays(), 30);
+    // Garbage/non-positive values fall back to the default rather than
+    // silently disabling cleanup or pruning everything.
+    process.env.PHOENIX_TRAINING_LOG_RETENTION_DAYS = "not-a-number";
+    assert.strictEqual(retentionDays(), 15);
+    process.env.PHOENIX_TRAINING_LOG_RETENTION_DAYS = "-5";
+    assert.strictEqual(retentionDays(), 15);
+  } finally {
+    if (original === undefined) delete process.env.PHOENIX_TRAINING_LOG_RETENTION_DAYS;
+    else process.env.PHOENIX_TRAINING_LOG_RETENTION_DAYS = original;
+  }
+});
+
+test("pruneOldExecutions removes records past the retention window and keeps recent ones", () => {
+  const prunePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "phoenix-exec-log-prune-")), "executions.jsonl");
+  const original = process.env.PHOENIX_TRAINING_LOG_PATH;
+  process.env.PHOENIX_TRAINING_LOG_PATH = prunePath;
+  try {
+    const now = Date.now();
+    const old = new Date(now - 20 * 24 * 60 * 60 * 1000).toISOString(); // 20 days ago
+    const recent = new Date(now - 1 * 24 * 60 * 60 * 1000).toISOString(); // 1 day ago
+    fs.mkdirSync(path.dirname(prunePath), { recursive: true });
+    fs.writeFileSync(
+      prunePath,
+      [
+        JSON.stringify({ instruction: "old one", loggedAt: old }),
+        JSON.stringify({ instruction: "recent one", loggedAt: recent }),
+        "{ this is not valid json",
+      ].join("\n") + "\n"
+    );
+
+    const result = pruneOldExecutions();
+    assert.deepStrictEqual(result, { kept: 1, removed: 2 });
+
+    const remaining = fs.readFileSync(prunePath, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+    assert.strictEqual(remaining.length, 1);
+    assert.strictEqual(remaining[0].instruction, "recent one");
+  } finally {
+    process.env.PHOENIX_TRAINING_LOG_PATH = original;
+  }
+});
+
+test("pruneOldExecutions keeps a record with no parseable loggedAt rather than guessing it's stale", () => {
+  const prunePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "phoenix-exec-log-prune-noage-")), "executions.jsonl");
+  const original = process.env.PHOENIX_TRAINING_LOG_PATH;
+  process.env.PHOENIX_TRAINING_LOG_PATH = prunePath;
+  try {
+    fs.mkdirSync(path.dirname(prunePath), { recursive: true });
+    fs.writeFileSync(prunePath, JSON.stringify({ instruction: "no timestamp" }) + "\n");
+    const result = pruneOldExecutions();
+    assert.deepStrictEqual(result, { kept: 1, removed: 0 });
+  } finally {
+    process.env.PHOENIX_TRAINING_LOG_PATH = original;
+  }
+});
+
+test("pruneOldExecutions returns undefined (not an error) when there's no log file yet", () => {
+  const prunePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "phoenix-exec-log-prune-missing-")), "executions.jsonl");
+  const original = process.env.PHOENIX_TRAINING_LOG_PATH;
+  process.env.PHOENIX_TRAINING_LOG_PATH = prunePath;
+  try {
+    assert.strictEqual(pruneOldExecutions(), undefined);
+  } finally {
+    process.env.PHOENIX_TRAINING_LOG_PATH = original;
+  }
+});
+
+test("logExecution automatically triggers cleanup once the retention window has elapsed, with no separate scheduling step", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "phoenix-exec-log-auto-prune-"));
+  const autoPrunePath = path.join(dir, "executions.jsonl");
+  const sentinelPath = `${autoPrunePath}.last-prune`;
+  const originalPath = process.env.PHOENIX_TRAINING_LOG_PATH;
+  const originalRetention = process.env.PHOENIX_TRAINING_LOG_RETENTION_DAYS;
+  process.env.PHOENIX_TRAINING_LOG_PATH = autoPrunePath;
+  process.env.PHOENIX_TRAINING_LOG_RETENTION_DAYS = "15";
+  try {
+    const old = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString();
+    fs.writeFileSync(autoPrunePath, JSON.stringify({ instruction: "stale", loggedAt: old }) + "\n");
+    // Backdate the sentinel past the retention window so the next log
+    // call treats a cleanup as due -- simulates "15 days have passed"
+    // without actually waiting 15 days in a test.
+    fs.writeFileSync(sentinelPath, new Date(Date.now() - 16 * 24 * 60 * 60 * 1000).toISOString());
+
+    logExecution({ instruction: "fresh one" });
+
+    const remaining = fs.readFileSync(autoPrunePath, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+    assert.strictEqual(remaining.length, 1, "the stale pre-existing record should have been pruned automatically");
+    assert.strictEqual(remaining[0].instruction, "fresh one");
+
+    // The sentinel itself should have been refreshed so cleanup doesn't
+    // re-run on every single call going forward.
+    const sentinelAfter = Date.parse(fs.readFileSync(sentinelPath, "utf8").trim());
+    assert.ok(Date.now() - sentinelAfter < 5000, "sentinel should be refreshed to roughly now");
+  } finally {
+    process.env.PHOENIX_TRAINING_LOG_PATH = originalPath;
+    if (originalRetention === undefined) delete process.env.PHOENIX_TRAINING_LOG_RETENTION_DAYS;
+    else process.env.PHOENIX_TRAINING_LOG_RETENTION_DAYS = originalRetention;
+  }
+});
+
+test("logExecution does NOT re-prune on every call once the sentinel is fresh (avoids rewriting the log on every single execution)", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "phoenix-exec-log-no-reprune-"));
+  const freshPrunePath = path.join(dir, "executions.jsonl");
+  const sentinelPath = `${freshPrunePath}.last-prune`;
+  const originalPath = process.env.PHOENIX_TRAINING_LOG_PATH;
+  process.env.PHOENIX_TRAINING_LOG_PATH = freshPrunePath;
+  try {
+    const old = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString();
+    fs.writeFileSync(freshPrunePath, JSON.stringify({ instruction: "stale but protected by a fresh sentinel", loggedAt: old }) + "\n");
+    fs.writeFileSync(sentinelPath, new Date().toISOString()); // "just pruned a moment ago"
+
+    logExecution({ instruction: "another one" });
+
+    const remaining = fs.readFileSync(freshPrunePath, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+    // The old record survives because cleanup wasn't due yet -- only
+    // the new append happened.
+    assert.ok(remaining.some((r) => r.instruction === "stale but protected by a fresh sentinel"));
+    assert.ok(remaining.some((r) => r.instruction === "another one"));
+  } finally {
+    process.env.PHOENIX_TRAINING_LOG_PATH = originalPath;
+  }
 });
 
 setImmediate(() => {

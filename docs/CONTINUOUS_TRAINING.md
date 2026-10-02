@@ -8,6 +8,21 @@ nothing manual. This doc is the honest version of that: what's fully
 automatic today, what the frothAI hardware (ARM, CPU-only, 32GB RAM)
 actually allows, and the realistic pipeline given that.
 
+## 0. Retention — old records are pruned automatically too
+
+Once a training cycle (periodic fine-tune, or just the prompt-level
+feedback in §2(b) below) has consumed a batch of logged executions, the
+log itself doesn't need to be kept around indefinitely. `logExecution()`
+automatically prunes records older than `PHOENIX_TRAINING_LOG_RETENTION_DAYS`
+(default **15 days**) every time it's called — cheaply, via a sentinel
+file next to the log that tracks when cleanup last ran, so the real cost
+(rewriting the file) only happens roughly once per retention window, not
+on every single execution. No separate cron job, no manual "go delete the
+old logs" step — as long as Phoenix is being run at all, the log stays
+bounded on its own. `pruneOldExecutions()` is also exported directly for
+an on-demand or externally-scheduled cleanup if a deployment prefers that
+instead.
+
 ## 1. Automatic capture — done, wired into the semantic layer
 
 `generation/execution-log.js`, called from every `executeSemanticAction()`

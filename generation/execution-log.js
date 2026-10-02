@@ -21,7 +21,7 @@
  * automatic regression-test gate (replay the known bugs) before a new
  * model ever replaces the live one. Steps 2-3 need a training
  * toolchain and GPU infra this sandbox doesn't have -- see
- * docs/CONTINUOUS_TRAINING.md for that design.
+ * docs/CONTINUOUS_TRAINING.md for that design. Old records past a 15-day retention window (configurable, PHOENIX_TRAINING_LOG_RETENTION_DAYS) are pruned automatically too -- once a training cycle has consumed them, the log itself doesn't need to be kept indefinitely, with no separate cleanup job to remember to run.
  */
 
 const fs = require("fs");
@@ -40,10 +40,119 @@ function logPath() {
 }
 
 /**
+ * How long a logged execution is kept before automatic cleanup removes
+ * it. Explicit requirement: once a run of training has consumed the
+ * log, the log itself shouldn't need to be kept around indefinitely --
+ * wired into the framework itself (no external cron job, no manual
+ * "remember to clean this up" step), defaulting to 15 days.
+ */
+function retentionDays() {
+  const raw = process.env.PHOENIX_TRAINING_LOG_RETENTION_DAYS;
+  const parsed = raw !== undefined ? Number(raw) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 15;
+}
+
+/**
+ * Where the "last cleanup ran at" marker lives -- a sentinel file next
+ * to the log itself, not a separate config entry, so the two always
+ * travel together and a copied/moved log directory keeps working
+ * without extra setup.
+ */
+function sentinelPath() {
+  return `${logPath()}.last-prune`;
+}
+
+/**
+ * Removes log records older than retentionDays() from the log file,
+ * keeping everything newer. Deliberately tolerant of a record with no
+ * parseable `loggedAt` (kept rather than dropped) or a corrupt line
+ * (dropped silently, same as getPastFailures()'s own tolerance) --
+ * cleanup must never be the reason real data disappears unexpectedly.
+ *
+ * Exported directly (not just invoked automatically) so it can also be
+ * run on demand -- a manual `node -e "require('./execution-log').pruneOldExecutions()"`,
+ * or wired into whatever periodic job a real deployment already has --
+ * without that being the ONLY way it runs.
+ *
+ * @returns {{kept: number, removed: number} | undefined} undefined if
+ *   there was nothing to prune (no log file yet) or the operation
+ *   failed (fail-soft, logged, never thrown).
+ */
+function pruneOldExecutions() {
+  try {
+    const filePath = logPath();
+    if (!fs.existsSync(filePath)) return undefined;
+
+    const cutoff = Date.now() - retentionDays() * 24 * 60 * 60 * 1000;
+    const lines = fs.readFileSync(filePath, "utf8").split("\n").filter(Boolean);
+    const keptLines = [];
+    let removed = 0;
+
+    for (const line of lines) {
+      let record;
+      try {
+        record = JSON.parse(line);
+      } catch {
+        removed += 1; // corrupt line -- drop it, same tolerance as getPastFailures()
+        continue;
+      }
+      const loggedAtMs = record.loggedAt ? Date.parse(record.loggedAt) : NaN;
+      if (Number.isFinite(loggedAtMs) && loggedAtMs < cutoff) {
+        removed += 1;
+      } else {
+        keptLines.push(line);
+      }
+    }
+
+    if (removed > 0) {
+      fs.writeFileSync(filePath, keptLines.length > 0 ? keptLines.join("\n") + "\n" : "");
+    }
+    return { kept: keptLines.length, removed };
+  } catch (err) {
+    console.warn("[generation/execution-log] couldn't prune old executions (continuing anyway):", err.message);
+    return undefined;
+  }
+}
+
+/**
+ * Runs pruneOldExecutions() automatically, but only roughly once per
+ * retention window -- checked via the sentinel file -- so logging
+ * itself doesn't pay the cost of re-scanning and rewriting the whole
+ * log on every single execution. This is what makes cleanup a
+ * framework capability rather than a cron job someone has to remember
+ * to set up: it piggybacks on ordinary usage (any call to
+ * logExecution), so as long as Phoenix is being run at all, the log
+ * stays bounded with zero separate scheduling step.
+ */
+function maybePruneOldExecutions() {
+  try {
+    const sentinel = sentinelPath();
+    const dueMs = retentionDays() * 24 * 60 * 60 * 1000;
+    let lastPrunedMs = 0;
+    if (fs.existsSync(sentinel)) {
+      lastPrunedMs = Date.parse(fs.readFileSync(sentinel, "utf8").trim()) || 0;
+    }
+    if (Date.now() - lastPrunedMs < dueMs) return; // not due yet
+
+    pruneOldExecutions();
+    fs.writeFileSync(sentinel, new Date().toISOString());
+  } catch (err) {
+    // Never let a cleanup-scheduling problem block the actual log write.
+    console.warn("[generation/execution-log] couldn't check/update prune schedule (continuing anyway):", err.message);
+  }
+}
+
+/**
  * Appends one execution record. NEVER throws -- logging is a
  * side-channel; a disk-full or permissions error here must not fail
  * the actual test action it's describing. Returns true/false for
  * whether the write succeeded, purely informational.
+ *
+ * Also opportunistically runs the automatic retention cleanup (see
+ * maybePruneOldExecutions()) -- cheap on every call (one sentinel file
+ * read) and only actually rewrites the log on the rare call where the
+ * retention window has elapsed, so this stays automatic without
+ * needing a separate scheduled process.
  *
  * @param {Object} record - caller-built record (see
  *   buildExecutionRecord below for the shape used by the semantic
@@ -56,6 +165,7 @@ function logExecution(record) {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     const line = JSON.stringify({ ...record, loggedAt: new Date().toISOString() });
     fs.appendFileSync(filePath, line + "\n");
+    maybePruneOldExecutions();
     return true;
   } catch (err) {
     // Fail-soft and loud-ish (console, not throw) -- see module doc.
@@ -180,4 +290,4 @@ function getPastFailures(instruction, options = {}) {
   }
 }
 
-module.exports = { logExecution, buildExecutionRecord, logPath, getPastFailures };
+module.exports = { logExecution, buildExecutionRecord, logPath, getPastFailures, pruneOldExecutions, retentionDays };

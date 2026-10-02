@@ -14,7 +14,7 @@
   <rect x="0" y="0" width="1180" height="900" fill="#ffffff"/>
 
   <text x="40" y="38" font-size="22" font-weight="700" fill="#1a1a1a">Phoenix — four layers, one engine, one shared AI runtime underneath</text>
-  <text x="40" y="60" font-size="13" fill="#555">Guided recording (Act 1) → Semantic resolution (Act 2) → Vision fusion → Autonomous loop (Act 3, R&amp;D only) — layers 2-4 all call the same Ollama model</text>
+  <text x="40" y="60" font-size="13" fill="#555">Guided recording (Act 1) → Semantic resolution (Act 2) → Vision fusion → Autonomous loop (Act 3, Beta) — layers 2-4 all call the same Ollama model</text>
 
   <!-- ============ LAYER 1: GUIDED ============ -->
   <rect x="40" y="90" width="520" height="150" rx="10" fill="#eaf2ff" stroke="#3a6ea5" stroke-width="1.5"/>
@@ -54,15 +54,15 @@
 
   <!-- ============ LAYER 4: LOOP ============ -->
   <rect x="620" y="300" width="520" height="200" rx="10" fill="#f5edfa" stroke="#7a4fa0" stroke-width="1.5"/>
-  <text x="640" y="328" font-size="16" font-weight="700" fill="#5a3178">4. Autonomous loop (Act 3) — R&amp;D only, not customer-facing</text>
+  <text x="640" y="328" font-size="16" font-weight="700" fill="#5a3178">4. Autonomous loop (Act 3) — Beta</text>
   <text x="640" y="350" font-size="12.5" fill="#333">engine/semantic-loop.js takes a goal in plain language instead of a</text>
   <text x="640" y="368" font-size="12.5" fill="#0a7a7a" font-weight="600">step list: read the snapshot → ask Ollama to decide the single next</text>
   <text x="640" y="386" font-size="12.5" fill="#333">action (or stop) → execute it through the same executor as layer 2</text>
   <text x="640" y="404" font-size="12.5" fill="#333">→ feed the resulting diff back in as context → repeat.</text>
   <text x="640" y="426" font-size="12.5" fill="#333">Stops explicitly on: goal reached, model asks to stop, an action</text>
   <text x="640" y="444" font-size="12.5" fill="#333">fails/can't resolve, or a hard step-count limit — never a silent</text>
-  <text x="640" y="462" font-size="12.5" fill="#333">retry loop. Wired into run-batch-executions.js's "loop" mode, but</text>
-  <text x="640" y="480" font-size="12.5" fill="#7a4fa0" font-weight="600">that mode prints its own "R&amp;D/exploration only" warning at runtime.</text>
+  <text x="640" y="462" font-size="12.5" fill="#333">retry loop. Wired into run-batch-executions.js's "loop" mode today.</text>
+  <text x="640" y="480" font-size="12.5" fill="#7a4fa0" font-weight="600">Hardens through real TestOps usage -- same evidence-fix loop as layers 1-2.</text>
 
   <!-- ============ SHARED AI RUNTIME: OLLAMA ============ -->
   <rect x="40" y="520" width="1100" height="90" rx="10" fill="#e6f7f7" stroke="#0a7a7a" stroke-width="1.5"/>

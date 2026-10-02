@@ -56,6 +56,7 @@ const path = require("path");
 const { executeSemanticAction } = require("./engine/semantic-act-executor");
 const { runAutonomousLoop } = require("./engine/semantic-loop");
 const { loadTestCaseSteps, requiredEnvVars, resolveSteps, runScriptSteps, persistResolvedSelectors } = require("./engine/test-case-runner");
+const { buildGroundedSnapshot } = require("./generation/semantic-snapshot");
 
 const TEST_CASES_DIR = path.join(__dirname, "test-cases");
 
@@ -186,17 +187,82 @@ async function runOneGuidedIteration(platform) {
 // providing this gap by looking at the screen before tapping; batch/
 // unattended runs need it made explicit instead. Configurable because
 // splash duration varies a lot by app.
-const STARTUP_DELAY_MS = Number(process.env.PHOENIX_BATCH_STARTUP_DELAY_MS) || 5000;
+// `Number(x) || fallback` can't distinguish "unset" from a deliberately
+// configured 0 (Number("0") is falsy too) -- matters here specifically
+// because the test suite needs to set these to 0 to run fast, and a real
+// deployment may legitimately want 0 for one of them (e.g. an app with
+// no splash screen at all). Same fix already applied to
+// PHOENIX_ACT_SETTLE_MS in engine/semantic-act-executor.js.
+function envIntOrDefault(name, fallback) {
+  const raw = Number(process.env[name]);
+  return Number.isFinite(raw) ? raw : fallback;
+}
+
+const STARTUP_DELAY_MS = envIntOrDefault("PHOENIX_BATCH_STARTUP_DELAY_MS", 5000);
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// The flat STARTUP_DELAY_MS above is a floor, not a guarantee -- real
+// BrowserStack runs showed it isn't enough: session init itself (queueing
+// + device boot) can take 20-30s on its own, so a fixed 5s sleep after
+// that still lands on the splash screen (confirmed live: "tap the LOGIN
+// button" failed with "every [element] is a known non-clickable dead
+// end" because the only things on screen were the splash's ImageView/
+// ProgressBar/version text, all non-clickable with no clickable
+// ancestor -- a generic, app-agnostic signal of "nothing to act on yet",
+// not specific to this app's splash screen). Rather than guess a bigger
+// fixed number (splash duration varies by app, device, and BrowserStack
+// queue state), poll the actual page source after the floor delay until
+// at least one element a tap could plausibly land on shows up, capped at
+// a timeout so a genuinely broken/stuck app doesn't hang the batch
+// forever -- if the timeout is hit, proceed anyway and let the existing
+// dead-end check in generation/semantic-act.js refuse to guess, exactly
+// as it already does today, rather than silently waiting past the limit.
+const STARTUP_SETTLE_TIMEOUT_MS = envIntOrDefault("PHOENIX_BATCH_STARTUP_SETTLE_TIMEOUT_MS", 20000);
+const STARTUP_SETTLE_POLL_MS = envIntOrDefault("PHOENIX_BATCH_STARTUP_SETTLE_POLL_MS", 1500);
+
+/**
+ * Waits past the app's launch splash screen before the first real step
+ * runs. Applies the existing flat STARTUP_DELAY_MS floor first (keeps
+ * today's behavior as a minimum), then polls getPageSource() with the
+ * same "any non-dead-end element" test generation/semantic-act.js
+ * already uses, up to STARTUP_SETTLE_TIMEOUT_MS. A snapshot/driver error
+ * during polling is treated as "not ready yet" and retried rather than
+ * thrown, since a mid-launch getPageSource() call failing outright is
+ * expected, not fatal.
+ *
+ * @param {import('webdriverio').Browser} driver
+ * @param {{timeoutMs?: number, pollMs?: number, sleepFn?: (ms: number) => Promise<void>}} [options]
+ */
+async function waitForAppReady(driver, options = {}) {
+  const timeoutMs = options.timeoutMs ?? STARTUP_SETTLE_TIMEOUT_MS;
+  const pollMs = options.pollMs ?? STARTUP_SETTLE_POLL_MS;
+  const sleepFn = options.sleepFn || sleep;
+
+  await sleepFn(STARTUP_DELAY_MS);
+
+  const deadline = Date.now() + timeoutMs;
+  while (true) {
+    try {
+      const pageSource = await driver.getPageSource();
+      const snapshot = buildGroundedSnapshot(pageSource);
+      const hasTappableElement = snapshot.some((el) => !(el.clickable === false && !el.clickableAncestorXPath));
+      if (hasTappableElement) return;
+    } catch (_err) {
+      // mid-launch getPageSource() failures are expected -- keep polling.
+    }
+    if (Date.now() >= deadline) return;
+    await sleepFn(pollMs);
+  }
 }
 
 async function runOneSemanticIteration(platform, instruction) {
   const { startSession } = require(platform === "ios" ? "./engine/ios-session" : "./engine/session");
   const driver = await startSession();
   try {
-    await sleep(STARTUP_DELAY_MS);
+    await waitForAppReady(driver);
     const result = await executeSemanticAction(driver, instruction, { platform });
     return { success: result.success, detail: result.success ? result.diffSummary : result.reason };
   } finally {
@@ -234,7 +300,7 @@ async function runOneLoopIteration(platform, goal, maxSteps) {
   const { startSession } = require(platform === "ios" ? "./engine/ios-session" : "./engine/session");
   const driver = await startSession();
   try {
-    await sleep(STARTUP_DELAY_MS);
+    await waitForAppReady(driver);
     const result = await runAutonomousLoop(driver, goal, { platform, maxSteps });
     return {
       success: result.stoppedBecause === "goal-achieved",
@@ -301,7 +367,7 @@ async function runOneLoginScriptIteration(platform, { persist = persistUpdatedSe
   const { startSession } = require(platform === "ios" ? "./engine/ios-session" : "./engine/session");
   const driver = await startSession();
   try {
-    await sleep(STARTUP_DELAY_MS);
+    await waitForAppReady(driver);
     const result = await runScriptSteps(driver, resolvedSteps, { platform, executeSemanticAction });
     persist(LOGIN_TEST_CASE_PATH, mergeResolvedSelectors(LOGIN_SCRIPT_STEPS, result.updatedSteps));
     return result;
@@ -382,7 +448,7 @@ async function runOneTestCaseIteration(platform, filePath) {
   const { startSession } = require(platform === "ios" ? "./engine/ios-session" : "./engine/session");
   const driver = await startSession();
   try {
-    await sleep(STARTUP_DELAY_MS);
+    await waitForAppReady(driver);
     const result = await runScriptSteps(driver, resolvedSteps, { platform, executeSemanticAction });
     persistUpdatedSelectors(filePath, mergeResolvedSelectors(steps, result.updatedSteps));
     return result;
@@ -637,4 +703,5 @@ module.exports = {
   runOneTestCaseIteration,
   mergeResolvedSelectors,
   LOGIN_SCRIPT_STEPS,
+  waitForAppReady,
 };

@@ -1,3 +1,13 @@
+// Must be set before run-batch-executions is first required below:
+// waitForAppReady() reads these once at module load (same pattern as
+// every other env-var default in this file), and its real defaults
+// (a 5s floor plus up to a 20s poll) would make every test that starts
+// a fake session actually wait that long -- these tests never provide a
+// real driver.getPageSource(), so the poll would just run out the full
+// timeout on every one of them.
+process.env.PHOENIX_BATCH_STARTUP_DELAY_MS = "0";
+process.env.PHOENIX_BATCH_STARTUP_SETTLE_TIMEOUT_MS = "0";
+
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
@@ -627,6 +637,86 @@ test("writeReport redacts a configured credential if it leaks into the crash err
     else process.env.PHOENIX_BATCH_LOGIN_PHONE = previous.phone;
     delete require.cache[modulePath];
   }
+});
+
+/**
+ * waitForAppReady() -- replaces the old flat STARTUP_DELAY_MS-only
+ * sleep. Confirmed live on BrowserStack: a fixed 5s sleep after session
+ * init wasn't enough (session init itself took ~27s, so the fixed delay
+ * still landed on the splash screen), and the very next step failed with
+ * "every [element] is a known non-clickable dead end for a tap" -- a
+ * splash screen's ImageView/ProgressBar/version text are all
+ * non-clickable with no clickable ancestor, the same generic signal
+ * generation/semantic-act.js already uses to refuse a guess. These tests
+ * use a fake sleepFn that records calls instead of actually waiting, so
+ * they run instantly regardless of the real timeout/poll defaults.
+ */
+const { waitForAppReady } = require("../run-batch-executions");
+
+function fakeClock() {
+  let now = 0;
+  const sleepCalls = [];
+  const sleepFn = async (ms) => {
+    sleepCalls.push(ms);
+    now += ms;
+  };
+  return { sleepFn, sleepCalls, advance: (ms) => { now += ms; } };
+}
+
+test("waitForAppReady returns as soon as the page source has a tappable element", async () => {
+  const { sleepFn, sleepCalls } = fakeClock();
+  let callCount = 0;
+  const fakeDriver = {
+    getPageSource: async () => {
+      callCount += 1;
+      // First poll: still the splash screen (nothing clickable). Second
+      // poll: a real "LOGIN" button has appeared.
+      if (callCount === 1) {
+        return `<hierarchy><android.widget.ProgressBar bounds="[0,0][10,10]" clickable="false" /></hierarchy>`;
+      }
+      return `<hierarchy><android.widget.Button text="LOGIN" bounds="[0,0][10,10]" clickable="true" /></hierarchy>`;
+    },
+  };
+
+  await waitForAppReady(fakeDriver, { timeoutMs: 100000, pollMs: 1000, sleepFn });
+
+  assert.strictEqual(callCount, 2, "must stop polling once a tappable element shows up, not keep going to the timeout");
+  assert.deepStrictEqual(sleepCalls, [0, 1000], "the floor delay (0, from the test's STARTUP_DELAY_MS override) then one poll interval before the second, successful check");
+});
+
+test("waitForAppReady treats a getPageSource error as not-ready-yet and keeps polling instead of throwing", async () => {
+  const { sleepFn } = fakeClock();
+  let callCount = 0;
+  const fakeDriver = {
+    getPageSource: async () => {
+      callCount += 1;
+      if (callCount === 1) throw new Error("session not ready");
+      return `<hierarchy><android.widget.Button text="LOGIN" bounds="[0,0][10,10]" clickable="true" /></hierarchy>`;
+    },
+  };
+
+  await waitForAppReady(fakeDriver, { timeoutMs: 100000, pollMs: 1000, sleepFn });
+
+  assert.strictEqual(callCount, 2, "a transient getPageSource error must be retried, not thrown out of waitForAppReady");
+});
+
+test("waitForAppReady gives up at the timeout and returns instead of hanging when the screen never becomes interactable", async () => {
+  const { sleepFn, sleepCalls } = fakeClock();
+  let callCount = 0;
+  const fakeDriver = {
+    getPageSource: async () => {
+      callCount += 1;
+      return `<hierarchy><android.widget.ProgressBar bounds="[0,0][10,10]" clickable="false" /></hierarchy>`;
+    },
+  };
+
+  // sleepFn advances a simulated clock; waitForAppReady's own Date.now()
+  // calls are real wall-clock time, so use a timeout of 0 to force the
+  // very first deadline check to already be expired.
+  await waitForAppReady(fakeDriver, { timeoutMs: 0, pollMs: 1000, sleepFn });
+
+  assert.ok(callCount >= 1, "must check at least once before giving up");
+  assert.ok(!sleepCalls.includes(1000) || callCount <= 2, "must not poll indefinitely once the deadline has passed");
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

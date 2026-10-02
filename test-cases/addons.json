@@ -119,10 +119,10 @@
       "note": "CONFIRMED working on addons-run-android-2.log -- the guessed instruction resolved and clicked correctly; the run got past this step to the next (new) failure."
     },
     {
-      "kind": "tap",
-      "instruction": "tap the Profile or Account menu to find the logout option",
-      "optional": true,
-      "note": "CONFIRMED working on addons-run-android-4.log: the coach-mark/carousel fix got the run all the way past Add-ons into the Profile tab (bottom-nav item, resource-id ivProfile/tvProfile), landing on a menu screen (Billing Info, E-Bills, FAQs, General, Get Help, Settings, etc.). The run then failed on the Logout tap below -- see that step's note."
+      "kind": "tapIfExists",
+      "instruction": "tap the Profile or Account menu (bottom-nav tab) to find the logout option",
+      "selector": { "strategy": "resource-id", "value": "my.yes.yes4g:id/profileLayout" },
+      "note": "CONFIRMED working on addons-run-android-4.log with the plain-language version: the coach-mark/carousel fix got the run all the way past Add-ons into the Profile tab (bottom-nav item, resource-id ivProfile/tvProfile), landing on a menu screen (Billing Info, E-Bills, FAQs, General, Get Help, Settings, etc.). CONFIRMED real bug on addons-run-android-12.log (15th bug): with a clearly labeled, unambiguous 'Profile' bottom-nav tab (text=\"Profile\", resource-id=\"my.yes.yes4g:id/profileLayout\") sitting right on screen, the plain-language resolver instead clicked \"my.yes.yes4g:id/buyAddonLayout\" -- an unrelated Buy-Addon card on the SAME Add-ons screen, with no textual or semantic relation to 'Profile', 'Account', or 'logout' at all. This opened an add-on purchase details popup (Hotspot 50GB/BUY NOW) instead of navigating anywhere near Profile, stranding the run there until the Logout step failed outright with no Logout button ever on screen. Not an adjacent-sibling-button mixup like bugs #13/#14 -- a flatly wrong match with a correct, clearly labeled candidate available. Converted to tapIfExists with the confirmed bottom-nav resource-id (stable across runs 4 and 12) so no LLM judgment call is possible here either."
     },
     {
       "kind": "scroll",

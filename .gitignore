@@ -6,3 +6,11 @@ node_modules/
 __pycache__/
 *.pyc
 /batch-results/
+
+# generation/execution-log.js's automatic capture of every semantic-layer
+# execution (see docs/CONTINUOUS_TRAINING.md) -- per-environment data, not
+# something to commit; also written into engine/ and any other cwd a test
+# run happens from.
+training-data/
+engine/training-data/
+generation/training-data/

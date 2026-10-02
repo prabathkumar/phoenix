@@ -12,6 +12,19 @@
 
 const assert = require("assert");
 const path = require("path");
+const fs = require("fs");
+const os = require("os");
+
+// Isolated per-run log path so these tests never touch a real
+// training-data/ directory and never see another test file's records --
+// set before any module reads it (execution-log.js reads the env var
+// fresh on every call, not just at require time, but set this early
+// regardless for clarity).
+process.env.PHOENIX_TRAINING_LOG_PATH = path.join(
+  fs.mkdtempSync(path.join(os.tmpdir(), "phoenix-semantic-act-log-")),
+  "executions.jsonl"
+);
+const { logExecution } = require("../execution-log");
 
 const ANDROID_LOGIN_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
 <hierarchy>
@@ -617,6 +630,44 @@ async function test(name, fn) {
       const result = await semanticAct.resolveSemanticAction(ONE_BUTTON_SCREEN, "tap Only", { excludedRefs: [1] });
       assert.strictEqual(result.resolved, false);
       assert.ok(result.reason.includes("no labeled/identified elements"));
+    } finally {
+      restore();
+    }
+  });
+
+  await test("resolveSemanticAction surfaces past logged failures for this exact instruction as a soft hint in the prompt", async () => {
+    logExecution({ instruction: "tap the Login button", success: false, reason: "no confident match -- two similar buttons" });
+    logExecution({ instruction: "tap the Login button", success: false, reason: "resolved but the click did nothing" });
+    // A different instruction's failure must never leak into this one's hint.
+    logExecution({ instruction: "tap the Logout button", success: false, reason: "unrelated failure" });
+    // A past SUCCESS for the same instruction must never be treated as a failure.
+    logExecution({ instruction: "tap the Login button", success: true });
+
+    let capturedPrompt;
+    const { semanticAct, restore } = loadWithFakeOllama(async (prompt) => {
+      capturedPrompt = prompt;
+      return { ref: 3 };
+    });
+    try {
+      await semanticAct.resolveSemanticAction(ANDROID_LOGIN_SCREEN, "tap the Login button");
+      assert.ok(capturedPrompt.includes("on 2 past run(s)"), "should report exactly 2 past failures for this instruction, not the unrelated or successful ones");
+      assert.ok(capturedPrompt.includes("no confident match -- two similar buttons"));
+      assert.ok(capturedPrompt.includes("resolved but the click did nothing"));
+      assert.ok(!capturedPrompt.includes("unrelated failure"), "a different instruction's failure must not leak into this prompt");
+    } finally {
+      restore();
+    }
+  });
+
+  await test("resolveSemanticAction's prompt has no past-failure note when the log has no history for this instruction", async () => {
+    let capturedPrompt;
+    const { semanticAct, restore } = loadWithFakeOllama(async (prompt) => {
+      capturedPrompt = prompt;
+      return { ref: 3 };
+    });
+    try {
+      await semanticAct.resolveSemanticAction(ANDROID_LOGIN_SCREEN, "tap a never-before-seen instruction with no log history");
+      assert.ok(!capturedPrompt.includes("past run(s)"), "no history should mean no note, not an empty/awkward one");
     } finally {
       restore();
     }

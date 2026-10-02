@@ -31,6 +31,7 @@ const { resolveSemanticAction } = require("../generation/semantic-act");
 const { diffSnapshots, diffToText } = require("../generation/semantic-diff");
 const { inferSemanticAssertions } = require("../generation/semantic-assertions");
 const { buildSelector } = require("../generation/pipeline");
+const { logExecution, buildExecutionRecord } = require("../generation/execution-log");
 
 const SUPPORTED_KINDS = new Set(["tap", "type", "scroll", "tapIfExists"]);
 
@@ -104,6 +105,20 @@ const SUPPORTED_KINDS = new Set(["tap", "type", "scroll", "tapIfExists"]);
  * @returns {Promise<SemanticActionExecutionResult & {usedCache?: boolean, healedFromCache?: boolean}>}
  */
 async function executeSemanticAction(driver, instruction, options = {}) {
+  const result = await executeSemanticActionInner(driver, instruction, options);
+  // Automatic execution logging -- explicit requirement: this has to
+  // be a framework capability wired into the semantic layer itself,
+  // not a manual step, and not something that only runs for one log
+  // source. Every call through this function, whatever path it takes
+  // (fresh resolution, cache hit, self-heal, tapIfExists skip, a
+  // reported failure), is captured as one structured record with zero
+  // caller involvement. See generation/execution-log.js for the
+  // credential-safety contract and what this is/isn't a substitute for.
+  logExecution(buildExecutionRecord(instruction, options, result));
+  return result;
+}
+
+async function executeSemanticActionInner(driver, instruction, options = {}) {
   const kind = options.kind || "tap";
   const platform = options.platform === "ios" ? "ios" : "android";
 

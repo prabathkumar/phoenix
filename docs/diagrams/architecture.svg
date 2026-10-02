@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="860" viewBox="0 0 1180 860" font-family="Helvetica, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="900" viewBox="0 0 1180 900" font-family="Helvetica, Arial, sans-serif">
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#555"/>
@@ -6,12 +6,15 @@
     <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#b23b3b"/>
     </marker>
+    <marker id="arrowTeal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#0a7a7a"/>
+    </marker>
   </defs>
 
-  <rect x="0" y="0" width="1180" height="860" fill="#ffffff"/>
+  <rect x="0" y="0" width="1180" height="900" fill="#ffffff"/>
 
-  <text x="40" y="38" font-size="22" font-weight="700" fill="#1a1a1a">Phoenix — four layers, one engine underneath</text>
-  <text x="40" y="60" font-size="13" fill="#555">Guided recording (Act 1) → Semantic resolution (Act 2) → Vision fusion → Autonomous loop (Act 3, R&amp;D only)</text>
+  <text x="40" y="38" font-size="22" font-weight="700" fill="#1a1a1a">Phoenix — four layers, one engine, one shared AI runtime underneath</text>
+  <text x="40" y="60" font-size="13" fill="#555">Guided recording (Act 1) → Semantic resolution (Act 2) → Vision fusion → Autonomous loop (Act 3, R&amp;D only) — layers 2-4 all call the same Ollama model</text>
 
   <!-- ============ LAYER 1: GUIDED ============ -->
   <rect x="40" y="90" width="520" height="150" rx="10" fill="#eaf2ff" stroke="#3a6ea5" stroke-width="1.5"/>
@@ -20,7 +23,8 @@
   <text x="60" y="158" font-size="12.5" fill="#333">capture/recorder.js records each tap/type/scroll as an</text>
   <text x="60" y="176" font-size="12.5" fill="#333">exact, deterministic selector (resource-id / accessibility-id).</text>
   <text x="60" y="194" font-size="12.5" fill="#333">generation/pipeline.js infers assertions from the real diff and</text>
-  <text x="60" y="212" font-size="12.5" fill="#333">synthesizes a runnable WebDriver script — no AI judgment at runtime.</text>
+  <text x="60" y="212" font-size="12.5" fill="#333">synthesizes a runnable WebDriver script.</text>
+  <text x="60" y="230" font-size="11.5" fill="#777" font-style="italic">No AI/model call at runtime — the only layer that doesn't touch Ollama.</text>
 
   <!-- ============ LAYER 2: SEMANTIC ============ -->
   <rect x="40" y="270" width="520" height="230" rx="10" fill="#eafaf0" stroke="#2e8b57" stroke-width="1.5"/>
@@ -28,7 +32,7 @@
   <text x="60" y="320" font-size="12.5" fill="#333">A plain-language instruction ("tap the LOGIN button") replaces a</text>
   <text x="60" y="338" font-size="12.5" fill="#333">hand-authored selector. generation/semantic-act.js's</text>
   <text x="60" y="356" font-size="12.5" fill="#333">resolveSemanticAction() grounds the live accessibility tree into a</text>
-  <text x="60" y="374" font-size="12.5" fill="#333">numbered element list and asks the local model to pick one —</text>
+  <text x="60" y="374" font-size="12.5" fill="#0a7a7a" font-weight="600">numbered element list and sends it to Ollama to pick one —</text>
   <text x="60" y="392" font-size="12.5" fill="#333">or say "unresolved," never guess.</text>
   <text x="60" y="414" font-size="12.5" fill="#333">engine/semantic-act-executor.js then acts live via the same</text>
   <text x="60" y="432" font-size="12.5" fill="#333">WebDriver calls the guided path uses, and diffs the screen</text>
@@ -42,31 +46,37 @@
   <text x="640" y="140" font-size="12.5" fill="#333">Text alone is ambiguous on icon-only controls (an unlabeled</text>
   <text x="640" y="158" font-size="12.5" fill="#333">"Right Icon" that's actually Logout; two sibling buttons with</text>
   <text x="640" y="176" font-size="12.5" fill="#333">generic ids). When a screenshot is available, semantic-act.js</text>
-  <text x="640" y="194" font-size="12.5" fill="#333">sends it alongside the numbered element list via Ollama's</text>
-  <text x="640" y="212" font-size="12.5" fill="#333">multimodal `images` field (generation/llm.js) — the model</text>
+  <text x="640" y="194" font-size="12.5" fill="#0a7a7a" font-weight="600">sends it alongside the numbered element list via Ollama's</text>
+  <text x="640" y="212" font-size="12.5" fill="#0a7a7a" font-weight="600">multimodal `images` field (generation/llm.js) — the model</text>
   <text x="640" y="230" font-size="12.5" fill="#333">confirms its text-based match against what the screen actually</text>
   <text x="640" y="248" font-size="12.5" fill="#333">looks like. Omitted entirely for a text-only model — nothing breaks,</text>
   <text x="640" y="266" font-size="12.5" fill="#333">it just resolves on tree text alone, the same as before fusion existed.</text>
 
   <!-- ============ LAYER 4: LOOP ============ -->
   <rect x="620" y="300" width="520" height="200" rx="10" fill="#f5edfa" stroke="#7a4fa0" stroke-width="1.5"/>
-  <text x="640" y="328" font-size="16" font-weight="700" fill="#5a3178">4. Autonomous loop (Act 3) — R&amp;D only, not shipped</text>
+  <text x="640" y="328" font-size="16" font-weight="700" fill="#5a3178">4. Autonomous loop (Act 3) — R&amp;D only, not customer-facing</text>
   <text x="640" y="350" font-size="12.5" fill="#333">engine/semantic-loop.js takes a goal in plain language instead of a</text>
-  <text x="640" y="368" font-size="12.5" fill="#333">step list: read the snapshot → ask the model to decide the single</text>
-  <text x="640" y="386" font-size="12.5" fill="#333">next action (or stop) → execute it through the same executor as</text>
-  <text x="640" y="404" font-size="12.5" fill="#333">layer 2 → feed the resulting diff back in as context → repeat.</text>
+  <text x="640" y="368" font-size="12.5" fill="#0a7a7a" font-weight="600">step list: read the snapshot → ask Ollama to decide the single next</text>
+  <text x="640" y="386" font-size="12.5" fill="#333">action (or stop) → execute it through the same executor as layer 2</text>
+  <text x="640" y="404" font-size="12.5" fill="#333">→ feed the resulting diff back in as context → repeat.</text>
   <text x="640" y="426" font-size="12.5" fill="#333">Stops explicitly on: goal reached, model asks to stop, an action</text>
   <text x="640" y="444" font-size="12.5" fill="#333">fails/can't resolve, or a hard step-count limit — never a silent</text>
-  <text x="640" y="462" font-size="12.5" fill="#333">retry loop. Not wired into run-session.js or any product surface yet.</text>
-  <text x="640" y="484" font-size="12.5" fill="#7a4fa0" font-weight="600">Exercised against internal apps only, until proven.</text>
+  <text x="640" y="462" font-size="12.5" fill="#333">retry loop. Wired into run-batch-executions.js's "loop" mode, but</text>
+  <text x="640" y="480" font-size="12.5" fill="#7a4fa0" font-weight="600">that mode prints its own "R&amp;D/exploration only" warning at runtime.</text>
+
+  <!-- ============ SHARED AI RUNTIME: OLLAMA ============ -->
+  <rect x="40" y="520" width="1100" height="90" rx="10" fill="#e6f7f7" stroke="#0a7a7a" stroke-width="1.5"/>
+  <text x="60" y="546" font-size="15" font-weight="700" fill="#0a7a7a">Shared AI runtime — one model, three callers</text>
+  <text x="60" y="568" font-size="12.5" fill="#333">generation/llm.js's callOllamaJson() is the ONLY place any layer talks to a model — a self-hosted Ollama server (local today; frothAI's Ollama endpoint is a config</text>
+  <text x="60" y="586" font-size="12.5" fill="#333">change, not a code change: PHOENIX_OLLAMA_HOST / PHOENIX_OLLAMA_MODEL). Layers 2-4 all call it; layer 1 (guided) never does. Every call can return "can't tell" rather than a guess.</text>
 
   <!-- ============ BOTTOM: shared contract + known gap ============ -->
-  <rect x="40" y="540" width="1100" height="130" rx="10" fill="#fdecec" stroke="#b23b3b" stroke-width="1.5"/>
-  <text x="60" y="568" font-size="16" font-weight="700" fill="#8a1f1f">What ties all four together — and the one gap none of them closes</text>
-  <text x="60" y="592" font-size="12.5" fill="#333">Every layer reports honestly rather than guessing: "unresolved" beats a confident wrong click, every time, across all four. engine/auto-heal.js is where layer 1</text>
-  <text x="60" y="610" font-size="12.5" fill="#333">and layer 2 meet — a guided script's recorded selector falls back to a fresh semantic resolution if it stops matching or starts matching the wrong element.</text>
-  <text x="60" y="632" font-size="12.5" fill="#8a1f1f" font-weight="600">Known gap: "succeeded" means no step errored — it is not proof the real on-screen goal was reached. A step can click a real, functioning, WRONG element and</text>
-  <text x="60" y="650" font-size="12.5" fill="#8a1f1f" font-weight="600">still report success (closed per-flow today only by hand-authored tapIfExists selectors). Closing this generally needs outcome verification, not yet built.</text>
+  <rect x="40" y="630" width="1100" height="140" rx="10" fill="#fdecec" stroke="#b23b3b" stroke-width="1.5"/>
+  <text x="60" y="658" font-size="16" font-weight="700" fill="#8a1f1f">What ties all four together — and the one gap none of them closes</text>
+  <text x="60" y="682" font-size="12.5" fill="#333">Every layer reports honestly rather than guessing: "unresolved" beats a confident wrong click, every time, across all four. engine/auto-heal.js is where layer 1</text>
+  <text x="60" y="700" font-size="12.5" fill="#333">and layer 2 meet — a guided script's recorded selector falls back to a fresh semantic resolution if it stops matching or starts matching the wrong element.</text>
+  <text x="60" y="722" font-size="12.5" fill="#8a1f1f" font-weight="600">Known gap: "succeeded" means no step errored — it is not proof the real on-screen goal was reached. A step can click a real, functioning, WRONG element and</text>
+  <text x="60" y="740" font-size="12.5" fill="#8a1f1f" font-weight="600">still report success (closed per-flow today only by hand-authored tapIfExists selectors). Closing this generally needs outcome verification, not yet built.</text>
 
   <!-- ============ Arrows ============ -->
   <!-- Guided -> Semantic (vertical, left column) -->
@@ -81,10 +91,17 @@
   <path d="M1000,440 C 1060,440 1060,380 1000,360" stroke="#7a4fa0" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
   <text x="1008" y="405" font-size="11" fill="#7a4fa0">diff feeds</text>
   <text x="1008" y="418" font-size="11" fill="#7a4fa0">back in</text>
-  <!-- All four -> bottom contract -->
-  <path d="M300,500 L300,538" stroke="#b23b3b" stroke-width="2" marker-end="url(#arrowRed)"/>
-  <path d="M880,500 L880,538" stroke="#b23b3b" stroke-width="2" marker-end="url(#arrowRed)"/>
 
-  <text x="40" y="700" font-size="11.5" fill="#777">Code map: capture/recorder.js + generation/pipeline.js (layer 1) · generation/semantic-act.js + engine/semantic-act-executor.js (layer 2, incl. self-heal) ·</text>
-  <text x="40" y="716" font-size="11.5" fill="#777">generation/llm.js's `images` field (layer 3) · engine/semantic-loop.js (layer 4) · engine/auto-heal.js (bridges 1↔2) · docs/PHOENIX_SPEC.md (full detail)</text>
+  <!-- Semantic -> Ollama -->
+  <path d="M300,500 L300,518" stroke="#0a7a7a" stroke-width="2.5" marker-end="url(#arrowTeal)"/>
+  <!-- Loop -> Ollama -->
+  <path d="M880,500 L880,518" stroke="#0a7a7a" stroke-width="2.5" marker-end="url(#arrowTeal)"/>
+  <!-- Vision -> Ollama (routed around the right edge) -->
+  <path d="M1142,195 C 1168,195 1168,565 1142,565" stroke="#0a7a7a" stroke-width="2.5" fill="none" marker-end="url(#arrowTeal)"/>
+
+  <!-- Ollama -> ties-together box -->
+  <path d="M590,610 L590,628" stroke="#b23b3b" stroke-width="2" marker-end="url(#arrowRed)"/>
+
+  <text x="40" y="800" font-size="11.5" fill="#777">Code map: capture/recorder.js + generation/pipeline.js (layer 1) · generation/semantic-act.js + engine/semantic-act-executor.js (layer 2, incl. self-heal) ·</text>
+  <text x="40" y="816" font-size="11.5" fill="#777">generation/llm.js (shared Ollama runtime + layer 3's `images` field) · engine/semantic-loop.js (layer 4) · engine/auto-heal.js (bridges 1↔2) · docs/PHOENIX_SPEC.md (full detail)</text>
 </svg>

@@ -29,7 +29,7 @@
 
 const { buildGroundedSnapshot, snapshotToText, findByRef } = require("./semantic-snapshot");
 const { callOllamaJson } = require("./llm");
-const { getPastFailures, getDeadSelectors } = require("./execution-log");
+const { getPastFailures, getDeadSelectors, getExpectFailedSelectors } = require("./execution-log");
 
 /**
  * @typedef {Object} SemanticActionResult
@@ -231,8 +231,37 @@ async function resolveSemanticAction(pageSourceXml, instruction, options = {}) {
           .map((el) => el.ref)
       );
 
+  // Cross-run "wrong but functional click" exclusion (the parallel case
+  // to deadRefs above, see getExpectFailedSelectors()'s doc comment): a
+  // selector that already produced a REAL diff on a prior run of this
+  // exact instruction, but whose declared `expect` still never held
+  // even after the outcome-settle retry, is removed from the candidate
+  // list the same way a dead (no-op) tap is -- it's a different failure
+  // shape (something happened, just not the right thing) but just as
+  // concrete and just as safe to hard-exclude, for the same reason
+  // deadRefs is safe to: a proven fact about a specific control, not a
+  // judgment call about how the instruction should be read.
+  const expectFailedSelectors = options.kind === "tap" ? getExpectFailedSelectors(instruction) : [];
+  const expectFailedRefs = expectFailedSelectors.length === 0
+    ? new Set()
+    : new Set(
+        snapshot
+          .filter((el) =>
+            expectFailedSelectors.some(
+              (sel) =>
+                (sel.strategy === "resource-id" && el.resourceId === sel.value) ||
+                (sel.strategy === "accessibility-id" && el.accessibilityId === sel.value) ||
+                (sel.strategy === "text" && el.label === sel.value)
+            )
+          )
+          .map((el) => el.ref)
+      );
+
   const allElements = snapshot.filter(
-    (el) => !(options.excludedRefs && options.excludedRefs.includes(el.ref)) && !deadRefs.has(el.ref)
+    (el) =>
+      !(options.excludedRefs && options.excludedRefs.includes(el.ref)) &&
+      !deadRefs.has(el.ref) &&
+      !expectFailedRefs.has(el.ref)
   );
 
   if (allElements.length === 0) {

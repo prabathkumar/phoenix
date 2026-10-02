@@ -23,6 +23,7 @@
 
 const fs = require("fs");
 const { verifyExpectedOutcome, validateExpectShape } = require("../generation/outcome-verification");
+const { logExecution } = require("../generation/execution-log");
 
 // Default pause for a "wait" step when the step doesn't specify its own
 // durationMs. Exists for a real timing gap found on real hardware
@@ -305,6 +306,36 @@ async function runScriptSteps(driver, steps, { platform, executeSemanticAction, 
     if (!result.skipped && step.expect) {
       const verification = verifyExpectedOutcome(result.diff, step.expect);
       if (!verification.ok) {
+        // Cross-run "wrong but functional click" exclusion (generation/
+        // execution-log.js's getExpectFailedSelectors(), the parallel
+        // case to the dead-tap exclusion already logged inside
+        // executeSemanticAction itself): a tap that produced a REAL,
+        // non-empty diff (so it's not a dead tap -- something genuinely
+        // happened) but still failed its step's own declared `expect`,
+        // even after actAndDiff's outcome-settle retry already gave it
+        // a generous window to settle, is logged here -- the one place
+        // that both knows `expect` was declared and has already made
+        // the final, post-retry verification call. Scoped to a real
+        // diff (diffSummary !== "No visible change.") on purpose: a
+        // "No visible change." tap is already the OTHER bug class
+        // (getDeadSelectors()'s dead-tap exclusion, logged separately
+        // inside executeSemanticAction) and must not double-count here
+        // as a different failure shape it isn't. Requires a resolved
+        // `selector` to log anything useful -- a step with no diff
+        // captured at all (checked above implicitly: result.diff is
+        // falsy) or no selector (e.g. a scroll) has nothing concrete to
+        // record as the wrong candidate.
+        if (result.selector && result.diffSummary !== "No visible change.") {
+          logExecution({
+            instruction: step.instruction,
+            kind: step.kind,
+            success: true,
+            diffSummary: result.diffSummary,
+            selector: result.selector,
+            expectFailed: true,
+            reason: verification.reason,
+          });
+        }
         if (step.optional) continue;
         return {
           success: false,

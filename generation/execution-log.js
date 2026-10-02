@@ -382,4 +382,86 @@ function getDeadSelectors(instruction, options = {}) {
   }
 }
 
-module.exports = { logExecution, buildExecutionRecord, logPath, getPastFailures, getDeadSelectors, pruneOldExecutions, retentionDays };
+/**
+ * Reads back selectors already proven, on a PRIOR run of the SAME
+ * instruction, to be a "wrong but functional click" -- the parallel
+ * exclusion case to getDeadSelectors() above, for the other half of
+ * the #13-#18 "wrong but functional click" bug class (docs/STATUS.md,
+ * generation/outcome-verification.js's module doc): a tap that
+ * produces a real, non-empty diff (so it's NOT a dead tap -- something
+ * genuinely happened) but whose step had a declared `expect` that
+ * still didn't hold, even after engine/semantic-act-executor.js's
+ * outcome-settle retry gave it every chance to. That combination can
+ * only mean the tap landed on the wrong real control, not a timing
+ * race or a no-op.
+ *
+ * Reads records written with `expectFailed: true` -- see
+ * engine/test-case-runner.js's runScriptSteps(), the only writer: it's
+ * the one place that both knows a step declared an `expect` AND has
+ * already re-checked verifyExpectedOutcome() against the diff the
+ * outcome-settle retry (if any) produced, so this never has to
+ * re-derive "did the retry already happen" here. That record's own
+ * `selector` (NOT `deadSelector`, which this bug class has no use for
+ * -- there is no "original, since-healed" selector here, just the one
+ * real, wrong click) is the proven-wrong-outcome candidate.
+ *
+ * Same hard-exclusion reasoning as getDeadSelectors(): a selector that
+ * produced a real diff but never satisfied its step's own declared
+ * outcome, even after a generous settle-retry window, is a concrete,
+ * already-observed fact about a specific resource-id/accessibility-id/
+ * text ("this control is not the one the instruction means"), not a
+ * judgment call -- safe to exclude outright rather than only hint at.
+ *
+ * @param {string} instruction
+ * @param {Object} [options]
+ * @param {number} [options.limit] - most recent N distinct
+ *   expect-failed selectors to return (default 5).
+ * @returns {Array<{strategy: string, value: string}>}
+ */
+function getExpectFailedSelectors(instruction, options = {}) {
+  const limit = options.limit || 5;
+  try {
+    const filePath = logPath();
+    if (!fs.existsSync(filePath)) return [];
+    const lines = fs.readFileSync(filePath, "utf8").split("\n").filter(Boolean);
+    const seen = new Set();
+    const expectFailedSelectors = [];
+    // Walk from the end -- most recent first, same convention as
+    // getDeadSelectors()/getPastFailures() -- so a long-since-fixed
+    // mis-match (the app changed, the real control moved) doesn't crowd
+    // out a more recent one.
+    for (let i = lines.length - 1; i >= 0 && expectFailedSelectors.length < limit; i -= 1) {
+      let record;
+      try {
+        record = JSON.parse(lines[i]);
+      } catch {
+        continue; // tolerate a corrupt/partial line, same as getDeadSelectors()
+      }
+      if (record.instruction !== instruction || record.kind !== "tap" || !record.expectFailed) continue;
+
+      const candidate = record.selector;
+      if (!candidate || !candidate.strategy || !candidate.value) continue;
+
+      const key = `${candidate.strategy}:${candidate.value}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      expectFailedSelectors.push({ strategy: candidate.strategy, value: candidate.value });
+    }
+    return expectFailedSelectors;
+  } catch (err) {
+    // Fail-soft, same contract as getDeadSelectors().
+    console.warn("[generation/execution-log] couldn't read expect-failed selectors (continuing without them):", err.message);
+    return [];
+  }
+}
+
+module.exports = {
+  logExecution,
+  buildExecutionRecord,
+  logPath,
+  getPastFailures,
+  getDeadSelectors,
+  getExpectFailedSelectors,
+  pruneOldExecutions,
+  retentionDays,
+};

@@ -124,21 +124,34 @@ mechanism it extends. Covered by dedicated tests in
 the dead element out of the prompt, scoped correctly by kind and
 instruction).
 
-**Narrowed, but still not built:** the wrong-but-functional-click class
-(a tap that *does* visibly change the screen, just not the way the
-instruction meant — `docs/STATUS.md` bugs #13–#18) still has no
-cross-run memory. One real subset of it IS now closed, though: a tap
-that hits the *correct* element but whose declared `expect` outcome
-hadn't rendered YET (a slow network load, not a wrong click) no longer
-gets misreported as a failure — `engine/semantic-act-executor.js`'s
-outcome-settle retry (see `docs/STATUS.md`'s Add-ons-tap writeup) polls
-past that race before judging. What's still missing is the genuinely
-*wrong*-click case: a selector whose action succeeded, whose declared
-`expect` outcome was checked (after the settle retry above) and still
-never held. Extending `getDeadSelectors()`'s same persisted-exclusion
-mechanism to that case is the natural next increment, once more steps
-carry `expect` annotations (still only 3, in `test-cases/addons.json`)
-to learn from.
+**Closed:** the wrong-but-functional-click class (a tap that *does*
+visibly change the screen, just not the way the instruction meant —
+`docs/STATUS.md` bugs #13–#18) now has cross-run memory too, alongside
+the dead-tap (no-op) case `getDeadSelectors()` already closed. One
+subset was closed first: a tap that hits the *correct* element but
+whose declared `expect` outcome hadn't rendered YET (a slow network
+load, not a wrong click) no longer gets misreported as a failure —
+`engine/semantic-act-executor.js`'s outcome-settle retry (see
+`docs/STATUS.md`'s Add-ons-tap writeup) polls past that race before
+judging. The remaining, genuinely *wrong*-click case is now closed too:
+`engine/test-case-runner.js`'s `runScriptSteps()` is the one place that
+both knows a step declared an `expect` and has already made the final,
+post-settle-retry `verifyExpectedOutcome()` call — when that call fails
+on a tap that produced a REAL, non-empty diff (so it's not a dead tap —
+something genuinely happened, just not the declared outcome), it logs
+an execution record with `expectFailed: true` and the selector that was
+actually tapped. `generation/execution-log.js`'s new
+`getExpectFailedSelectors(instruction)` reads those back (same
+dedup/limit/most-recent-first shape as `getDeadSelectors()`), and
+`generation/semantic-act.js`'s `resolveSemanticAction()` removes any
+matching candidate from the list before the model ever sees it,
+exactly alongside the existing `deadRefs` exclusion — a `tap` whose
+declared outcome has already, concretely proven wrong on a prior run of
+the exact same instruction is excluded the same way a no-op tap is,
+for the same reason: a proven fact about a specific control, not a
+judgment call. Covered by `generation/test/execution-log.test.js`,
+`generation/test/semantic-act.test.js`, and
+`engine/test/test-case-runner.test.js`.
 
 ## 3. Recommendation, stated plainly
 

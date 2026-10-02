@@ -21,7 +21,7 @@ const path = require("path");
 const TMP_LOG_PATH = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "phoenix-exec-log-")), "executions.jsonl");
 process.env.PHOENIX_TRAINING_LOG_PATH = TMP_LOG_PATH;
 
-const { logExecution, buildExecutionRecord, logPath, getDeadSelectors, pruneOldExecutions, retentionDays } = require("../execution-log");
+const { logExecution, buildExecutionRecord, logPath, getDeadSelectors, getExpectFailedSelectors, pruneOldExecutions, retentionDays } = require("../execution-log");
 
 function test(name, fn) {
   try {
@@ -248,6 +248,122 @@ test("getDeadSelectors returns [] when there's no log file yet, and tolerates a 
       selector: { strategy: "resource-id", value: "survives_the_corrupt_line" },
     }) + "\n");
     assert.deepStrictEqual(getDeadSelectors("tap anything"), [{ strategy: "resource-id", value: "survives_the_corrupt_line" }]);
+  } finally {
+    process.env.PHOENIX_TRAINING_LOG_PATH = originalPath;
+  }
+});
+
+test("getExpectFailedSelectors returns a real-diff tap's own selector when its step was logged with expectFailed: true", () => {
+  logExecution({
+    instruction: "tap the Profile tab",
+    kind: "tap",
+    success: true,
+    diffSummary: "Appeared: \"Add-On Details\".",
+    selector: { strategy: "resource-id", value: "wrong_but_real_button" },
+    expectFailed: true,
+  });
+  const failed = getExpectFailedSelectors("tap the Profile tab");
+  assert.deepStrictEqual(failed, [{ strategy: "resource-id", value: "wrong_but_real_button" }]);
+});
+
+test("getExpectFailedSelectors ignores a record with no expectFailed flag (an ordinary successful/verified tap)", () => {
+  logExecution({
+    instruction: "tap the Profile tab 2",
+    kind: "tap",
+    success: true,
+    diffSummary: "Appeared: \"Profile\".",
+    selector: { strategy: "resource-id", value: "actually_correct_button" },
+  });
+  assert.deepStrictEqual(getExpectFailedSelectors("tap the Profile tab 2"), []);
+});
+
+test("getExpectFailedSelectors never overlaps with getDeadSelectors (different bug classes, not double-counted)", () => {
+  logExecution({
+    instruction: "tap the Profile tab 3",
+    kind: "tap",
+    success: true,
+    diffSummary: "No visible change.",
+    selector: { strategy: "resource-id", value: "dead_end_button" },
+  });
+  logExecution({
+    instruction: "tap the Profile tab 3",
+    kind: "tap",
+    success: true,
+    diffSummary: "Appeared: \"Add-On Details\".",
+    selector: { strategy: "resource-id", value: "wrong_but_real_button_3" },
+    expectFailed: true,
+  });
+  assert.deepStrictEqual(getDeadSelectors("tap the Profile tab 3"), [{ strategy: "resource-id", value: "dead_end_button" }]);
+  assert.deepStrictEqual(getExpectFailedSelectors("tap the Profile tab 3"), [{ strategy: "resource-id", value: "wrong_but_real_button_3" }]);
+});
+
+test("getExpectFailedSelectors scopes to kind \"tap\" and the exact instruction string only", () => {
+  logExecution({
+    instruction: "tap the Profile tab 4",
+    kind: "type", // not a tap -- must never be treated as an expect-failed candidate
+    success: true,
+    diffSummary: "Appeared: \"X\".",
+    selector: { strategy: "resource-id", value: "not_actually_relevant" },
+    expectFailed: true,
+  });
+  logExecution({
+    instruction: "a completely different instruction",
+    kind: "tap",
+    success: true,
+    diffSummary: "Appeared: \"X\".",
+    selector: { strategy: "resource-id", value: "also_not_relevant" },
+    expectFailed: true,
+  });
+  assert.deepStrictEqual(getExpectFailedSelectors("tap the Profile tab 4"), []);
+});
+
+test("getExpectFailedSelectors dedups repeated selectors and respects limit, most recent first", () => {
+  for (let i = 0; i < 3; i += 1) {
+    logExecution({
+      instruction: "tap the flaky profile tab",
+      kind: "tap",
+      success: true,
+      diffSummary: "Appeared: \"X\".",
+      selector: { strategy: "resource-id", value: "same_wrong_button" },
+      expectFailed: true,
+    });
+  }
+  logExecution({
+    instruction: "tap the flaky profile tab",
+    kind: "tap",
+    success: true,
+    diffSummary: "Appeared: \"Y\".",
+    selector: { strategy: "accessibility-id", value: "second_wrong_control" },
+    expectFailed: true,
+  });
+  const failed = getExpectFailedSelectors("tap the flaky profile tab");
+  assert.strictEqual(failed.length, 2, "repeated identical expect-failed selectors should be deduped to one entry");
+  assert.deepStrictEqual(failed, [
+    { strategy: "accessibility-id", value: "second_wrong_control" }, // most recent
+    { strategy: "resource-id", value: "same_wrong_button" },
+  ]);
+
+  const limited = getExpectFailedSelectors("tap the flaky profile tab", { limit: 1 });
+  assert.strictEqual(limited.length, 1);
+  assert.deepStrictEqual(limited[0], { strategy: "accessibility-id", value: "second_wrong_control" });
+});
+
+test("getExpectFailedSelectors returns [] when there's no log file yet, and tolerates a corrupt line", () => {
+  const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), "phoenix-exec-log-empty-2-"));
+  const originalPath = process.env.PHOENIX_TRAINING_LOG_PATH;
+  process.env.PHOENIX_TRAINING_LOG_PATH = path.join(emptyDir, "executions.jsonl");
+  try {
+    assert.deepStrictEqual(getExpectFailedSelectors("tap anything"), []);
+
+    fs.writeFileSync(process.env.PHOENIX_TRAINING_LOG_PATH, "not valid json\n" + JSON.stringify({
+      instruction: "tap anything",
+      kind: "tap",
+      success: true,
+      diffSummary: "Appeared: \"X\".",
+      selector: { strategy: "resource-id", value: "survives_the_corrupt_line" },
+      expectFailed: true,
+    }) + "\n");
+    assert.deepStrictEqual(getExpectFailedSelectors("tap anything"), [{ strategy: "resource-id", value: "survives_the_corrupt_line" }]);
   } finally {
     process.env.PHOENIX_TRAINING_LOG_PATH = originalPath;
   }

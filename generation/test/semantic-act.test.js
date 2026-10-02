@@ -797,6 +797,102 @@ async function test(name, fn) {
     }
   });
 
+  await test("resolveSemanticAction excludes a selector already proven to be a \"wrong but functional click\" (expectFailed) for this exact instruction on a PRIOR run", async () => {
+    // Simulates engine/test-case-runner.js's own expectFailed record: a
+    // tap that produced a REAL diff (not "No visible change.") but
+    // whose step's declared `expect` never held, even after the
+    // outcome-settle retry -- the parallel case to the dead-selector
+    // tests above, see getExpectFailedSelectors()'s doc comment.
+    logExecution({
+      instruction: "tap the Profile tab",
+      kind: "tap",
+      success: true,
+      diffSummary: "Appeared: \"Add-On Details\".",
+      selector: { strategy: "resource-id", value: "com.phoenix.demo:id/login_button" },
+      expectFailed: true,
+    });
+
+    const WRONG_BUTTON_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy>
+  <android.widget.FrameLayout>
+    <android.widget.Button resource-id="com.phoenix.demo:id/login_button" text="Log In" bounds="[100,560][980,660]" />
+    <android.widget.Button resource-id="com.phoenix.demo:id/other_button" text="Other" bounds="[100,700][980,800]" />
+  </android.widget.FrameLayout>
+</hierarchy>`;
+    const calls = [];
+    const { semanticAct, restore } = loadWithFakeOllama(async (prompt) => {
+      calls.push(prompt);
+      return { ref: 2 }; // the only remaining candidate, "Other"
+    });
+    try {
+      const result = await semanticAct.resolveSemanticAction(WRONG_BUTTON_SCREEN, "tap the Profile tab", { kind: "tap" });
+      assert.strictEqual(result.resolved, true);
+      // Excluded from the prompt text entirely -- the model never even sees it as an option.
+      assert.ok(!calls[0].includes("Log In"));
+    } finally {
+      restore();
+    }
+  });
+
+  await test("resolveSemanticAction's cross-run expect-failed exclusion is scoped to kind \"tap\" only -- a \"type\" resolution still offers the same element", async () => {
+    logExecution({
+      instruction: "focus the comment field 2",
+      kind: "tap",
+      success: true,
+      diffSummary: "Appeared: \"X\".",
+      selector: { strategy: "resource-id", value: "com.phoenix.demo:id/login_button" },
+      expectFailed: true,
+    });
+
+    const ONE_BUTTON_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy>
+  <android.widget.FrameLayout>
+    <android.widget.EditText resource-id="com.phoenix.demo:id/login_button" text="" bounds="[100,560][980,660]" />
+  </android.widget.FrameLayout>
+</hierarchy>`;
+    const calls = [];
+    const { semanticAct, restore } = loadWithFakeOllama(async (prompt) => {
+      calls.push(prompt);
+      return { ref: 1 };
+    });
+    try {
+      const result = await semanticAct.resolveSemanticAction(ONE_BUTTON_SCREEN, "focus the comment field 2", { kind: "type" });
+      assert.strictEqual(result.resolved, true, "an expect-failed TAP result must not exclude the same element from a different kind of action");
+    } finally {
+      restore();
+    }
+  });
+
+  await test("resolveSemanticAction's cross-run expect-failed exclusion never crosses instructions", async () => {
+    logExecution({
+      instruction: "tap the Add-ons card 2",
+      kind: "tap",
+      success: true,
+      diffSummary: "Appeared: \"X\".",
+      selector: { strategy: "resource-id", value: "com.phoenix.demo:id/login_button" },
+      expectFailed: true,
+    });
+
+    const WRONG_BUTTON_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy>
+  <android.widget.FrameLayout>
+    <android.widget.Button resource-id="com.phoenix.demo:id/login_button" text="Log In" bounds="[100,560][980,660]" />
+  </android.widget.FrameLayout>
+</hierarchy>`;
+    const calls = [];
+    const { semanticAct, restore } = loadWithFakeOllama(async (prompt) => {
+      calls.push(prompt);
+      return { ref: 1 };
+    });
+    try {
+      const result = await semanticAct.resolveSemanticAction(WRONG_BUTTON_SCREEN, "tap a second unrelated different instruction", { kind: "tap" });
+      assert.strictEqual(result.resolved, true);
+      assert.ok(calls[0].includes("Log In"), "an expect-failed selector recorded for a DIFFERENT instruction must never exclude anything here");
+    } finally {
+      restore();
+    }
+  });
+
   if (process.exitCode) {
     console.error("\ngeneration/semantic-act tests FAILED");
     process.exit(1);

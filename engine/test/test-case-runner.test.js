@@ -554,6 +554,55 @@ function writeTempJson(content) {
     assert.strictEqual(result.updatedSteps[0].resolvedSelector, undefined);
   });
 
+  await run("runScriptSteps logs an expectFailed execution-log record when a tap produces a real diff but never satisfies its declared expect", async () => {
+    const tmpLogPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "phoenix-runner-exec-log-")), "executions.jsonl");
+    const originalPath = process.env.PHOENIX_TRAINING_LOG_PATH;
+    process.env.PHOENIX_TRAINING_LOG_PATH = tmpLogPath;
+    try {
+      const steps = [{ kind: "tap", instruction: "tap Profile", expect: { appeared: ["Profile"] } }];
+      const result = await runScriptSteps({}, steps, {
+        platform: "android",
+        executeSemanticAction: async () => ({
+          success: true,
+          selector: { strategy: "resource-id", value: "wrong_but_real_button" },
+          diffSummary: "Appeared: \"Add-On Details\".",
+          diff: { appeared: [{ label: "Add-On Details" }], disappeared: [] },
+        }),
+      });
+      assert.strictEqual(result.success, false);
+      const lines = fs.readFileSync(tmpLogPath, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+      assert.strictEqual(lines.length, 1);
+      assert.strictEqual(lines[0].instruction, "tap Profile");
+      assert.strictEqual(lines[0].kind, "tap");
+      assert.strictEqual(lines[0].expectFailed, true);
+      assert.deepStrictEqual(lines[0].selector, { strategy: "resource-id", value: "wrong_but_real_button" });
+    } finally {
+      process.env.PHOENIX_TRAINING_LOG_PATH = originalPath;
+    }
+  });
+
+  await run("runScriptSteps does NOT log an expectFailed record for a dead (\"No visible change.\") tap -- that's the OTHER bug class, logged elsewhere", async () => {
+    const tmpLogPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "phoenix-runner-exec-log-")), "executions.jsonl");
+    const originalPath = process.env.PHOENIX_TRAINING_LOG_PATH;
+    process.env.PHOENIX_TRAINING_LOG_PATH = tmpLogPath;
+    try {
+      const steps = [{ kind: "tap", instruction: "tap Profile", expect: { appeared: ["Profile"] } }];
+      const result = await runScriptSteps({}, steps, {
+        platform: "android",
+        executeSemanticAction: async () => ({
+          success: true,
+          selector: { strategy: "resource-id", value: "dead_button" },
+          diffSummary: "No visible change.",
+          diff: { appeared: [], disappeared: [] },
+        }),
+      });
+      assert.strictEqual(result.success, false);
+      assert.ok(!fs.existsSync(tmpLogPath) || fs.readFileSync(tmpLogPath, "utf8").trim() === "", "a dead-tap verification failure must not also be logged as expectFailed");
+    } finally {
+      process.env.PHOENIX_TRAINING_LOG_PATH = originalPath;
+    }
+  });
+
   if (process.exitCode) {
     console.error("\nengine/test-case-runner tests FAILED");
     process.exit(1);

@@ -642,6 +642,43 @@ test("buildGroundedSnapshot surfaces the real PASSWORD tab button as an unambigu
   assert.notStrictEqual(useTacButton.ref, passwordButton.ref);
 });
 
+// Real bug found on a live BrowserStack iOS run (addons-run-ios-docker-8.log,
+// test-cases/addons.ios.json): a "type the phone number" instruction
+// resolved to "inputView" -- an XCUIElementTypeOther that is BOTH
+// visible="false" AND accessible="false", the keyboard's own hidden input
+// accessory container, not any real editable field -- because it carries
+// a `name` attribute and nothing excluded a genuinely dead element from
+// the candidate list. elementClear()/elementSendKeys() against it threw
+// no WebDriver error, so the run looked like it typed successfully while
+// the real "Yes Number" field (also present in this exact screen, see the
+// trimmed real XML below) stayed empty -- only surfacing much later as a
+// real backend "Invalid username/password entered" rejection against
+// correct-looking credentials.
+const IOS_REAL_SCREEN_WITH_HIDDEN_INPUT_VIEW = `<?xml version="1.0" encoding="UTF-8"?><AppiumAUT><XCUIElementTypeApplication type="XCUIElementTypeApplication" name="MyYes" label="MyYes" enabled="true" visible="true" accessible="false" x="0" y="0" width="393" height="852" index="0" traits="" processId="595" bundleId="my.yes.yes4g">
+  <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="Yes Number" name="Yes Number" label="Yes Number" enabled="true" visible="true" accessible="true" x="41" y="224" width="311" height="21" index="0" traits="StaticText"/>
+  <XCUIElementTypeTextField type="XCUIElementTypeTextField" value="" label="" enabled="true" visible="true" accessible="true" x="54" y="265" width="257" height="20" index="0" placeholderValue="" traits=""/>
+  <XCUIElementTypeOther type="XCUIElementTypeOther" name="inputView" enabled="true" visible="false" accessible="false" x="0" y="550" width="393" height="302" index="0" traits=""/>
+</XCUIElementTypeApplication></AppiumAUT>`;
+
+test("buildGroundedSnapshot excludes a hidden, inaccessible decoy element (real bug: \"inputView\", the keyboard's own hidden input accessory, was offered as a type-action candidate and silently swallowed the real phone number)", () => {
+  const elements = buildGroundedSnapshot(IOS_REAL_SCREEN_WITH_HIDDEN_INPUT_VIEW);
+
+  const inputView = elements.find((el) => el.accessibilityId === "inputView");
+  assert.strictEqual(inputView, undefined, "a visible=false AND accessible=false element must never appear as a candidate at all");
+
+  const textField = elements.find((el) => el.role === "XCUIElementTypeTextField");
+  assert.ok(textField, "the real (unlabeled) phone-number text field must still appear in the snapshot");
+
+  const yesNumberLabel = elements.find((el) => el.label === "Yes Number");
+  assert.ok(yesNumberLabel, "the sibling 'Yes Number' label must still appear, unaffected by the exclusion");
+});
+
+test("buildGroundedSnapshot does NOT exclude an element that is only visible=false (real bug ios14, see IOS_DUPLICATE_LOGIN_BUTTON_SCREEN above: a hidden-but-accessible button can still be genuinely clickable via accessibility id on iOS)", () => {
+  const elements = buildGroundedSnapshot(IOS_DUPLICATE_LOGIN_BUTTON_SCREEN);
+  const loginButtons = elements.filter((el) => el.accessibilityId === "LOGIN");
+  assert.strictEqual(loginButtons.length, 2, "the hidden LOGIN button (visible=false, no accessible attribute at all) must still be included -- only visible=false AND accessible=false together are excluded");
+});
+
 setImmediate(() => {
   if (process.exitCode) {
     console.error("\ngeneration/semantic-snapshot tests FAILED");

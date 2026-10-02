@@ -301,6 +301,36 @@ function buildGroundedSnapshot(pageSourceXml) {
         iosTagOccurrenceCounts.set(node.tagName, count);
         node.__iosClassChainIndex = count;
       }
+      // Found for real on a live BrowserStack iOS run (addons-run-ios-docker-8.log):
+      // a "type the phone number" instruction resolved to "inputView" -- an
+      // XCUIElementTypeOther with visible="false" AND accessible="false",
+      // the keyboard's own hidden input accessory container, not any kind
+      // of real editable field -- because it carries a `name` attribute and
+      // nothing upstream of this point excluded a genuinely dead element
+      // from being offered as a candidate at all. elementClear()/
+      // elementSendKeys() against it threw no error (WDA just silently
+      // no-ops), so the run looked like it typed successfully while the
+      // real Yes Number field stayed empty -- only surfacing much later as
+      // a real backend "Invalid username/password entered" rejection with
+      // correct-looking credentials.
+      //
+      // Deliberately narrower than excluding every visible="false" element:
+      // the ios14 regression test below (IOS_DUPLICATE_LOGIN_BUTTON_SCREEN)
+      // keeps a visible="false" LOGIN button in the candidate list on
+      // purpose, because that real bug showed iOS can still actually click
+      // a hidden-but-accessible element via its accessibility id -- a
+      // button hidden behind a new screen is still a real control. What
+      // makes "inputView" different and genuinely dead is BOTH attributes
+      // being false together: nothing both invisible and inaccessible can
+      // be a legitimate tap/type target, so only that combination is
+      // excluded here, before any of the label/role computation below.
+      const visibleAttr = node.getAttribute("visible");
+      const accessibleAttr = node.getAttribute("accessible");
+      if (visibleAttr === "false" && accessibleAttr === "false") {
+        const children = node.childNodes || [];
+        for (let i = 0; i < children.length; i += 1) walk(children[i], depth + 1, clickableAncestorForChildren);
+        return;
+      }
       const text = node.getAttribute("text") || node.getAttribute("label") || node.getAttribute("value");
       const contentDesc = node.getAttribute("content-desc") || node.getAttribute("name");
       const resourceId = node.getAttribute("resource-id") || undefined; // Android only

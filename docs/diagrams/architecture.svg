@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="860" viewBox="0 0 1180 860" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#555"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#b23b3b"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1180" height="860" fill="#ffffff"/>
+
+  <text x="40" y="38" font-size="22" font-weight="700" fill="#1a1a1a">Phoenix — four layers, one engine underneath</text>
+  <text x="40" y="60" font-size="13" fill="#555">Guided recording (Act 1) → Semantic resolution (Act 2) → Vision fusion → Autonomous loop (Act 3, R&amp;D only)</text>
+
+  <!-- ============ LAYER 1: GUIDED ============ -->
+  <rect x="40" y="90" width="520" height="150" rx="10" fill="#eaf2ff" stroke="#3a6ea5" stroke-width="1.5"/>
+  <text x="60" y="118" font-size="16" font-weight="700" fill="#1f4e79">1. Guided layer (Act 1) — shipped</text>
+  <text x="60" y="140" font-size="12.5" fill="#333">A human walks the flow once, live, in the browser.</text>
+  <text x="60" y="158" font-size="12.5" fill="#333">capture/recorder.js records each tap/type/scroll as an</text>
+  <text x="60" y="176" font-size="12.5" fill="#333">exact, deterministic selector (resource-id / accessibility-id).</text>
+  <text x="60" y="194" font-size="12.5" fill="#333">generation/pipeline.js infers assertions from the real diff and</text>
+  <text x="60" y="212" font-size="12.5" fill="#333">synthesizes a runnable WebDriver script — no AI judgment at runtime.</text>
+
+  <!-- ============ LAYER 2: SEMANTIC ============ -->
+  <rect x="40" y="270" width="520" height="230" rx="10" fill="#eafaf0" stroke="#2e8b57" stroke-width="1.5"/>
+  <text x="60" y="298" font-size="16" font-weight="700" fill="#1e6b3e">2. Semantic layer (Act 2) — shipped, proven on hardware</text>
+  <text x="60" y="320" font-size="12.5" fill="#333">A plain-language instruction ("tap the LOGIN button") replaces a</text>
+  <text x="60" y="338" font-size="12.5" fill="#333">hand-authored selector. generation/semantic-act.js's</text>
+  <text x="60" y="356" font-size="12.5" fill="#333">resolveSemanticAction() grounds the live accessibility tree into a</text>
+  <text x="60" y="374" font-size="12.5" fill="#333">numbered element list and asks the local model to pick one —</text>
+  <text x="60" y="392" font-size="12.5" fill="#333">or say "unresolved," never guess.</text>
+  <text x="60" y="414" font-size="12.5" fill="#333">engine/semantic-act-executor.js then acts live via the same</text>
+  <text x="60" y="432" font-size="12.5" fill="#333">WebDriver calls the guided path uses, and diffs the screen</text>
+  <text x="60" y="450" font-size="12.5" fill="#333">before/after to know what really happened.</text>
+  <text x="60" y="472" font-size="12.5" fill="#b23b3b" font-weight="600">Self-heal: a "No visible change" tap triggers one automatic retry,</text>
+  <text x="60" y="488" font-size="12.5" fill="#b23b3b" font-weight="600">excluding the dead element, before anything is reported — live, in-run.</text>
+
+  <!-- ============ LAYER 3: VISION ============ -->
+  <rect x="620" y="90" width="520" height="190" rx="10" fill="#fdf2e3" stroke="#c9890a" stroke-width="1.5"/>
+  <text x="640" y="118" font-size="16" font-weight="700" fill="#8a5a05">3. Vision fusion — shipped, opt-in</text>
+  <text x="640" y="140" font-size="12.5" fill="#333">Text alone is ambiguous on icon-only controls (an unlabeled</text>
+  <text x="640" y="158" font-size="12.5" fill="#333">"Right Icon" that's actually Logout; two sibling buttons with</text>
+  <text x="640" y="176" font-size="12.5" fill="#333">generic ids). When a screenshot is available, semantic-act.js</text>
+  <text x="640" y="194" font-size="12.5" fill="#333">sends it alongside the numbered element list via Ollama's</text>
+  <text x="640" y="212" font-size="12.5" fill="#333">multimodal `images` field (generation/llm.js) — the model</text>
+  <text x="640" y="230" font-size="12.5" fill="#333">confirms its text-based match against what the screen actually</text>
+  <text x="640" y="248" font-size="12.5" fill="#333">looks like. Omitted entirely for a text-only model — nothing breaks,</text>
+  <text x="640" y="266" font-size="12.5" fill="#333">it just resolves on tree text alone, the same as before fusion existed.</text>
+
+  <!-- ============ LAYER 4: LOOP ============ -->
+  <rect x="620" y="300" width="520" height="200" rx="10" fill="#f5edfa" stroke="#7a4fa0" stroke-width="1.5"/>
+  <text x="640" y="328" font-size="16" font-weight="700" fill="#5a3178">4. Autonomous loop (Act 3) — R&amp;D only, not shipped</text>
+  <text x="640" y="350" font-size="12.5" fill="#333">engine/semantic-loop.js takes a goal in plain language instead of a</text>
+  <text x="640" y="368" font-size="12.5" fill="#333">step list: read the snapshot → ask the model to decide the single</text>
+  <text x="640" y="386" font-size="12.5" fill="#333">next action (or stop) → execute it through the same executor as</text>
+  <text x="640" y="404" font-size="12.5" fill="#333">layer 2 → feed the resulting diff back in as context → repeat.</text>
+  <text x="640" y="426" font-size="12.5" fill="#333">Stops explicitly on: goal reached, model asks to stop, an action</text>
+  <text x="640" y="444" font-size="12.5" fill="#333">fails/can't resolve, or a hard step-count limit — never a silent</text>
+  <text x="640" y="462" font-size="12.5" fill="#333">retry loop. Not wired into run-session.js or any product surface yet.</text>
+  <text x="640" y="484" font-size="12.5" fill="#7a4fa0" font-weight="600">Exercised against internal apps only, until proven.</text>
+
+  <!-- ============ BOTTOM: shared contract + known gap ============ -->
+  <rect x="40" y="540" width="1100" height="130" rx="10" fill="#fdecec" stroke="#b23b3b" stroke-width="1.5"/>
+  <text x="60" y="568" font-size="16" font-weight="700" fill="#8a1f1f">What ties all four together — and the one gap none of them closes</text>
+  <text x="60" y="592" font-size="12.5" fill="#333">Every layer reports honestly rather than guessing: "unresolved" beats a confident wrong click, every time, across all four. engine/auto-heal.js is where layer 1</text>
+  <text x="60" y="610" font-size="12.5" fill="#333">and layer 2 meet — a guided script's recorded selector falls back to a fresh semantic resolution if it stops matching or starts matching the wrong element.</text>
+  <text x="60" y="632" font-size="12.5" fill="#8a1f1f" font-weight="600">Known gap: "succeeded" means no step errored — it is not proof the real on-screen goal was reached. A step can click a real, functioning, WRONG element and</text>
+  <text x="60" y="650" font-size="12.5" fill="#8a1f1f" font-weight="600">still report success (closed per-flow today only by hand-authored tapIfExists selectors). Closing this generally needs outcome verification, not yet built.</text>
+
+  <!-- ============ Arrows ============ -->
+  <!-- Guided -> Semantic (vertical, left column) -->
+  <path d="M300,240 L300,268" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+  <!-- Semantic -> Vision (across) -->
+  <path d="M562,340 C 595,340 595,185 618,185" stroke="#c9890a" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <!-- Vision -> Loop (vertical, right column) -->
+  <path d="M880,282 L880,298" stroke="#555" stroke-width="2" marker-end="url(#arrow)"/>
+  <!-- Semantic -> Loop (across, the loop reuses the same executor) -->
+  <path d="M562,420 C 595,420 595,400 618,400" stroke="#2e8b57" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <!-- Loop feedback arrow (self-loop, diff feeds back into next decision) -->
+  <path d="M1000,440 C 1060,440 1060,380 1000,360" stroke="#7a4fa0" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <text x="1008" y="405" font-size="11" fill="#7a4fa0">diff feeds</text>
+  <text x="1008" y="418" font-size="11" fill="#7a4fa0">back in</text>
+  <!-- All four -> bottom contract -->
+  <path d="M300,500 L300,538" stroke="#b23b3b" stroke-width="2" marker-end="url(#arrowRed)"/>
+  <path d="M880,500 L880,538" stroke="#b23b3b" stroke-width="2" marker-end="url(#arrowRed)"/>
+
+  <text x="40" y="700" font-size="11.5" fill="#777">Code map: capture/recorder.js + generation/pipeline.js (layer 1) · generation/semantic-act.js + engine/semantic-act-executor.js (layer 2, incl. self-heal) ·</text>
+  <text x="40" y="716" font-size="11.5" fill="#777">generation/llm.js's `images` field (layer 3) · engine/semantic-loop.js (layer 4) · engine/auto-heal.js (bridges 1↔2) · docs/PHOENIX_SPEC.md (full detail)</text>
+</svg>

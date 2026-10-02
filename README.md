@@ -74,6 +74,19 @@ flowchart LR
 
 Full sequence diagram, the spawn-vs-embedded tradeoffs, and setup commands for each: [`docs/STATUS.md#engine-session-flow-spawn-path`](docs/STATUS.md#engine-session-flow-spawn-path).
 
+## The four layers: Guided, Semantic, Vision, Loop
+
+The diagram above is the guided-recording pipeline (Act 1) in isolation. Phoenix is actually four layers stacked on the same engine, each one shipped and proven at a different stage — the picture below is the whole thing:
+
+![Phoenix architecture — Guided layer, Semantic layer, Vision fusion, Autonomous loop](docs/diagrams/architecture.svg)
+
+- **1. Guided layer (Act 1) — shipped.** A human walks the flow once, live, in the browser. `capture/recorder.js` records each tap/type/scroll as an exact, deterministic selector; `generation/pipeline.js` infers assertions from the real diff and synthesizes a runnable script. No AI judgment at runtime — this is the proven, ship-today path.
+- **2. Semantic layer (Act 2) — shipped, proven on real hardware.** A plain-language instruction ("tap the LOGIN button") replaces a hand-authored selector. `generation/semantic-act.js`'s `resolveSemanticAction()` grounds the live accessibility tree into a numbered element list and asks the local model to pick one — or say "unresolved," never guess. `engine/semantic-act-executor.js` acts live via the same WebDriver calls the guided path uses, and diffs the screen before/after to know what really happened. This layer also self-heals live: a tap that produces "No visible change" triggers one automatic retry, excluding the dead element, before anything is reported — no log, no human, no separate chat needed. `engine/auto-heal.js` is where this layer and layer 1 meet: a guided script's recorded selector falls back to a fresh semantic resolution if it stops matching, or starts matching the wrong element.
+- **3. Vision fusion — shipped, opt-in.** Text alone is ambiguous on icon-only controls (an unlabeled "Right Icon" that's actually Logout; two sibling buttons sharing a generic id pattern). When a screenshot is available, `semantic-act.js` sends it alongside the numbered element list via Ollama's multimodal `images` field (`generation/llm.js`), and the model confirms its text-based match against what the screen actually looks like. Omitted entirely for a text-only model — nothing breaks, it just resolves on tree text alone, same as before fusion existed.
+- **4. Autonomous loop (Act 3) — R&D only, not shipped.** `engine/semantic-loop.js` takes a goal in plain language instead of a step list: read the snapshot → ask the model to decide the single next action (or stop) → execute it through the same executor as layer 2 → feed the resulting diff back in as context for the next decision → repeat. Stops explicitly on: goal reached, model asks to stop, an action fails or can't resolve, or a hard step-count limit — never a silent retry loop. Exercised against internal apps only, until proven; not wired into `run-session.js` or any product surface yet.
+
+**The one gap none of these four close:** every layer is built to report "unresolved" rather than guess, but "succeeded" still only means no step errored — it is not proof the real on-screen goal was reached. A step can click a real, functioning, *wrong* element and still report success. Today that's closed per-flow with hand-authored `tapIfExists` selectors (see `docs/STATUS.md`'s bug log); closing it in general needs an outcome-verification layer that doesn't exist yet.
+
 ## Market comparison
 
 How Phoenix (target state, not yet fully built — see [`docs/STATUS.md`](docs/STATUS.md)) compares to what testers use today for mobile automation, and to the AI-agent tooling closest to Phoenix's own semantic layer.

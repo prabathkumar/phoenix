@@ -499,6 +499,72 @@ test("buildGroundedSnapshot does NOT flag an accessibilityId that's actually uni
   assert.strictEqual(passwordTab.classChain, undefined, "a uniquely-named button needs no classChain fallback at all");
 });
 
+// Real bug found on a live BrowserStack iOS run (addons-run-ios-docker-2.log,
+// test-cases/addons.ios.json): the resolver declined to tap "the LOGIN
+// button on the home screen", reasoning that the only "LOGIN"-named
+// elements belonged to an unrelated "Login More Menu New" button. The
+// real page-source XML captured in that exact run (trimmed here to the
+// relevant portion, real attribute values kept byte-for-byte) shows a
+// plain, visible, accessible "LOGIN" button is genuinely present and
+// unrelated to "Login More Menu New" -- but it was wrongly flagged
+// ambiguousAccessibilityId, same as the "EN" and "ACTIVATE SIM" buttons
+// elsewhere on this exact screen: iOS's own page-source dump nests a
+// StaticText carrying the identical name INSIDE the button it labels
+// (one visual control, represented twice in the tree), and the old
+// count-by-accessibilityId-value check treated that nested StaticText
+// as a second, independently-tappable "LOGIN" element, flagging both
+// it and the real button ambiguous even though there was no second,
+// separate "Login" control anywhere in this screen's tree.
+const IOS_REAL_HOME_SCREEN_WITH_NESTED_LABELS = `<?xml version="1.0" encoding="UTF-8"?><AppiumAUT><XCUIElementTypeApplication type="XCUIElementTypeApplication" name="MyYes" label="MyYes" enabled="true" visible="true" accessible="false" x="0" y="0" width="393" height="852" index="0" traits="" processId="847" bundleId="my.yes.yes4g">
+  <XCUIElementTypeButton type="XCUIElementTypeButton" name="EN" label="EN" enabled="true" visible="true" accessible="true" x="300" y="60" width="73" height="32" index="1" traits="Button">
+    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="EN" name="EN" label="EN" enabled="true" visible="true" accessible="false" x="316" y="68" width="21" height="16" index="0" traits="StaticText"/>
+  </XCUIElementTypeButton>
+  <XCUIElementTypeButton type="XCUIElementTypeButton" name="LOGIN" label="LOGIN" enabled="true" visible="true" accessible="true" x="92" y="576" width="209" height="50" index="2" traits="Button">
+    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="LOGIN" name="LOGIN" label="LOGIN" enabled="true" visible="true" accessible="false" x="169" y="592" width="55" height="18" index="0" traits="StaticText"/>
+  </XCUIElementTypeButton>
+  <XCUIElementTypeButton type="XCUIElementTypeButton" name="ACTIVATE SIM" label="ACTIVATE SIM" enabled="true" visible="true" accessible="true" x="92" y="646" width="209" height="50" index="3" traits="Button">
+    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="ACTIVATE SIM" name="ACTIVATE SIM" label="ACTIVATE SIM" enabled="true" visible="true" accessible="false" x="136" y="662" width="121" height="18" index="0" traits="StaticText"/>
+  </XCUIElementTypeButton>
+  <XCUIElementTypeOther type="XCUIElementTypeOther" enabled="true" visible="true" accessible="false" x="0" y="724" width="393" height="128" index="4" traits="">
+    <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" value="NEW TO YES?" name="NEW TO YES?" label="NEW TO YES?" enabled="true" visible="false" accessible="true" x="110" y="750" width="173" height="26" index="1" traits="StaticText"/>
+    <XCUIElementTypeButton type="XCUIElementTypeButton" name="Login More Menu New" label="Login More Menu New" enabled="true" visible="true" accessible="true" x="349" y="752" width="18" height="22" index="2" traits="Button">
+      <XCUIElementTypeStaticText type="XCUIElementTypeStaticText" enabled="true" visible="false" accessible="false" x="349" y="752" width="0" height="0" index="0" traits="StaticText"/>
+    </XCUIElementTypeButton>
+  </XCUIElementTypeOther>
+</XCUIElementTypeApplication></AppiumAUT>`;
+
+test("buildGroundedSnapshot does NOT flag a plain home-screen LOGIN button as ambiguous just because its own nested StaticText label mirrors its name (real bug, addons-run-ios-docker-2.log: this false positive made the resolver decline to tap a genuine, unambiguous LOGIN button)", () => {
+  const elements = buildGroundedSnapshot(IOS_REAL_HOME_SCREEN_WITH_NESTED_LABELS);
+
+  const loginButton = elements.find((el) => el.role === "XCUIElementTypeButton" && el.label === "LOGIN");
+  assert.ok(loginButton, "the real LOGIN button must appear in the snapshot");
+  assert.strictEqual(loginButton.ambiguousAccessibilityId, undefined);
+  assert.strictEqual(loginButton.classChain, undefined, "an unambiguous button needs no classChain fallback");
+
+  // Its own nested StaticText label must not be flagged either -- same
+  // reasoning, same (single) real control.
+  const loginStaticText = elements.find((el) => el.role === "XCUIElementTypeStaticText" && el.label === "LOGIN");
+  assert.ok(loginStaticText);
+  assert.strictEqual(loginStaticText.ambiguousAccessibilityId, undefined);
+
+  // The differently-named, differently-positioned "Login More Menu New"
+  // button must remain clearly distinguishable: its own accessibility
+  // id/label, unaffected by the LOGIN button's.
+  const menuButton = elements.find((el) => el.label === "Login More Menu New");
+  assert.ok(menuButton);
+  assert.strictEqual(menuButton.accessibilityId, "Login More Menu New");
+  assert.strictEqual(menuButton.ambiguousAccessibilityId, undefined);
+  assert.notStrictEqual(menuButton.ref, loginButton.ref);
+
+  // Every other labeled button on this real screen (EN, ACTIVATE SIM)
+  // must likewise be unaffected -- the old bug flagged ALL of them, not
+  // just LOGIN, since every one has its own mirroring StaticText child.
+  for (const name of ["EN", "ACTIVATE SIM"]) {
+    const button = elements.find((el) => el.role === "XCUIElementTypeButton" && el.label === name);
+    assert.strictEqual(button.ambiguousAccessibilityId, undefined, `${name} must not be falsely flagged ambiguous`);
+  }
+});
+
 setImmediate(() => {
   if (process.exitCode) {
     console.error("\ngeneration/semantic-snapshot tests FAILED");

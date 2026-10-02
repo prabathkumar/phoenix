@@ -193,6 +193,23 @@ function isIosRole(tagName) {
 }
 
 /**
+ * True when `ancestor` is a strict ancestor of `node` in the parsed DOM
+ * tree (walking up `node`'s own parentNode chain) -- used only to tell
+ * a genuinely duplicate, independently-tappable element apart from an
+ * element and its own nested label/text child that happens to mirror
+ * its name (see the ambiguousAccessibilityId computation below for why
+ * this distinction matters).
+ */
+function isAncestorNode(ancestor, node) {
+  let current = node && node.parentNode;
+  while (current) {
+    if (current === ancestor) return true;
+    current = current.parentNode;
+  }
+  return false;
+}
+
+/**
  * Builds a WebDriverAgent "class chain" locator for an iOS element that
  * has no resource-id/accessibility-id/label of its own -- see the
  * `iosTagOccurrenceCounts` comment above for why this replaces
@@ -428,9 +445,35 @@ function buildGroundedSnapshot(pageSourceXml) {
   // comment for why a name+visibility predicate (not a plain occurrence
   // index) is what actually disambiguates this, and why it's iOS-only
   // (Android has no classChain fallback to offer here at all).
-  const accessibilityIdCounts = new Map();
+  //
+  // Real bug found on a live BrowserStack iOS run (addons-run-ios-
+  // docker-2.log): grouping by accessibility-id VALUE alone massively
+  // over-triggers this flag, because iOS's own page-source dump nests a
+  // StaticText INSIDE the button it labels, carrying the identical
+  // name/label ("LOGIN" the button, "LOGIN" its own child StaticText) --
+  // that's one visual control represented twice in the tree, not two
+  // independently-tappable "LOGIN" elements, yet the plain count-by-
+  // value check above flagged BOTH as ambiguousAccessibilityId, same as
+  // every other labeled button on the screen (its StaticText child
+  // mirrors its name the same way). Confirmed by feeding this run's
+  // actual captured page-source XML into buildGroundedSnapshot(): the
+  // home screen's plain "LOGIN" button came back flagged
+  // ambiguousAccessibilityId even though the ONLY other "LOGIN"-named
+  // node anywhere in that tree was its own nested StaticText child --
+  // there was no second, separate "Login" control on screen at all in
+  // this run (the differently-named "Login More Menu New" button is a
+  // distinct accessibility id and was never conflated with it by this
+  // code). A group member is only a genuine duplicate if it is NOT an
+  // ancestor or descendant of the element being checked -- a button and
+  // its own label child always fail that test and so never falsely
+  // flag each other, while two unrelated same-named controls elsewhere
+  // in the tree (the real home-LOGIN-vs-submit-LOGIN case this flag was
+  // built for) still do.
+  const accessibilityIdGroups = new Map();
   for (const el of elements) {
-    if (el.accessibilityId) accessibilityIdCounts.set(el.accessibilityId, (accessibilityIdCounts.get(el.accessibilityId) || 0) + 1);
+    if (!el.accessibilityId) continue;
+    if (!accessibilityIdGroups.has(el.accessibilityId)) accessibilityIdGroups.set(el.accessibilityId, []);
+    accessibilityIdGroups.get(el.accessibilityId).push(el);
   }
   for (const el of elements) {
     const isAmbiguousInput =
@@ -442,10 +485,27 @@ function buildGroundedSnapshot(pageSourceXml) {
       if (el.__nearbyLabelAtTime) el.nearbyLabel = el.__nearbyLabelAtTime;
       el.xpath = buildXPath(el.__node);
     }
-    if (el.accessibilityId && accessibilityIdCounts.get(el.accessibilityId) > 1 && isIosRole(el.role)) {
-      el.ambiguousAccessibilityId = true;
-      el.classChain = buildIosAmbiguousAccessibilityClassChain(el.__node, el.accessibilityId);
+    if (el.accessibilityId && isIosRole(el.role)) {
+      const group = accessibilityIdGroups.get(el.accessibilityId) || [];
+      const hasUnrelatedDuplicate = group.some(
+        (other) =>
+          other !== el &&
+          !isAncestorNode(el.__node, other.__node) &&
+          !isAncestorNode(other.__node, el.__node)
+      );
+      if (hasUnrelatedDuplicate) {
+        el.ambiguousAccessibilityId = true;
+        el.classChain = buildIosAmbiguousAccessibilityClassChain(el.__node, el.accessibilityId);
+      }
     }
+  }
+  // Cleanup of internal-only fields happens in its own pass, after every
+  // element's ambiguity check above has run -- the checks compare each
+  // element's __node against OTHER elements' __node (possibly processed
+  // earlier in the loop above), so deleting it mid-loop would make an
+  // already-processed element look node-less to a later comparison and
+  // silently defeat the ancestor/descendant check this fix depends on.
+  for (const el of elements) {
     delete el.__node;
     delete el.__nearbyLabelAtTime;
     delete el.__nearestClickableAncestor;

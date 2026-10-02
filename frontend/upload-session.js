@@ -38,8 +38,8 @@ const EXTENSION_TO_PLATFORM = { ".ipa": "ios", ".apk": "android" };
 function handleUploadAndStart(req, res) {
   if (isSessionActive()) {
     respondJson(res, 409, {
-      error: "A recording session is already active. Stop it before starting another — " +
-        "Phoenix supports one concurrent session today.",
+      error: "The session pool is full. Stop an active session before starting another, " +
+        "or raise PHOENIX_SESSION_POOL_SIZE if more devices/slots are actually available.",
     });
     return;
   }

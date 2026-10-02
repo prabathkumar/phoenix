@@ -162,3 +162,22 @@ with its own automatic regression gate, not something wired into the
 live per-execution path. Both start from the same automatically-captured
 `training-data/executions.jsonl` this pass just wired in — nothing about
 collecting that data waits on which path gets built next.
+
+## 4. Concurrent sessions and this training log
+
+A note for when the new device/session pool (`engine/session-pool.js`,
+see `docs/STATUS.md`'s "Concurrent sessions" backlog entry) actually
+runs two sessions at once against a real multi-device farm: every
+`logExecution()` call still appends to the one shared
+`training-data/executions.jsonl` file regardless of which pool slot/
+session produced it, exactly as it does for a single session today.
+Node's `fs.appendFileSync` (what `execution-log.js` already uses) is
+append-atomic enough for this — two processes/sessions interleaving
+writes to the same file won't corrupt either line, each `appendFileSync`
+call is one atomic write. **What's genuinely unverified:** this hasn't
+been exercised with two real concurrent sessions actually writing to
+the log at the same time; it's an expectation from how the file is
+written today, not a confirmed/tested one. Retention pruning
+(`pruneOldExecutions()`'s sentinel-file check) is similarly untouched by
+concurrency for the same reason — worth a real concurrent run to
+confirm before leaning on it operationally.

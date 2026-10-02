@@ -47,7 +47,7 @@ async function run(name, fn) {
  * capabilityOverrides reached the fake startSession(), and a way to
  * simulate a tester's "stop" message arriving over the fake wss.
  */
-function freshSessionManagerWithFakes({ generateScriptImpl } = {}) {
+function freshSessionManagerWithFakes({ generateScriptImpl, startSessionImpl } = {}) {
   for (const p of [SESSION_MANAGER_PATH, SESSION_PATH, GENERATION_PIPELINE_PATH, CAPTURE_RECORDER_PATH, LIVE_VIEW_SERVER_PATH]) {
     delete require.cache[p];
   }
@@ -62,6 +62,7 @@ function freshSessionManagerWithFakes({ generateScriptImpl } = {}) {
     exports: {
       startSession: async (overrides) => {
         startSessionCalls.push(overrides);
+        if (startSessionImpl) return startSessionImpl(overrides);
         return fakeDriver;
       },
     },
@@ -131,13 +132,55 @@ async function main() {
     assert.deepStrictEqual(startSessionCalls, [{ "appium:app": "bs://uploaded-app-id" }]);
   });
 
-  await run("refuses a second concurrent session while one is active", async () => {
+  await run("refuses a second concurrent session when the pool (default capacity 1) is full", async () => {
     const { sessionManager } = freshSessionManagerWithFakes();
     await sessionManager.startRecordingSession({ platform: "android", liveViewPort: 19003 });
     await assert.rejects(
       () => sessionManager.startRecordingSession({ platform: "android", liveViewPort: 19004 }),
-      /already active/
+      /full|capacity/i
     );
+  });
+
+  await run("PHOENIX_SESSION_POOL_SIZE=2 allows two concurrent sessions with distinct auto-allocated ports", async () => {
+    const previous = process.env.PHOENIX_SESSION_POOL_SIZE;
+    process.env.PHOENIX_SESSION_POOL_SIZE = "2";
+    try {
+      let sessionCounter = 0;
+      const { sessionManager } = freshSessionManagerWithFakes({
+        startSessionImpl: async () => ({ sessionId: `fake-session-${++sessionCounter}`, deleteSession: async () => {} }),
+      });
+
+      const first = await sessionManager.startRecordingSession({ platform: "android" });
+      const second = await sessionManager.startRecordingSession({ platform: "android" });
+
+      assert.notStrictEqual(first.sessionId, second.sessionId);
+      assert.notStrictEqual(first.port, second.port, "expected the pool to allocate two distinct live-view ports");
+      assert.strictEqual(sessionManager.getPoolStatus().active, 2);
+      assert.strictEqual(sessionManager.getPoolStatus().capacity, 2);
+
+      // The pool is now genuinely full (2/2) -- a third request must still be refused.
+      await assert.rejects(
+        () => sessionManager.startRecordingSession({ platform: "android" }),
+        /full|capacity/i
+      );
+    } finally {
+      if (previous === undefined) delete process.env.PHOENIX_SESSION_POOL_SIZE;
+      else process.env.PHOENIX_SESSION_POOL_SIZE = previous;
+    }
+  });
+
+  await run("releases its slot if startSession() itself fails, instead of leaking a pool slot", async () => {
+    const { sessionManager } = freshSessionManagerWithFakes({
+      startSessionImpl: async () => {
+        throw new Error("boom: device unavailable");
+      },
+    });
+
+    await assert.rejects(
+      () => sessionManager.startRecordingSession({ platform: "android", liveViewPort: 19006 }),
+      /boom: device unavailable/
+    );
+    assert.strictEqual(sessionManager.isSessionActive(), false, "a failed start should not hold onto a pool slot");
   });
 
   await run("a \"stop\" message generates a script, writes it, and clears the active session", async () => {

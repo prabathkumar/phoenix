@@ -171,7 +171,7 @@ async function main() {
     try {
       const { status, body } = await postFile(server.address().port, { filename: "MyApp.ipa" });
       assert.strictEqual(status, 409);
-      assert.ok(/already active/.test(body.error));
+      assert.ok(/full/.test(body.error));
       assert.strictEqual(startRecordingSessionCalls.length, 0);
       assert.strictEqual(uploadAppCalls.length, 0);
     } finally {

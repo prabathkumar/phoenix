@@ -55,7 +55,7 @@ const path = require("path");
 
 const { executeSemanticAction } = require("./engine/semantic-act-executor");
 const { runAutonomousLoop } = require("./engine/semantic-loop");
-const { loadTestCaseSteps, requiredEnvVars, resolveSteps, runScriptSteps } = require("./engine/test-case-runner");
+const { loadTestCaseSteps, requiredEnvVars, resolveSteps, runScriptSteps, persistResolvedSelectors } = require("./engine/test-case-runner");
 
 const TEST_CASES_DIR = path.join(__dirname, "test-cases");
 
@@ -275,7 +275,7 @@ const LOGIN_TEST_CASE_PATH = path.join(TEST_CASES_DIR, "login.json");
 // iteration failure deep in a batch run.
 const LOGIN_SCRIPT_STEPS = loadTestCaseSteps(LOGIN_TEST_CASE_PATH);
 
-async function runOneLoginScriptIteration(platform) {
+async function runOneLoginScriptIteration(platform, { persist = persistUpdatedSelectors } = {}) {
   const missing = requiredEnvVars(LOGIN_SCRIPT_STEPS).filter((name) => !process.env[name]);
   if (missing.length > 0) {
     return {
@@ -287,16 +287,67 @@ async function runOneLoginScriptIteration(platform) {
   // runScriptSteps' doc comment in engine/test-case-runner.js for why
   // reading process.env must not be deferred until after an await
   // (concurrently-running test code mutating process.env is the
-  // concrete case this guards against, but it's just as real a risk
-  // for any other concurrent env mutation during a real batch run).
+  // concrete case this guards against, but it's just as real a risk for
+  // any other concurrent env mutation during a real batch run). This
+  // means `resolvedSteps` (passed into runScriptSteps so it actually
+  // runs) carries literal secret text, not "${VAR}" placeholders -- so
+  // when persisting selectors learned this run, we must NOT write
+  // runScriptSteps's own `updatedSteps` (built from `resolvedSteps`,
+  // literal secrets and all) straight to disk. Instead we merge just
+  // the `resolvedSelector` field it learned back onto the original,
+  // placeholder-carrying `LOGIN_SCRIPT_STEPS` before persisting -- see
+  // mergeResolvedSelectors below.
   const resolvedSteps = resolveSteps(LOGIN_SCRIPT_STEPS);
   const { startSession } = require(platform === "ios" ? "./engine/ios-session" : "./engine/session");
   const driver = await startSession();
   try {
     await sleep(STARTUP_DELAY_MS);
-    return await runScriptSteps(driver, resolvedSteps, { platform, executeSemanticAction });
+    const result = await runScriptSteps(driver, resolvedSteps, { platform, executeSemanticAction });
+    persist(LOGIN_TEST_CASE_PATH, mergeResolvedSelectors(LOGIN_SCRIPT_STEPS, result.updatedSteps));
+    return result;
   } finally {
     await driver.deleteSession();
+  }
+}
+
+/**
+ * Merges runScriptSteps()'s `updatedSteps` (whatever text it actually
+ * ran with, which may be a resolved literal secret) back onto the
+ * ORIGINAL, placeholder-carrying steps array loaded straight from a
+ * test-case JSON file, taking ONLY the `resolvedSelector` field --
+ * never `text` or anything else. This is what makes it safe for the
+ * selector-caching architecture to coexist with "${ENV_VAR}"
+ * credential placeholders: whatever gets persisted back to disk is
+ * always byte-for-byte the original step plus (at most) a learned
+ * `resolvedSelector`, regardless of what runScriptSteps was actually
+ * given to execute with.
+ *
+ * @param {Array<Object>} originalSteps - as loaded from the JSON file (placeholders intact)
+ * @param {Array<Object>|undefined} updatedSteps - runScriptSteps()'s return value
+ * @returns {Array<Object>|undefined}
+ */
+function mergeResolvedSelectors(originalSteps, updatedSteps) {
+  if (!updatedSteps) return undefined;
+  return originalSteps.map((step, i) =>
+    updatedSteps[i] && updatedSteps[i].resolvedSelector
+      ? { ...step, resolvedSelector: updatedSteps[i].resolvedSelector }
+      : step
+  );
+}
+
+/**
+ * Best-effort wrapper around persistResolvedSelectors: a selector-cache
+ * write failing (e.g. a read-only filesystem, a concurrent edit) must
+ * never turn an otherwise-successful real-device run into a reported
+ * failure -- it only means the next run re-resolves fresh instead of
+ * replaying from cache, same as before this architecture existed.
+ */
+function persistUpdatedSelectors(filePath, stepsToPersist) {
+  if (!stepsToPersist) return;
+  try {
+    persistResolvedSelectors(filePath, stepsToPersist);
+  } catch (err) {
+    console.error(`[run-batch-executions] couldn't persist resolved selectors to "${filePath}": ${err.message}`);
   }
 }
 
@@ -321,14 +372,20 @@ async function runOneTestCaseIteration(platform, filePath) {
   if (missing.length > 0) {
     return { success: false, detail: `test case "${filePath}" requires ${missing.join(" and ")} to be set` };
   }
-  // See runOneLoginScriptIteration's matching comment: resolved here,
-  // synchronously, before the first await.
+  // See runOneLoginScriptIteration's matching comment: `steps` is
+  // resolved synchronously, before the first await, into
+  // `resolvedSteps` (literal secrets and all) for actually running --
+  // and when persisting, only the learned `resolvedSelector` fields get
+  // merged back onto the original, placeholder-carrying `steps`, never
+  // `resolvedSteps` itself.
   const resolvedSteps = resolveSteps(steps);
   const { startSession } = require(platform === "ios" ? "./engine/ios-session" : "./engine/session");
   const driver = await startSession();
   try {
     await sleep(STARTUP_DELAY_MS);
-    return await runScriptSteps(driver, resolvedSteps, { platform, executeSemanticAction });
+    const result = await runScriptSteps(driver, resolvedSteps, { platform, executeSemanticAction });
+    persistUpdatedSelectors(filePath, mergeResolvedSelectors(steps, result.updatedSteps));
+    return result;
   } finally {
     await driver.deleteSession();
   }
@@ -578,5 +635,6 @@ module.exports = {
   OUTPUT_DIR,
   runOneLoginScriptIteration,
   runOneTestCaseIteration,
+  mergeResolvedSelectors,
   LOGIN_SCRIPT_STEPS,
 };

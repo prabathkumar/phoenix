@@ -67,7 +67,21 @@ const SUPPORTED_KINDS = new Set(["tap", "type", "scroll"]);
  *   screenshot failure here falls back to text-only rather than
  *   failing the whole action -- the point of the screenshot is to help
  *   resolution, not to be a new way for it to fail.
- * @returns {Promise<SemanticActionExecutionResult>}
+ * @param {{strategy: string, value: string}} [options.cachedSelector] -
+ *   a selector already proven to resolve this exact instruction on a
+ *   previous run (see test-case-runner.js's selector cache). When
+ *   given, this is tried FIRST, directly, with no LLM call at all --
+ *   the deterministic "replay" path every mature test tool uses once a
+ *   locator is known, instead of re-resolving from scratch and risking
+ *   a fresh wrong guess on every single run (the actual root cause
+ *   behind docs/STATUS.md's bugs #6/#7/#11/#12 -- the same step
+ *   independently re-rolling the dice on every run, including ones
+ *   where it had already resolved correctly before). Only if the cache
+ *   is missing, stale, or fails to act is full semantic resolution
+ *   attempted as a fallback -- "self-healing," not "guess every time."
+ *   On a result, check `usedCache` / `healedFromCache` below to know
+ *   which path actually ran.
+ * @returns {Promise<SemanticActionExecutionResult & {usedCache?: boolean, healedFromCache?: boolean}>}
  */
 async function executeSemanticAction(driver, instruction, options = {}) {
   const kind = options.kind || "tap";
@@ -96,6 +110,30 @@ async function executeSemanticAction(driver, instruction, options = {}) {
   // in this layer could move the viewport to reach it).
   if (kind === "scroll") {
     return performScroll(driver, pageSourceBefore, options, platform);
+  }
+
+  // Deterministic replay path: a selector already proven correct for
+  // this exact step on an earlier run. No LLM call, no fresh dice roll
+  // -- just act on the known-good locator. If it's missing (element
+  // genuinely not there this run) or the action itself fails (stale,
+  // UI changed), fall through to full semantic resolution below rather
+  // than failing outright -- this is the "heal" half of self-healing.
+  if (options.cachedSelector && options.cachedSelector.strategy && options.cachedSelector.value) {
+    const cachedSelectorString = buildSelector(options.cachedSelector, platform);
+    if (cachedSelectorString) {
+      if (typeof options.beforeAct === "function") {
+        const vetoReason = options.beforeAct({ selector: options.cachedSelector, selectorString: cachedSelectorString, kind, text: options.text });
+        if (vetoReason) {
+          return { success: false, reason: vetoReason };
+        }
+      }
+      const cachedOutcome = await actAndDiff(driver, cachedSelectorString, kind, options.text, pageSourceBefore);
+      if (cachedOutcome.success) {
+        return { ...cachedOutcome, selector: options.cachedSelector, usedCache: true };
+      }
+      // Cache miss -- the cached locator didn't resolve or act this
+      // time. Fall through to a full, fresh semantic resolution.
+    }
   }
 
   let screenshotBase64;
@@ -141,6 +179,35 @@ async function executeSemanticAction(driver, instruction, options = {}) {
     }
   }
 
+  const outcome = await actAndDiff(driver, selectorString, kind, options.text, pageSourceBefore);
+  if (!outcome.success) {
+    return outcome;
+  }
+  return {
+    ...outcome,
+    selector: resolution.selector,
+    // Signals the caller (test-case-runner's selector cache) that this
+    // selector should be written back -- either as a brand-new cache
+    // entry, or replacing a cached one that just proved stale.
+    healedFromCache: Boolean(options.cachedSelector),
+  };
+}
+
+/**
+ * Acts on an already-built selector string (click or setValue) and
+ * reports the before/after diff -- the part of resolution shared by
+ * both the cached-selector replay path and the full semantic-
+ * resolution path above, so neither can drift out of sync with the
+ * other's staleness/diffing behavior.
+ *
+ * @param {import('webdriverio').Browser} driver
+ * @param {string} selectorString
+ * @param {"tap"|"type"} kind
+ * @param {string} [text] - required when kind is "type".
+ * @param {string} pageSourceBefore
+ * @returns {Promise<{success: boolean, reason?: string, diff?: object, diffSummary?: string, assertions?: Array}>}
+ */
+async function actAndDiff(driver, selectorString, kind, text, pageSourceBefore) {
   try {
     const element = await driver.$(selectorString);
     // Confirm the element is actually there before acting on it -- the
@@ -156,7 +223,7 @@ async function executeSemanticAction(driver, instruction, options = {}) {
     if (kind === "tap") {
       await element.click();
     } else {
-      await element.setValue(options.text);
+      await element.setValue(text);
     }
   } catch (err) {
     return { success: false, reason: `action failed: ${err.message}` };
@@ -170,13 +237,12 @@ async function executeSemanticAction(driver, instruction, options = {}) {
     // (e.g. the app crashed, or a transition is mid-flight). Report
     // success with what we know rather than failing an action that did
     // work -- but without a diff, since there's nothing to diff against.
-    return { success: true, selector: resolution.selector };
+    return { success: true };
   }
 
   const diff = diffSnapshots(pageSourceBefore, pageSourceAfter);
   return {
     success: true,
-    selector: resolution.selector,
     diff,
     diffSummary: diffToText(diff),
     // Closes spec §6's "state-diff reporting... feeds the assertion-

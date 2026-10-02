@@ -55,8 +55,18 @@ const ENV_PLACEHOLDER_RE = /^\$\{([A-Z0-9_]+)\}$/;
  * failing the whole run (e.g. a system dialog that doesn't always
  * appear -- see test-cases/login.json's first step).
  *
+ * An optional `resolvedSelector: {strategy, value}` field is this
+ * module's half of the selector-caching/self-healing architecture
+ * (docs/STATUS.md): when present, it's a concrete WebDriver selector
+ * previously proven correct on real hardware for this exact step, and
+ * runScriptSteps() tries it FIRST (no LLM call) before falling back to
+ * full semantic resolution -- see executeSemanticAction's
+ * `cachedSelector` option in engine/semantic-act-executor.js. A step
+ * with no `resolvedSelector` simply always resolves fresh, same as
+ * before this field existed.
+ *
  * @param {string} filePath - absolute or relative path to a .json file
- * @returns {Array<{kind: string, instruction: string, text?: string, optional?: boolean}>}
+ * @returns {Array<{kind: string, instruction: string, text?: string, optional?: boolean, resolvedSelector?: {strategy: string, value: string}}>}
  */
 function loadTestCaseSteps(filePath) {
   const raw = fs.readFileSync(filePath, "utf8");
@@ -80,6 +90,12 @@ function loadTestCaseSteps(filePath) {
     }
     if (step.kind === "type" && typeof step.text !== "string") {
       throw new Error(`test case file "${filePath}": step ${i} is a "type" step but has no "text"`);
+    }
+    if (step.resolvedSelector !== undefined) {
+      const sel = step.resolvedSelector;
+      if (!sel || typeof sel !== "object" || typeof sel.strategy !== "string" || typeof sel.value !== "string") {
+        throw new Error(`test case file "${filePath}": step ${i} has an invalid "resolvedSelector" (must be {strategy, value} strings)`);
+      }
     }
   });
   return steps;
@@ -174,30 +190,101 @@ function resolveSteps(steps) {
  * not given. `sleepFn` is injected the same way `executeSemanticAction`
  * is, so tests can run a "wait" step without actually waiting.
  *
+ * Each step's optional `resolvedSelector` (see loadTestCaseSteps) is
+ * passed through to executeSemanticAction as `cachedSelector`, so a
+ * step proven correct on a prior run replays deterministically instead
+ * of re-asking the model to guess again from scratch -- the fix for
+ * docs/STATUS.md bugs #6/#7/#11/#12 (the same correctly-resolving step
+ * independently mis-resolving a different way on a later run). The
+ * returned `updatedSteps` is the original `steps` array (same shape,
+ * placeholders unresolved) with `resolvedSelector` filled in or updated
+ * for every step that successfully resolved -- a fresh resolution
+ * (cache miss or no cache yet) records the newly-proven selector, and a
+ * cache hit simply confirms the existing one is still correct. The
+ * caller is responsible for persisting `updatedSteps` back to the
+ * test-case JSON file if it wants that selector reused on the next run;
+ * this function never touches the filesystem itself.
+ *
  * @param {Object} driver - a started WebdriverIO session
- * @param {Array<{kind: string, instruction: string, text?: string, direction?: string, durationMs?: number, optional?: boolean}>} steps
+ * @param {Array<{kind: string, instruction: string, text?: string, direction?: string, durationMs?: number, optional?: boolean, resolvedSelector?: {strategy: string, value: string}}>} steps
  * @param {{platform: string, executeSemanticAction: Function, sleepFn?: Function}} options -
  *   `executeSemanticAction` is injected (not required() here) so
  *   callers/tests can fake it the same way existing tests already do
  *   for run-batch-executions.js.
- * @returns {Promise<{success: boolean, detail: string}>}
+ * @returns {Promise<{success: boolean, detail: string, updatedSteps: Array<Object>}>}
  */
 async function runScriptSteps(driver, steps, { platform, executeSemanticAction, sleepFn = defaultSleep }) {
   const resolvedSteps = steps.map((step) => ({ ...step, text: resolveStepText(step) }));
+  // Carry the ORIGINAL (unresolved-text) steps forward for the
+  // updatedSteps return value -- we must never write a resolved
+  // "${PASSWORD}"-style secret's literal value back out to disk.
+  const updatedSteps = steps.map((step) => ({ ...step }));
   let lastResult;
-  for (const step of resolvedSteps) {
+  for (let i = 0; i < resolvedSteps.length; i += 1) {
+    const step = resolvedSteps[i];
     if (step.kind === "wait") {
       await sleepFn(typeof step.durationMs === "number" ? step.durationMs : DEFAULT_WAIT_MS);
       continue;
     }
-    const result = await executeSemanticAction(driver, step.instruction, { kind: step.kind, text: step.text, platform, direction: step.direction });
+    const result = await executeSemanticAction(driver, step.instruction, {
+      kind: step.kind,
+      text: step.text,
+      platform,
+      direction: step.direction,
+      cachedSelector: step.resolvedSelector,
+    });
     if (!result.success) {
       if (step.optional) continue;
-      return { success: false, detail: `step "${step.instruction}" failed: ${result.reason}` };
+      return { success: false, detail: `step "${step.instruction}" failed: ${result.reason}`, updatedSteps };
+    }
+    if (result.selector) {
+      updatedSteps[i] = { ...updatedSteps[i], resolvedSelector: result.selector };
     }
     lastResult = result;
   }
-  return { success: true, detail: lastResult ? lastResult.diffSummary : "test case completed with no steps run" };
+  return {
+    success: true,
+    detail: lastResult ? lastResult.diffSummary : "test case completed with no steps run",
+    updatedSteps,
+  };
 }
 
-module.exports = { loadTestCaseSteps, resolveStepText, resolveSteps, requiredEnvVars, runScriptSteps };
+/**
+ * Writes runScriptSteps()'s `updatedSteps` back into a test-case JSON
+ * file on disk -- the other half of the read side wired up in
+ * loadTestCaseSteps/runScriptSteps above. Preserves the file's original
+ * top-level shape (a bare steps array, or an object with a "steps"
+ * array plus whatever other keys it had, e.g. a "description"). Only
+ * ever writes `resolvedSelector`/other step fields exactly as given in
+ * `updatedSteps` -- callers must pass the ORIGINAL (unresolved-text)
+ * steps here, never resolveSteps()'s output, or a real credential typed
+ * as a literal "${ENV_VAR}" placeholder in the file would get baked in
+ * as its resolved secret value on disk.
+ *
+ * Deliberately synchronous (writeFileSync): this runs once, after a
+ * single real-device iteration completes, never in a hot loop or
+ * concurrently with another write to the same file, so there's no
+ * reason to pay async complexity for it.
+ *
+ * @param {string} filePath - the same path loadTestCaseSteps() read
+ * @param {Array<Object>} updatedSteps - runScriptSteps()'s updatedSteps
+ */
+function persistResolvedSelectors(filePath, updatedSteps) {
+  const raw = fs.readFileSync(filePath, "utf8");
+  const parsed = JSON.parse(raw);
+  if (Array.isArray(parsed)) {
+    fs.writeFileSync(filePath, JSON.stringify(updatedSteps, null, 2) + "\n");
+  } else {
+    parsed.steps = updatedSteps;
+    fs.writeFileSync(filePath, JSON.stringify(parsed, null, 2) + "\n");
+  }
+}
+
+module.exports = {
+  loadTestCaseSteps,
+  resolveStepText,
+  resolveSteps,
+  requiredEnvVars,
+  runScriptSteps,
+  persistResolvedSelectors,
+};

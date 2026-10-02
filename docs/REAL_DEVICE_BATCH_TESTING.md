@@ -143,6 +143,23 @@ Write a test case as a JSON file with a `steps` array:
 - `direction` (scroll steps only): `"down"` (default) or `"up"`. Issues a native `mobile: scrollGesture` (Android) / `mobile: scroll` (iOS) gesture — no element resolution involved. Added after a real run found an element (Logout, in `test-cases/addons.json`) sitting below the fold in a scrollable screen, which nothing in the engine could previously reach.
 - `durationMs` (wait steps only): milliseconds to pause, default `3000`. A `"wait"` step is a pure timing pause — no screen resolution, no device action, not even a call into `executeSemanticAction`. Added after a real run found that the post-login-submit notification-permission dialog appears at a variable delay: fast enough in one run for the following "tap Allow" steps to catch it, still not up by the next step in another (`addons.json`). No step-sequence rewording can fix a timing race; an explicit pause can.
 - `optional` (any kind): `true` if the step is allowed to not match/do anything without failing the run (a system dialog that doesn't always appear, or a scroll that's a no-op when the target is already on screen).
+- `resolvedSelector` (tap/type/scroll steps only, usually never hand-written): `{ "strategy": "...", "value": "..." }`, a concrete WebDriver selector this exact step previously resolved to on real hardware. See "Selector caching and self-healing" below.
+
+### Selector caching and self-healing
+
+Every step above still describes WHAT to do in plain language, resolved by the same AI-based resolver (`executeSemanticAction`) on every run. Left alone, that means a step that resolved correctly on one run is re-resolved from scratch — a fresh LLM call against a fresh accessibility-tree snapshot — on every subsequent run, with no memory of the prior success. On real hardware this independence produced the exact same step mis-resolving a *different* wrong way across different runs (`docs/STATUS.md` bugs #6, #7, #11, #12) — proof that re-prompting isn't converging, it's rolling dice.
+
+`resolvedSelector` is the fix, and it's filled in automatically, never by hand:
+
+1. If a step has a `resolvedSelector`, `executeSemanticAction` tries it FIRST via a direct WebDriver lookup — no LLM call at all. If the element is there, the step runs deterministically, exactly like a normal Playwright selector replay.
+2. If the cached selector doesn't resolve (the element genuinely isn't there — the screen changed, the cache is stale), the code falls back to full AI-based resolution, same as a step with no cache at all. This is the "self-healing" half: a broken cache never fails the run, it just pays for one fresh resolution and learns the new answer.
+3. After a run, whatever selector a step actually used (fresh, healed, or simply reconfirmed from cache) is written back into the test-case JSON file on disk — see `engine/test-case-runner.js`'s `runScriptSteps`/`persistResolvedSelectors`, wired up in `run-batch-executions.js`'s `runOneLoginScriptIteration`/`runOneTestCaseIteration`. The next run then replays from cache instead of re-asking the model.
+
+This is deliberately the same architecture mature browser/mobile test tools (Playwright-style selector replay, Testim, mabl) already use, applied here with a self-heal fallback so a genuine UI change never leaves a test case permanently stuck on a stale selector.
+
+A `"${ENV_VAR}"`-style credential placeholder is always safe here: persisting selectors only ever overlays the `resolvedSelector` field onto the ORIGINAL step loaded from disk (placeholder intact) — the literal, resolved secret value a run actually typed is never the thing written back to the file. See `run-batch-executions.js`'s `mergeResolvedSelectors` and its test coverage if you're changing this code.
+
+A fresh test case (hand-written, no `resolvedSelector` anywhere) works exactly as before — this is purely additive. The very first run against a new or changed screen always resolves everything fresh; every run after that gets cheaper and more deterministic for whichever steps already proved out.
 
 Run it:
 

@@ -81,20 +81,24 @@ function freshExecutorWithFakes({ resolveSemanticActionImpl, diffSnapshotsImpl, 
 }
 
 /** A minimal fake WebdriverIO-shaped driver + element. */
-function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl, executeImpl, getWindowSizeImpl } = {}) {
+function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl, executeImpl, getWindowSizeImpl, elementBehaviorForSelector } = {}) {
   let pageSourceCallCount = 0;
-  const calls = { click: 0, setValue: [], takeScreenshot: 0, execute: [] };
+  const calls = { click: 0, setValue: [], takeScreenshot: 0, execute: [], selectorsQueried: [] };
 
-  const element = {
-    isExisting: elementBehavior.isExisting || (async () => true),
-    click: async () => {
-      calls.click += 1;
-      if (elementBehavior.clickThrows) throw new Error(elementBehavior.clickThrows);
-    },
-    setValue: async (text) => {
-      calls.setValue.push(text);
-    },
-  };
+  function makeElement(behavior) {
+    return {
+      isExisting: behavior.isExisting || (async () => true),
+      click: async () => {
+        calls.click += 1;
+        if (behavior.clickThrows) throw new Error(behavior.clickThrows);
+      },
+      setValue: async (text) => {
+        calls.setValue.push(text);
+      },
+    };
+  }
+
+  const element = makeElement(elementBehavior);
 
   return {
     calls,
@@ -105,7 +109,13 @@ function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl,
         if (value instanceof Error) throw value;
         return value;
       },
-      $: async (_selectorString) => element,
+      $: async (selectorString) => {
+        calls.selectorsQueried.push(selectorString);
+        if (elementBehaviorForSelector) {
+          return makeElement(elementBehaviorForSelector(selectorString) || {});
+        }
+        return element;
+      },
       takeScreenshot: async () => {
         calls.takeScreenshot += 1;
         if (takeScreenshotImpl) return takeScreenshotImpl();
@@ -264,6 +274,91 @@ function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl,
       assert.strictEqual(result.success, true);
       assert.ok(calls.execute[0].params.width > 0);
       assert.ok(calls.execute[0].params.height > 0);
+    } finally {
+      restore();
+    }
+  });
+
+  await run("executeSemanticAction tries a cachedSelector first and never calls resolveSemanticAction when it hits (the self-healing replay path)", async () => {
+    const { executor, restore } = freshExecutorWithFakes({
+      resolveSemanticActionImpl: async () => {
+        throw new Error("resolveSemanticAction should never be called when the cached selector resolves");
+      },
+      diffSnapshotsImpl: () => ({ appeared: [], disappeared: [], changed: true }),
+    });
+    try {
+      const { driver, calls } = makeFakeDriver({ pageSources: ["<hierarchy>before</hierarchy>", "<hierarchy>after</hierarchy>"] });
+      const result = await executor.executeSemanticAction(driver, "tap the Login button", {
+        cachedSelector: { strategy: "accessibility-id", value: "Login" },
+      });
+
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(result.usedCache, true);
+      assert.deepStrictEqual(result.selector, { strategy: "accessibility-id", value: "Login" });
+      assert.strictEqual(calls.click, 1);
+      assert.deepStrictEqual(calls.selectorsQueried, ["~Login"]);
+    } finally {
+      restore();
+    }
+  });
+
+  await run("executeSemanticAction falls back to full semantic resolution when the cachedSelector is stale (self-healing), and flags the result as healed", async () => {
+    const { executor, restore } = freshExecutorWithFakes({
+      resolveSemanticActionImpl: async () => ({
+        resolved: true,
+        selector: { strategy: "accessibility-id", value: "Login-v2" },
+      }),
+      diffSnapshotsImpl: () => ({ appeared: [], disappeared: [], changed: true }),
+    });
+    try {
+      const { driver, calls } = makeFakeDriver({
+        pageSources: ["<hierarchy>before</hierarchy>", "<hierarchy>after</hierarchy>"],
+        elementBehaviorForSelector: (selectorString) =>
+          selectorString === "~Login-stale" ? { isExisting: async () => false } : { isExisting: async () => true },
+      });
+      const result = await executor.executeSemanticAction(driver, "tap the Login button", {
+        cachedSelector: { strategy: "accessibility-id", value: "Login-stale" },
+      });
+
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(result.usedCache, undefined);
+      assert.strictEqual(result.healedFromCache, true);
+      assert.deepStrictEqual(result.selector, { strategy: "accessibility-id", value: "Login-v2" });
+      assert.deepStrictEqual(calls.selectorsQueried, ["~Login-stale", "~Login-v2"]);
+    } finally {
+      restore();
+    }
+  });
+
+  await run("executeSemanticAction does not set healedFromCache when there was no cachedSelector to begin with", async () => {
+    const { executor, restore } = freshExecutorWithFakes({
+      resolveSemanticActionImpl: async () => ({ resolved: true, selector: { strategy: "accessibility-id", value: "Login" } }),
+      diffSnapshotsImpl: () => ({ appeared: [], disappeared: [], changed: true }),
+    });
+    try {
+      const { driver } = makeFakeDriver({ pageSources: ["<hierarchy>before</hierarchy>", "<hierarchy>after</hierarchy>"] });
+      const result = await executor.executeSemanticAction(driver, "tap the Login button");
+
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(result.healedFromCache, false);
+      assert.strictEqual(result.usedCache, undefined);
+    } finally {
+      restore();
+    }
+  });
+
+  await run("executeSemanticAction's beforeAct veto also applies to a cachedSelector attempt, before anything is clicked", async () => {
+    const { executor, restore } = freshExecutorWithFakes();
+    try {
+      const { driver, calls } = makeFakeDriver({ pageSources: ["<hierarchy />"] });
+      const result = await executor.executeSemanticAction(driver, "tap the Login button", {
+        cachedSelector: { strategy: "accessibility-id", value: "Login" },
+        beforeAct: () => "vetoed by caller",
+      });
+
+      assert.strictEqual(result.success, false);
+      assert.strictEqual(result.reason, "vetoed by caller");
+      assert.strictEqual(calls.click, 0);
     } finally {
       restore();
     }

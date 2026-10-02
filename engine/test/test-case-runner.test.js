@@ -21,6 +21,7 @@ const {
   resolveSteps,
   requiredEnvVars,
   runScriptSteps,
+  persistResolvedSelectors,
 } = require("../test-case-runner");
 
 async function run(name, fn) {
@@ -262,6 +263,102 @@ function writeTempJson(content) {
     const steps = loadTestCaseSteps(file);
     assert.strictEqual(steps.length, 1);
     assert.strictEqual(steps[0].kind, "wait");
+  });
+
+  await run("loadTestCaseSteps accepts a step with a valid resolvedSelector", async () => {
+    const file = writeTempJson([
+      { kind: "tap", instruction: "tap LOGIN", resolvedSelector: { strategy: "accessibility-id", value: "Login" } },
+    ]);
+    const steps = loadTestCaseSteps(file);
+    assert.deepStrictEqual(steps[0].resolvedSelector, { strategy: "accessibility-id", value: "Login" });
+  });
+
+  await run("loadTestCaseSteps rejects a step with a malformed resolvedSelector", async () => {
+    const file = writeTempJson([{ kind: "tap", instruction: "tap LOGIN", resolvedSelector: { strategy: "accessibility-id" } }]);
+    assert.throws(() => loadTestCaseSteps(file), /invalid "resolvedSelector"/);
+  });
+
+  await run("runScriptSteps passes a step's resolvedSelector through to executeSemanticAction as cachedSelector", async () => {
+    const calls = [];
+    const steps = [
+      { kind: "tap", instruction: "tap LOGIN", resolvedSelector: { strategy: "accessibility-id", value: "Login" } },
+    ];
+    await runScriptSteps({}, steps, {
+      platform: "android",
+      executeSemanticAction: async (driver, instruction, options) => {
+        calls.push(options.cachedSelector);
+        return { success: true, diffSummary: "did it", selector: options.cachedSelector, usedCache: true };
+      },
+    });
+    assert.deepStrictEqual(calls, [{ strategy: "accessibility-id", value: "Login" }]);
+  });
+
+  await run("runScriptSteps's updatedSteps records a freshly-resolved selector for a step that had none", async () => {
+    const steps = [{ kind: "tap", instruction: "tap LOGIN" }];
+    const result = await runScriptSteps({}, steps, {
+      platform: "android",
+      executeSemanticAction: async () => ({
+        success: true,
+        diffSummary: "did it",
+        selector: { strategy: "xpath", value: "//View[1]" },
+      }),
+    });
+    assert.deepStrictEqual(result.updatedSteps[0].resolvedSelector, { strategy: "xpath", value: "//View[1]" });
+    // The original `steps` array passed in must never be mutated in place.
+    assert.strictEqual(steps[0].resolvedSelector, undefined);
+  });
+
+  await run("runScriptSteps's updatedSteps preserves the original (unresolved) text, never a resolved secret", async () => {
+    const steps = [
+      { kind: "type", instruction: "type password", text: "${A_FIXTURE_SECRET}" },
+    ];
+    process.env.A_FIXTURE_SECRET = "literal-secret-value";
+    try {
+      const result = await runScriptSteps({}, steps, {
+        platform: "android",
+        executeSemanticAction: async (driver, instruction, options) => ({
+          success: true,
+          diffSummary: "did it",
+          selector: { strategy: "accessibility-id", value: "password-field" },
+        }),
+      });
+      assert.strictEqual(result.updatedSteps[0].text, "${A_FIXTURE_SECRET}");
+      assert.deepStrictEqual(result.updatedSteps[0].resolvedSelector, { strategy: "accessibility-id", value: "password-field" });
+    } finally {
+      delete process.env.A_FIXTURE_SECRET;
+    }
+  });
+
+  await run("runScriptSteps's updatedSteps leaves resolvedSelector unset for a step whose result carries no selector", async () => {
+    const steps = [{ kind: "wait", instruction: "wait a bit", durationMs: 1 }];
+    const result = await runScriptSteps({}, steps, {
+      platform: "android",
+      executeSemanticAction: async () => {
+        throw new Error("a wait step must never call executeSemanticAction");
+      },
+    });
+    assert.strictEqual(result.success, true);
+    assert.strictEqual(result.updatedSteps[0].resolvedSelector, undefined);
+  });
+
+  await run("persistResolvedSelectors writes updatedSteps back into a bare-array test case file", async () => {
+    const file = writeTempJson([{ kind: "tap", instruction: "tap LOGIN" }]);
+    persistResolvedSelectors(file, [
+      { kind: "tap", instruction: "tap LOGIN", resolvedSelector: { strategy: "xpath", value: "//View[1]" } },
+    ]);
+    const steps = loadTestCaseSteps(file);
+    assert.deepStrictEqual(steps[0].resolvedSelector, { strategy: "xpath", value: "//View[1]" });
+  });
+
+  await run("persistResolvedSelectors preserves other top-level keys on an object-shaped test case file", async () => {
+    const file = writeTempJson({ name: "demo", description: "a demo case", steps: [{ kind: "tap", instruction: "tap LOGIN" }] });
+    persistResolvedSelectors(file, [
+      { kind: "tap", instruction: "tap LOGIN", resolvedSelector: { strategy: "xpath", value: "//View[1]" } },
+    ]);
+    const raw = JSON.parse(fs.readFileSync(file, "utf8"));
+    assert.strictEqual(raw.name, "demo");
+    assert.strictEqual(raw.description, "a demo case");
+    assert.deepStrictEqual(raw.steps[0].resolvedSelector, { strategy: "xpath", value: "//View[1]" });
   });
 
   if (process.exitCode) {

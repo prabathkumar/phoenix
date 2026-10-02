@@ -1,7 +1,7 @@
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
-const { splitBatchCounts, summarizeBatchResults, computeModeCounts, parseBatchModes, writeReport, OUTPUT_DIR } = require("../run-batch-executions");
+const { splitBatchCounts, summarizeBatchResults, computeModeCounts, parseBatchModes, writeReport, OUTPUT_DIR, mergeResolvedSelectors } = require("../run-batch-executions");
 
 const modulePath = require.resolve("../run-batch-executions");
 
@@ -296,11 +296,83 @@ function freshBatchModuleWithFakes({ executeSemanticAction, deleteSessionCalls =
   return require(modulePath);
 }
 
+test("mergeResolvedSelectors overlays a learned resolvedSelector onto the matching original (placeholder-carrying) step", () => {
+  const original = [
+    { kind: "type", instruction: "type password", text: "${SECRET}" },
+    { kind: "tap", instruction: "tap LOGIN" },
+  ];
+  const updated = [
+    { kind: "type", instruction: "type password", text: "literal-secret-value", resolvedSelector: { strategy: "accessibility-id", value: "pw" } },
+    { kind: "tap", instruction: "tap LOGIN", resolvedSelector: { strategy: "xpath", value: "//View[1]" } },
+  ];
+  const merged = mergeResolvedSelectors(original, updated);
+  assert.strictEqual(merged[0].text, "${SECRET}", "the original placeholder text must survive, never the resolved literal");
+  assert.deepStrictEqual(merged[0].resolvedSelector, { strategy: "accessibility-id", value: "pw" });
+  assert.deepStrictEqual(merged[1].resolvedSelector, { strategy: "xpath", value: "//View[1]" });
+});
+
+test("mergeResolvedSelectors leaves a step unchanged when updatedSteps has no resolvedSelector for it", () => {
+  const original = [{ kind: "tap", instruction: "tap LOGIN" }];
+  const updated = [{ kind: "tap", instruction: "tap LOGIN" }];
+  const merged = mergeResolvedSelectors(original, updated);
+  assert.deepStrictEqual(merged[0], original[0]);
+});
+
+test("mergeResolvedSelectors returns undefined when updatedSteps is undefined (a failed run before any step ran)", () => {
+  assert.strictEqual(mergeResolvedSelectors([{ kind: "tap", instruction: "x" }], undefined), undefined);
+});
+
+test("runOneLoginScriptIteration's default persist writes only merged (placeholder-safe) selectors, never a resolved-steps copy, to the real login test case path", async () => {
+  await withEnvAndFreshModule(
+    { PHOENIX_BATCH_LOGIN_PHONE: "0123456789", PHOENIX_BATCH_LOGIN_PASSWORD: "secret123" },
+    async (freshModule) => {
+      const deleteSessionCalls = [];
+      const testFreshModule = freshBatchModuleWithFakes({
+        deleteSessionCalls,
+        executeSemanticAction: async (driver, instruction) => ({
+          success: true,
+          diffSummary: `did: ${instruction}`,
+          selector: { strategy: "xpath", value: "//View[1]" },
+        }),
+      });
+      let persistedPath;
+      let persistedSteps;
+      const result = await testFreshModule.runOneLoginScriptIteration("android", {
+        persist: (filePath, steps) => {
+          persistedPath = filePath;
+          persistedSteps = steps;
+        },
+      });
+      assert.strictEqual(result.success, true);
+      assert.ok(persistedPath.endsWith(path.join("test-cases", "login.json")));
+      // Every step got the same fake selector; credentials must still be
+      // the original "${...}" placeholders, never "0123456789"/"secret123".
+      const typeSteps = persistedSteps.filter((s) => s.kind === "type");
+      assert.ok(typeSteps.length > 0);
+      for (const step of typeSteps) {
+        assert.ok(/^\$\{[A-Z0-9_]+\}$/.test(step.text), `expected a placeholder, got "${step.text}"`);
+      }
+      for (const step of persistedSteps) {
+        if (step.kind !== "wait") {
+          assert.deepStrictEqual(step.resolvedSelector, { strategy: "xpath", value: "//View[1]" });
+        }
+      }
+    }
+  );
+});
+
+// Every runOneLoginScriptIteration() call in this test file passes a
+// no-op `persist` override: that function's default behavior writes
+// any learned selectors back to the REAL test-cases/login.json on
+// disk (see run-batch-executions.js), which a test run must never do
+// to a tracked repo file.
+const noopPersist = () => {};
+
 test("runOneLoginScriptIteration fails fast with a clear message when no credentials are configured", async () => {
   await withEnvAndFreshModule(
     { PHOENIX_BATCH_LOGIN_PHONE: undefined, PHOENIX_BATCH_LOGIN_PASSWORD: undefined },
     async (freshModule) => {
-      const result = await freshModule.runOneLoginScriptIteration("android");
+      const result = await freshModule.runOneLoginScriptIteration("android", { persist: noopPersist });
       assert.strictEqual(result.success, false);
       assert.ok(/PHOENIX_BATCH_LOGIN_PHONE/.test(result.detail));
     }
@@ -325,7 +397,7 @@ test("runOneLoginScriptIteration runs the fixed sequence in order and reports su
         },
       });
 
-      const result = await freshModule.runOneLoginScriptIteration("android");
+      const result = await freshModule.runOneLoginScriptIteration("android", { persist: noopPersist });
 
       assert.strictEqual(result.success, true);
       assert.strictEqual(result.detail, "did: tap the LOGIN button to submit the login form");
@@ -369,7 +441,7 @@ test("runOneLoginScriptIteration stops and reports failure on the first non-opti
         },
       });
 
-      const result = await freshModule.runOneLoginScriptIteration("android");
+      const result = await freshModule.runOneLoginScriptIteration("android", { persist: noopPersist });
 
       assert.strictEqual(result.success, false);
       assert.ok(result.detail.includes("open the login form"));

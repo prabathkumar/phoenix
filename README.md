@@ -112,6 +112,10 @@ How Phoenix compares to what testers use today for mobile automation, and to the
 | Guided record → AI-generated script, from a **live, in-browser** device mirror | ✅ | ❌ | ❌ | ⚠️ record/playback, minimal AI, not in-browser |
 | Plain-language step resolution (no selector authored by hand) | ✅ | ❌ | ❌ | ⚠️ limited, vendor-locked |
 | Self-healing selectors, learned and cached automatically run-to-run | ✅ | ❌ | ❌ | ⚠️ some vendors, closed-source |
+| Self-heal is **confidence-gated** — a guess only gets pinned as the trusted baseline with real evidence (a verified outcome, or an actual screen change), never on "the click didn't throw" alone | ✅ | ❌ | ❌ | ⚠️ not disclosed — closed-source self-heal, no stated evidence bar |
+| Suite-wide health visibility — which steps have never been confirmed correct, which have drifted most across builds | ✅ (`engine/locator-store.js`) | ❌ | ⚠️ per-run reports only, no cross-run rollup | ⚠️ some vendors, dashboard-level only |
+| Zero-cost, zero-dependency pre-flight check before spending a real device session | ✅ (`check-env.js`) | ❌ | ❌ | ❌ |
+| Exposes its own data (locators, test cases, run history) to an external AI/MCP client | ✅ (`mcp/server.js`) | ⚠️ `appium-mcp` exposes Appium itself, not a recording product's own data | ❌ | ❌ |
 | Full control over the underlying engine (fork, extend, fix) | ✅ | ✅ | ❌ | ❌ |
 | No per-seat / per-minute vendor licensing, no vendor lock-in | ✅ | ✅ | ❌ | ❌ |
 | Runs on real devices + emulators/simulators | ✅ | ✅ | ✅ | ✅ limited range |

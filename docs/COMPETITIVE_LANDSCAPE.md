@@ -11,7 +11,12 @@ where it isn't.
 
 Researched 2026-09-29 via public docs/READMEs — re-check before quoting
 externally, this space moves fast (Kobiton's product launched within
-the last few months).
+the last few months). Phoenix's own "Maturity" row below was updated
+2026-10-04 to correct a real staleness bug: it previously said "never
+run on a real device," which stopped being true weeks ago (see
+`docs/STATUS.md` for the full real-BrowserStack bug-by-bug history) —
+left as a pointed reminder to re-verify every row here before quoting
+it, not just this one.
 
 ## The comparison
 
@@ -22,7 +27,9 @@ the last few months).
 | **On no confident match** | Returns `{resolved: false, reason}` — never guesses | Not specified as a hard contract; vision fallback implies best-effort | Not specified — asks the model for a selector regardless | Not specified | Autonomous by design — it acts on its best guess, that's the point |
 | **Guided + semantic in one product** | Yes — same selector-building code (`buildSelector`) serves both a human-recorded script and a resolved semantic action | No — it's an automation *interface* for an external AI agent, not a recording tool | No — selector resolution only, no recording/generation pipeline | Partially — natural-language selectors *inside* existing Appium scripts, but no recording/generation story | No — pure autonomous agent, no guided mode |
 | **Who's driving** | A human records once; the semantic layer is opt-in, later | An external AI assistant (e.g. via Claude), using Appium as its hands | A test author, at authoring time | A test author, at authoring time | The agent itself, always |
-| **Maturity** | 4 modules, unit-tested, **never run on a real device** | 683 commits, 481 stars, production patterns (tracing, caching, security controls) | 13 commits, 33 stars, labeled "highly experimental" by its own author | Commercial, launched ~June 2026, vendor-hosted | Active OSS project, vision-first agents are its whole premise |
+| **Self-heal trust model** | Confidence-gated: a fresh self-heal is only pinned as the trusted baseline with real evidence (a verified `expect`, or an actual screen change) — never on "didn't throw" alone; tracked per-step over time in an embedded locator store | Not its problem — it hands selector choice to the calling AI assistant each time, no persistent cache of its own | Not specified — resolves fresh each call, no persistence/trust model described | Not disclosed — closed-source self-heal | Not applicable — no selector concept, vision-only each step |
+| **Exposes its own data to an external AI/MCP client** | Yes — `mcp/server.js`, a standard MCP server (stdio) over locator-confidence history, test cases, and execution logs, built for the user's own TestOps MCP | This project *is* that exposure layer, but for raw Appium control, not a recording product's own learned data (selectors, run history) | No | No | No |
+| **Maturity** | Semantic layer: 4 modules, unit-tested, **and proven through dozens of real-bug-fix cycles on real BrowserStack Android/iOS hardware** (see `docs/STATUS.md` for the full bug-by-bug trail) — genuinely more exercised than this table previously gave it credit for, though still well short of `appium-mcp`'s production hardening below | 683 commits, 481 stars, production patterns (tracing, caching, security controls) | 13 commits, 33 stars, labeled "highly experimental" by its own author | Commercial, launched ~June 2026, vendor-hosted | Active OSS project, vision-first agents are its whole premise |
 | **Open source** | Yes (proprietary to FrothTestOps, not published) | Yes, Apache 2.0, official Appium org | Yes | No — Kobiton cloud only | Yes |
 
 ## What this means, plainly
@@ -40,12 +47,17 @@ recording/generation product a tester uses directly.
 **Where Phoenix is behind, and should say so out loud:** maturity.
 `appium-mcp` has 683 commits and production hardening (tracing,
 caching, permission controls) behind it; Phoenix's semantic layer has
-four files, full unit-test coverage against fakes, and **zero real
-device runs**. If anyone in the room asks "why should I trust this
-over an official Appium project," the honest answer is: we're not more
-mature, we're solving a narrower and different problem (a guided
-product with a safety-first semantic layer bolted on) that nothing
-mature currently solves. That's a legitimate answer. Claiming Phoenix
+proven itself through a real evidence-driven bug-fix process on actual
+BrowserStack hardware (dozens of real bugs found and fixed, full
+trail in `docs/STATUS.md`), but it's still a handful of modules built
+and hardened by one engagement, not 683 commits of multi-contributor
+production hardening. If anyone in the room asks "why should I trust
+this over an official Appium project," the honest answer is: we're not
+more mature by commit count or contributor base, we're solving a
+narrower and different problem (a guided product with a safety-first
+semantic layer bolted on) that nothing mature currently solves, and
+we've earned real-device credibility the hard way on our own flows.
+That's a legitimate answer. Claiming Phoenix
 is more mature would not be.
 
 **Where the comparison could age badly:** Kobiton's Appium AI is

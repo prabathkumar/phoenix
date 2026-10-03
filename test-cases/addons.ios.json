@@ -29,7 +29,11 @@
       "kind": "type",
       "instruction": "type the phone number into the single text field below the 'Yes Number' label (the field itself has no accessibility label, so don't require one)",
       "text": "${PHOENIX_BATCH_LOGIN_PHONE}",
-      "note": "REAL EVIDENCE, addons-run-ios-docker-7.log (bug #5): removed the guessed 'close the More-menu overlay' step that used to sit here -- it never found a real target in any run and, exactly like bug #4's retry-LOGIN step, mis-resolved to the real LOGIN button and clicked it a second time, submitting the form prematurely (same tell: a stray digit left in the Yes Number field afterward). Separately, the real captured XML shows the phone-number TextField itself has an empty accessibility label (`label=\"\"`) -- the visible 'Yes Number' text is a sibling StaticText, not programmatically tied to the field -- so the original 'phone/account number field' wording correctly found nothing labeled that way ('No editable input field is labeled as...'). Reworded to describe the field by its real structural position instead of a label it doesn't have."
+      "note": "REAL EVIDENCE, addons-run-ios-docker-7.log (bug #5): removed the guessed 'close the More-menu overlay' step that used to sit here -- it never found a real target in any run and, exactly like bug #4's retry-LOGIN step, mis-resolved to the real LOGIN button and clicked it a second time, submitting the form prematurely (same tell: a stray digit left in the Yes Number field afterward). Separately, the real captured XML shows the phone-number TextField itself has an empty accessibility label (`label=\"\"`) -- the visible 'Yes Number' text is a sibling StaticText, not programmatically tied to the field -- so the original 'phone/account number field' wording correctly found nothing labeled that way ('No editable input field is labeled as...'). Reworded to describe the field by its real structural position instead of a label it doesn't have. UPDATE (run 17, bug #10): the same reworded wording still wasn't reliable -- the LLM declined this exact field on run 17 (\"No editable text field is immediately below the 'Yes Number' label and has no accessibility label of its own\") despite the real captured XML showing exactly the described element, confirmed by replaying the captured snapshot locally through generation/semantic-snapshot.js (candidate \"[9] XCUIElementTypeTextField (empty input near: \"Yes Number\")\" present and correct). Same root cause and same fix as bug #9 (the password field, one step later in the same flow): this is LLM judgment variance on an unlabeled-field match, not a resolver defect -- pinning resolvedSelector directly from real evidence is the only fix that has ever reliably closed this failure class. Pinned here too, removing the LLM from this step's resolution entirely going forward.",
+      "resolvedSelector": {
+        "strategy": "class-chain",
+        "value": "**/XCUIElementTypeTextField[1]"
+      }
     },
     {
       "kind": "tap",
@@ -52,7 +56,12 @@
     {
       "kind": "type",
       "instruction": "type the password into the password field",
-      "text": "${PHOENIX_BATCH_LOGIN_PASSWORD}"
+      "text": "${PHOENIX_BATCH_LOGIN_PASSWORD}",
+      "note": "Proactively pinned (not yet exercised by a failing run of its own) after bugs #9/#10: this step types into the exact same secure field the previous step (bug #9) taps/focuses, so the same real evidence from addons-run-ios-docker-16.log applies -- a single, visible, accessible XCUIElementTypeSecureTextField with an empty label, directly below the 'Password' StaticText, classChain **/XCUIElementTypeSecureTextField[1]. Given the established pattern (LLM judgment variance reliably recurs on unlabeled-field matches -- bugs #5, #8, #9, #10 -- even after wording fixes that worked on earlier runs stop holding later), pinning here now rather than waiting to burn a future run on an identical failure on this adjacent step.",
+      "resolvedSelector": {
+        "strategy": "class-chain",
+        "value": "**/XCUIElementTypeSecureTextField[1]"
+      }
     },
     {
       "kind": "tap",

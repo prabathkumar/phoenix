@@ -211,6 +211,16 @@ function buildExecutionRecord(instruction, options, result) {
     // it fresh and got it right."
     success: Boolean(result.success),
     reason: result.success ? undefined : result.reason,
+    // Present only on a FAILED result that still went through the
+    // one-retry-on-decline path (engine/semantic-act-executor.js):
+    // firstAttemptReason is what the first, pre-retry decline actually
+    // said, kept separately from `reason` (the final, post-retry
+    // outcome) so neither is lost -- a run that failed twice for two
+    // DIFFERENT reasons is a different, more interesting fact than one
+    // that failed the same way twice, and this is what preserves that
+    // distinction in the log.
+    firstAttemptReason: result.retried ? result.firstAttemptReason : undefined,
+    retried: result.retried ? true : undefined,
     selector: result.selector,
     // The ORIGINAL selector that produced "No visible change." before
     // a successful self-heal retry replaced it with result.selector

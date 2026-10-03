@@ -355,6 +355,14 @@ async function resolveSemanticAction(pageSourceXml, instruction, options = {}) {
             "",
           ].join("\n")
         : undefined,
+      options.priorDeclineReason
+        ? [
+            "Note: a moment ago, resolving this SAME instruction against this SAME screen was declined with this reason:",
+            `  "${options.priorDeclineReason}"`,
+            "The screen has just been re-read fresh in case something was still loading or mid-transition. Look at the snapshot below again, carefully, in case the declined reason no longer applies -- but if it's still accurate, decline again rather than force a guess just because this is a second attempt.",
+            "",
+          ].join("\n")
+        : undefined,
       "A wrong guess is far more costly than correctly declining: a bad tap",
       "can navigate away, open an unrelated screen, or submit something, and",
       "nothing downstream can undo it. Match only an element whose own label,",

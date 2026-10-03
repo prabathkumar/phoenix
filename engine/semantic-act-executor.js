@@ -267,9 +267,41 @@ async function executeSemanticActionInner(driver, instruction, options = {}) {
     }
   }
 
-  const resolution = await resolveSemanticAction(pageSourceBefore, instruction, { screenshotBase64, kind });
+  let resolution = await resolveSemanticAction(pageSourceBefore, instruction, { screenshotBase64, kind });
   if (!resolution.resolved) {
-    return { success: false, reason: resolution.reason };
+    // One bounded retry on an outright decline (not a WebDriver error --
+    // resolveSemanticAction never throws, see its own fail-safe
+    // contract), found for real: docs/STATUS.md bug #7 (addons.ios.json
+    // run 11) showed a decline can come from the screen genuinely still
+    // being mid-transition/loading a moment before, which a single fresh
+    // read can resolve on its own. Re-reads the LIVE screen (not just
+    // reusing the stale pageSourceBefore) so a real timing race actually
+    // gets a chance to clear, and feeds the model its own prior decline
+    // reason back as context so the second look is informed, not a
+    // blind re-roll of the same dice. Exactly one retry, win or lose --
+    // "try twice and then fail", never an unbounded loop -- and the
+    // FINAL outcome (second decline's reason, or a resolved+acted
+    // result) is what gets returned and logged; nothing here invents a
+    // success or hides that a retry happened.
+    const firstDeclineReason = resolution.reason;
+    let retryPageSource = pageSourceBefore;
+    try {
+      retryPageSource = await driver.getPageSource();
+    } catch (err) {
+      // Couldn't re-read the screen -- retry against the already-
+      // captured snapshot rather than failing the whole retry attempt
+      // over a transient read error.
+    }
+    const retryResolution = await resolveSemanticAction(retryPageSource, instruction, {
+      screenshotBase64,
+      kind,
+      priorDeclineReason: firstDeclineReason,
+    });
+    if (!retryResolution.resolved) {
+      return { success: false, reason: retryResolution.reason, firstAttemptReason: firstDeclineReason, retried: true };
+    }
+    resolution = retryResolution;
+    pageSourceBefore = retryPageSource;
   }
 
   const selectorString = buildSelector(resolution.selector, platform);

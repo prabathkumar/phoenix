@@ -596,6 +596,103 @@ function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl,
     }
   });
 
+  // "try twice and then fail" -- explicit requirement: a decline isn't
+  // necessarily final. Real bug this mirrors: addons.ios.json run 11
+  // (bug #7), where a step declined for a reason that wouldn't have
+  // held a moment later against a fresh read of the same screen.
+  await run("executeSemanticAction retries ONCE on a decline, re-reading the live screen, and succeeds if the retry resolves", async () => {
+    let calls = 0;
+    const { executor, restore } = freshExecutorWithFakes({
+      resolveSemanticActionImpl: async (pageSourceXml, instruction, options) => {
+        calls += 1;
+        if (calls === 1) {
+          assert.strictEqual(options.priorDeclineReason, undefined, "the FIRST attempt must not carry a priorDeclineReason -- nothing has failed yet");
+          return { resolved: false, reason: "screen still loading, nothing matches yet" };
+        }
+        assert.strictEqual(calls, 2);
+        assert.strictEqual(options.priorDeclineReason, "screen still loading, nothing matches yet", "the retry must be told why the first attempt declined");
+        return {
+          resolved: true,
+          element: { ref: 1, role: "Button", label: "PASSWORD" },
+          selector: { strategy: "accessibility-id", value: "PASSWORD" },
+        };
+      },
+      // A real diff (changed: true) so this test exercises ONLY the
+      // decline-retry path, not the separate, pre-existing "No visible
+      // change." self-heal retry (which would otherwise also call
+      // resolveSemanticAction a third time and isn't what this test is for).
+      diffSnapshotsImpl: () => ({ appeared: [{ label: "Password field" }], disappeared: [], changed: true }),
+    });
+    try {
+      const { driver, calls: driverCalls } = makeFakeDriver({
+        pageSources: ["<hierarchy>loading</hierarchy>", "<hierarchy>loaded</hierarchy>", "<hierarchy>loaded</hierarchy>"],
+      });
+      const result = await executor.executeSemanticAction(driver, "tap the PASSWORD button");
+      assert.strictEqual(calls, 2, "must call resolveSemanticAction exactly twice -- once, then one retry");
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(driverCalls.click, 1);
+      assert.deepStrictEqual(result.selector, { strategy: "accessibility-id", value: "PASSWORD" });
+    } finally {
+      restore();
+    }
+  });
+
+  await run("executeSemanticAction fails (exactly once retried, never looping) when the retry ALSO declines, preserving both reasons", async () => {
+    let calls = 0;
+    const { executor, restore } = freshExecutorWithFakes({
+      resolveSemanticActionImpl: async () => {
+        calls += 1;
+        return calls === 1
+          ? { resolved: false, reason: "first decline reason" }
+          : { resolved: false, reason: "second decline reason, still nothing" };
+      },
+    });
+    try {
+      const { driver } = makeFakeDriver({ pageSources: ["<hierarchy />", "<hierarchy />"] });
+      const result = await executor.executeSemanticAction(driver, "tap something unresolvable");
+      assert.strictEqual(calls, 2, "must not retry more than once");
+      assert.strictEqual(result.success, false);
+      assert.strictEqual(result.reason, "second decline reason, still nothing", "the FINAL reported reason must be the retry's own reason, not the stale first one");
+      assert.strictEqual(result.firstAttemptReason, "first decline reason", "the first attempt's reason must still be preserved, not lost");
+      assert.strictEqual(result.retried, true);
+    } finally {
+      restore();
+    }
+  });
+
+  await run("executeSemanticAction's retry falls back to the already-captured screen if the fresh getPageSource() read itself fails", async () => {
+    let resolveCalls = 0;
+    const seenPageSources = [];
+    const { executor, restore } = freshExecutorWithFakes({
+      resolveSemanticActionImpl: async (pageSourceXml) => {
+        resolveCalls += 1;
+        seenPageSources.push(pageSourceXml);
+        return { resolved: false, reason: `declined (attempt ${resolveCalls})` };
+      },
+    });
+    try {
+      let getPageSourceCalls = 0;
+      const driver = {
+        getPageSource: async () => {
+          getPageSourceCalls += 1;
+          if (getPageSourceCalls === 1) return "<hierarchy>before</hierarchy>";
+          throw new Error("transient read error");
+        },
+        $: async () => ({ isExisting: async () => true, click: async () => {} }),
+      };
+      // The retry's own getPageSource() throws -- executeSemanticAction
+      // must not blow up over it, just fall back to reusing
+      // pageSourceBefore for the retry attempt.
+      const result = await executor.executeSemanticAction(driver, "tap OK");
+      assert.strictEqual(resolveCalls, 2, "must still attempt the retry (against the fallback source) rather than giving up when the fresh read fails");
+      assert.strictEqual(result.success, false);
+      assert.strictEqual(result.retried, true);
+      assert.deepStrictEqual(seenPageSources, ["<hierarchy>before</hierarchy>", "<hierarchy>before</hierarchy>"], "both attempts must have seen a real page source -- the retry fell back to pageSourceBefore, it wasn't handed undefined/empty");
+    } finally {
+      restore();
+    }
+  });
+
   await run("executeSemanticAction reports failure, not a thrown error, when getPageSource fails up front", async () => {
     const { executor, restore } = freshExecutorWithFakes();
     try {

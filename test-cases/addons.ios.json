@@ -10,13 +10,19 @@
       "kind": "tap",
       "instruction": "tap Allow or Don't Allow to dismiss the notification-permission system dialog if it's open",
       "optional": true,
-      "resolvedSelector": { "strategy": "accessibility-id", "value": "Allow" },
+      "resolvedSelector": {
+        "strategy": "accessibility-id",
+        "value": "Allow"
+      },
       "note": "REAL EVIDENCE, addons-run-ios-docker-1.log: on iOS this native alert ('\"MyYes\" Would Like to Send You Notifications', Allow/Don't Allow) appears immediately on first app launch, before login -- not after login as on Android (see addons.json steps 8-9, where the equivalent dismiss is positioned post-login). The alert covers the whole screen, so the very first run's step 0 ('tap the LOGIN button') failed with 'snapshot does not contain any element labeled LOGIN button' -- genuinely because the login button was hidden behind this dialog, not because the app failed to launch. Added here, before the login attempt, to match iOS's actual first-launch behavior. REAL EVIDENCE, addons-run-ios-docker-11.log (bug #7): being optional and unpinned made this step silently swallow a real infra failure -- 'resolveSemanticAction failed, returning unresolved: This operation was aborted' (a thrown error from the Ollama fetch call itself, confirmed by generation/semantic-act.js only logging that console.warn in its catch block, never on a clean model decline -- i.e. this was a timeout/connection abort, not the model being asked and saying no). Because the step is optional, that failure was swallowed and the run moved on with the dialog still covering the screen, which then made the very next (non-optional) step -- 'tap the LOGIN button on the home screen' -- correctly and truthfully fail with 'No button labeled LOGIN is visible on the screen,' since the real page source at that instant was 100% the alert, nothing else. Not a repeat of any prior bug: the resolvedSelector pinning fix applied to LOGIN/PASSWORD for a different reason (a stable element not worth re-litigating via Ollama every run) applies here for an additional one -- removing this step's Ollama dependency entirely means a single infra hiccup can never again silently skip it and cascade into failing the whole run. 'Allow' chosen over 'Don't Allow' since both buttons are confirmed present and this step only needs to clear the dialog, not test either choice."
     },
     {
       "kind": "tap",
       "instruction": "tap the LOGIN button on the home screen to open the login form",
-      "resolvedSelector": { "strategy": "accessibility-id", "value": "LOGIN" },
+      "resolvedSelector": {
+        "strategy": "accessibility-id",
+        "value": "LOGIN"
+      },
       "note": "REAL EVIDENCE, confirmed across addons-run-ios-docker-2.log through -10.log: at this point in the flow (home screen, login form not yet open) the only 'LOGIN'-named element on screen is this real, visible, accessible button -- its own nested StaticText label is not an independent duplicate (bug #2's ancestor/descendant fix). Pinned as a resolvedSelector so this step resolves directly via WebDriver (engine/semantic-act-executor.js tries resolvedSelector first, see its cachedSelector handling) instead of depending on Ollama being reachable/warm for a step that has never once needed the LLM to get right. Deliberately NOT applied to the second 'tap the LOGIN button to submit the login form' step below -- that one has a genuine duplicate accessibility-id on screen at that point (the now-hidden home LOGIN button) and needs the resolver's visibility-aware disambiguation (buildIosAmbiguousAccessibilityClassChain), not a plain accessibility-id selector, which would risk re-clicking the wrong one."
     },
     {
@@ -28,13 +34,20 @@
     {
       "kind": "tap",
       "instruction": "tap the PASSWORD button",
-      "resolvedSelector": { "strategy": "accessibility-id", "value": "PASSWORD" },
+      "resolvedSelector": {
+        "strategy": "accessibility-id",
+        "value": "PASSWORD"
+      },
       "note": "REAL EVIDENCE, addons-run-ios-docker-3.log (bug #3): the real element is an XCUIElementTypeButton named 'PASSWORD', correctly unambiguous and reaching the model-facing candidate list intact (confirmed by feeding the run's captured XML through buildGroundedSnapshot() directly) -- but the resolver declined with 'no element on the screen has this label or role' while the instruction said 'PASSWORD tab'. Reworded from 'tab' to 'button' to match the real rendered role, since the resolution engine itself had no defect here. REAL EVIDENCE, addons-run-ios-docker-10.log (bug #6, second half): even with that 'button' wording, the resolver declined AGAIN -- 'there is no button labeled PASSWORD ... based on the snapshot provided' -- while the real captured XML, fed through buildGroundedSnapshot()/snapshotToText() directly, proves `[11] XCUIElementTypeButton \"PASSWORD\"` (unambiguous, no dead/expect-failed exclusion, no other PASSWORD-named control anywhere else on screen) WAS rendered into the exact candidate list the model reads. This is not a resolution-engine defect (the candidate is present and correct) -- the local Ollama model declined a clean match twice in a row, plausibly because the instruction's trailing purpose clause ('to switch the form into password-entry mode') invited it to require proof of a *behavior* no static snapshot can confirm. Rather than keep spending real BrowserStack runs re-testing the LLM's mood on an element whose selector is now confirmed stable across 3+ real runs (docker-3, -8, -9, -10), pinned it as a resolvedSelector so this step resolves directly via WebDriver, no Ollama call needed at all for it -- same reasoning as the LOGIN-button pin above."
     },
     {
       "kind": "tap",
       "instruction": "tap the secure text field below the 'Password' label (the field itself has no accessibility label, so don't require one)",
-      "note": "REAL EVIDENCE, addons-run-ios-docker-13.log (bug #8): the original wording ('tap the password field to focus it') asked for something labeled 'password,' which doesn't exist -- the real captured XML shows a genuinely present, visible, accessible XCUIElementTypeSecureTextField with an EMPTY label, sitting right below a separate sibling StaticText captioned 'Password' (identical shape to bug #5's phone-number field, just not yet applied to this step). The resolver correctly declined rather than guess at an unlabeled field; not a resolution-engine bug. Reworded to describe the field by its real structural position, same fix pattern as bug #5."
+      "note": "REAL EVIDENCE, addons-run-ios-docker-13.log (bug #8): the original wording ('tap the password field to focus it') asked for something labeled 'password,' which doesn't exist -- the real captured XML shows a genuinely present, visible, accessible XCUIElementTypeSecureTextField with an EMPTY label, sitting right below a separate sibling StaticText captioned 'Password' (identical shape to bug #5's phone-number field, just not yet applied to this step). The resolver correctly declined rather than guess at an unlabeled field; not a resolution-engine bug. Reworded to describe the field by its real structural position, same fix pattern as bug #5. UPDATE (run 16, bug #9): reworded instruction still wasn't enough -- the LLM declined TWICE in the same run (including the one-retry-on-decline pass) despite the real captured XML showing exactly the described element (a single, visible, accessible XCUIElementTypeSecureTextField with an empty label, directly below the \"Password\" StaticText) -- confirmed by replaying the exact captured snapshot locally, zero cost, through generation/semantic-snapshot.js, which correctly produced candidate \"[11] XCUIElementTypeSecureTextField (empty input near: \"Password\")\". This is LLM judgment variance on an inherently ambiguous-looking case (an unlabeled field), not a resolver bug -- same root cause class as bugs #5/#8. Fixed the only way this class of problem is ever reliably fixed here: pinned resolvedSelector directly from the real captured evidence (classChain the resolver itself would have built had it not declined), removing the LLM from this step's resolution entirely going forward.",
+      "resolvedSelector": {
+        "strategy": "class-chain",
+        "value": "**/XCUIElementTypeSecureTextField[1]"
+      }
     },
     {
       "kind": "type",

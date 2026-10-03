@@ -457,7 +457,18 @@ async function runOneTestCaseIteration(platform, filePath) {
     let locatorStore;
     if (process.env.PHOENIX_ENABLE_LOCATOR_STORE || process.env.PHOENIX_LOCATOR_DB_PATH) {
       try {
+        const dbPath = process.env.PHOENIX_LOCATOR_DB_PATH || require("./engine/locator-store").dbPath();
         locatorStore = openLocatorStore();
+        // Real gap found on a real run (addons-run-ios-docker-16.log):
+        // with no confirmation either way, the store silently failed to
+        // open (node:sqlite missing pre-Node-22.5) and nobody could tell
+        // from the log alone. Always print the outcome explicitly now --
+        // success AND failure -- so "is this actually recording data" is
+        // never a silent question again. Also a reminder that inside a
+        // container, this path is only real evidence if it's on a
+        // mounted volume -- a bare `docker run --rm` with no matching
+        // `-v` loses it the moment the container exits.
+        console.log(`[run-batch-executions] locator store enabled: ${dbPath}`);
       } catch (err) {
         console.warn(`[run-batch-executions] couldn't open locator store (continuing without it): ${err.message}`);
       }

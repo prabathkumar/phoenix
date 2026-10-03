@@ -32,11 +32,26 @@
 # blocked here (see docs/RELEASING.md), so the exact content digest behind
 # this tag couldn't be resolved and recorded. Once this is built somewhere
 # with real registry access, prefer pinning by digest instead
-# (`node:20.18.1-slim@sha256:<digest>`, from `docker pull node:20.18.1-slim
-# && docker inspect --format '{{index .RepoDigests 0}}' node:20.18.1-slim`)
+# (`node:22.23.3-slim@sha256:<digest>`, from `docker pull node:22.23.3-slim
+# && docker inspect --format '{{index .RepoDigests 0}}' node:22.23.3-slim`)
 # for the strongest guarantee; bump both the tag and digest together on
 # purpose, not by accident.
-FROM node:20.18.1-slim
+#
+# Bumped from 20.18.1 to 22.23.3 -- real bug, found on a real BrowserStack
+# run (addons-run-ios-docker-16.log): engine/locator-store.js's optional
+# confidence/analytics layer requires `node:sqlite`, which doesn't exist at
+# all before Node 22.5 -- it failed with "No such built-in module:
+# node:sqlite" inside the Node 20 image and silently fell back to running
+# without the store (fail-soft by design, so the actual test run wasn't
+# affected -- only the new locator-store feature was silently inert). This
+# exact version number (22.23.3) is confirmed to exist as a real Node
+# release (`npm view node` from this sandbox), but this sandbox has no
+# outbound registry access to confirm the matching `-slim` Docker tag
+# exists -- stated plainly: **unverified until the first real `docker
+# build` after this change**. If that tag doesn't resolve, swap in
+# whatever current Node 22.x-slim tag `docker pull` confirms is real, and
+# update this comment/digest-pin plan to match.
+FROM node:22.23.3-slim
 
 # Build-time version, threaded through to the OCI label below so a running
 # container can report exactly what it is (`docker inspect` or

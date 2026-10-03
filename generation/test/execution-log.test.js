@@ -21,7 +21,7 @@ const path = require("path");
 const TMP_LOG_PATH = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "phoenix-exec-log-")), "executions.jsonl");
 process.env.PHOENIX_TRAINING_LOG_PATH = TMP_LOG_PATH;
 
-const { logExecution, buildExecutionRecord, logPath, getDeadSelectors, getExpectFailedSelectors, pruneOldExecutions, retentionDays } = require("../execution-log");
+const { logExecution, buildExecutionRecord, logPath, getDeadSelectors, getExpectFailedSelectors, getPastSuccesses, pruneOldExecutions, retentionDays } = require("../execution-log");
 
 function test(name, fn) {
   try {
@@ -493,6 +493,84 @@ test("logExecution does NOT re-prune on every call once the sentinel is fresh (a
     // the new append happened.
     assert.ok(remaining.some((r) => r.instruction === "stale but protected by a fresh sentinel"));
     assert.ok(remaining.some((r) => r.instruction === "another one"));
+  } finally {
+    process.env.PHOENIX_TRAINING_LOG_PATH = originalPath;
+  }
+});
+
+test("getPastSuccesses returns a successful, non-cache-hit result's selector", () => {
+  logExecution({
+    instruction: "tap the PASSWORD button",
+    kind: "tap",
+    success: true,
+    selector: { strategy: "accessibility-id", value: "PASSWORD" },
+  });
+  const successes = getPastSuccesses("tap the PASSWORD button");
+  assert.deepStrictEqual(successes.map((s) => s.selector), [{ strategy: "accessibility-id", value: "PASSWORD" }]);
+});
+
+test("getPastSuccesses excludes a cache hit (usedCache) -- the model made no judgment call to learn from", () => {
+  logExecution({
+    instruction: "tap the cached button",
+    kind: "tap",
+    success: true,
+    usedCache: true,
+    selector: { strategy: "accessibility-id", value: "CACHED" },
+  });
+  assert.deepStrictEqual(getPastSuccesses("tap the cached button"), []);
+});
+
+test("getPastSuccesses excludes a failed result", () => {
+  logExecution({
+    instruction: "tap the failing button",
+    kind: "tap",
+    success: false,
+    reason: "no match",
+  });
+  assert.deepStrictEqual(getPastSuccesses("tap the failing button"), []);
+});
+
+test("getPastSuccesses scopes to the exact instruction string only", () => {
+  logExecution({
+    instruction: "a totally different instruction",
+    kind: "tap",
+    success: true,
+    selector: { strategy: "accessibility-id", value: "UNRELATED" },
+  });
+  assert.deepStrictEqual(getPastSuccesses("tap the never-logged instruction"), []);
+});
+
+test("getPastSuccesses dedups repeated selectors and respects limit, most recent first", () => {
+  for (let i = 0; i < 4; i += 1) {
+    logExecution({
+      instruction: "tap the reliable card",
+      kind: "tap",
+      success: true,
+      selector: { strategy: "accessibility-id", value: `card-${i}` },
+    });
+  }
+  const limited = getPastSuccesses("tap the reliable card", { limit: 2 });
+  assert.deepStrictEqual(limited.map((s) => s.selector), [
+    { strategy: "accessibility-id", value: "card-3" },
+    { strategy: "accessibility-id", value: "card-2" },
+  ]);
+});
+
+test("getPastSuccesses returns [] when there's no log file yet, and tolerates a corrupt line", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "phoenix-exec-log-successes-"));
+  const freshPath = path.join(dir, "executions.jsonl");
+  const originalPath = process.env.PHOENIX_TRAINING_LOG_PATH;
+  process.env.PHOENIX_TRAINING_LOG_PATH = freshPath;
+  try {
+    assert.deepStrictEqual(getPastSuccesses("tap anything"), []);
+    fs.writeFileSync(
+      freshPath,
+      "not valid json\n" +
+        JSON.stringify({ instruction: "tap anything", kind: "tap", success: true, selector: { strategy: "text", value: "survives_the_corrupt_line" } }) +
+        "\n"
+    );
+    const recovered = getPastSuccesses("tap anything");
+    assert.deepStrictEqual(recovered.map((s) => s.selector), [{ strategy: "text", value: "survives_the_corrupt_line" }]);
   } finally {
     process.env.PHOENIX_TRAINING_LOG_PATH = originalPath;
   }

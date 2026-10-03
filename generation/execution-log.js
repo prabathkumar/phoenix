@@ -455,11 +455,92 @@ function getExpectFailedSelectors(instruction, options = {}) {
   }
 }
 
+/**
+ * Reads back successful past resolutions for the SAME instruction --
+ * the positive-evidence counterpart to getPastFailures() above.
+ * Explicit direction from the user: past executions should feed back
+ * into the LLM, not just failures. A past success is the strongest
+ * evidence available that a given selector is the right real-world
+ * answer to this exact instruction (stronger than the hard
+ * dead/expect-failed exclusions above, which only ever remove a wrong
+ * candidate -- this surfaces the right one as a positive few-shot hint
+ * the model reads directly in its prompt).
+ *
+ * Deliberately a soft hint, same contract as getPastFailures(): the
+ * screen can genuinely change between runs (an app update moves the
+ * element, a different account state removes it), so this is never a
+ * hard override of what resolveSemanticAction() actually sees on the
+ * live candidate list -- a stale success that no longer matches
+ * anything on screen simply has no effect. A genuinely still-correct,
+ * still-present success is also the ideal case for upgrading this step
+ * to a pinned `resolvedSelector` in the test-case file instead (see
+ * docs/STATUS.md's iOS LOGIN/PASSWORD pins) -- that removes the LLM
+ * call for the step entirely, which is strictly better than reminding
+ * the model every time. This hint exists for the steps NOT yet pinned
+ * that way, or that can't be (e.g. an instruction whose correct element
+ * genuinely varies by screen state).
+ *
+ * Scoped to exact instruction-string matches only (same as
+ * getPastFailures()), successes only (`success: true`), and explicitly
+ * excludes a self-healed run's PRE-heal attempt and any cache hit
+ * (`usedCache`) -- a cache hit didn't involve the model making a
+ * judgment call at all, so it has nothing to teach a *fresh* resolution
+ * about matching an instruction to a candidate list; only a run where
+ * the model itself picked correctly from scratch is useful few-shot
+ * evidence of that skill.
+ *
+ * @param {string} instruction
+ * @param {Object} [options]
+ * @param {number} [options.limit] - most recent N distinct successful
+ *   selectors to return (default 3) -- enough to reinforce a pattern
+ *   without crowding the prompt or implying more certainty than one or
+ *   two real confirmations warrant.
+ * @returns {Array<{selector: {strategy: string, value: string}, loggedAt: string}>}
+ */
+function getPastSuccesses(instruction, options = {}) {
+  const limit = options.limit || 3;
+  try {
+    const filePath = logPath();
+    if (!fs.existsSync(filePath)) return [];
+    const lines = fs.readFileSync(filePath, "utf8").split("\n").filter(Boolean);
+    const seen = new Set();
+    const successes = [];
+    // Walk from the end -- most recent first, same convention as every
+    // other reader in this file -- so a long-stale success (the app has
+    // since changed) doesn't crowd out a more recent confirmation.
+    for (let i = lines.length - 1; i >= 0 && successes.length < limit; i -= 1) {
+      let record;
+      try {
+        record = JSON.parse(lines[i]);
+      } catch {
+        continue; // tolerate a corrupt/partial line, same as every other reader here
+      }
+      if (record.instruction !== instruction || record.success !== true) continue;
+      if (record.usedCache) continue; // a cache hit isn't the model exercising judgment
+      const candidate = record.selector;
+      if (!candidate || !candidate.strategy || !candidate.value) continue;
+
+      const key = `${candidate.strategy}:${candidate.value}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      successes.push({ selector: { strategy: candidate.strategy, value: candidate.value }, loggedAt: record.loggedAt });
+    }
+    return successes;
+  } catch (err) {
+    // Fail-soft, same contract as every other reader in this file: a
+    // corrupt/unreadable log must never block resolution, only lose
+    // this one piece of helpful context.
+    console.warn("[generation/execution-log] couldn't read past successes (continuing without them):", err.message);
+    return [];
+  }
+}
+
 module.exports = {
   logExecution,
   buildExecutionRecord,
   logPath,
   getPastFailures,
+  getPastSuccesses,
   getDeadSelectors,
   getExpectFailedSelectors,
   pruneOldExecutions,

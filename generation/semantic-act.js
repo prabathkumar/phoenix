@@ -29,7 +29,7 @@
 
 const { buildGroundedSnapshot, snapshotToText, findByRef } = require("./semantic-snapshot");
 const { callOllamaJson } = require("./llm");
-const { getPastFailures, getDeadSelectors, getExpectFailedSelectors } = require("./execution-log");
+const { getPastFailures, getPastSuccesses, getDeadSelectors, getExpectFailedSelectors } = require("./execution-log");
 
 /**
  * @typedef {Object} SemanticActionResult
@@ -303,6 +303,21 @@ async function resolveSemanticAction(pageSourceXml, instruction, options = {}) {
   // a soft hint in the prompt, never a hard exclusion -- see
   // getPastFailures()'s own doc comment for why.
   const pastFailures = getPastFailures(instruction);
+  // Positive counterpart to pastFailures -- explicit direction from the
+  // user: past executions (not just failures) should feed back into
+  // the model. Only worth mentioning a past success whose selector
+  // still corresponds to something in THIS snapshot (matched by
+  // ref via toSelector(), not by raw string, so a stale success for a
+  // since-changed screen says nothing and is silently dropped) --
+  // otherwise it's noise the model can't act on. See
+  // getPastSuccesses()'s own doc comment for why this stays a soft
+  // hint and why a cache hit doesn't count as evidence here.
+  const pastSuccesses = getPastSuccesses(instruction).filter((s) =>
+    elements.some((el) => {
+      const sel = toSelector(el, { kind: options.kind });
+      return sel && sel.strategy === s.selector.strategy && sel.value === s.selector.value;
+    })
+  );
 
   try {
     const prompt = [
@@ -324,6 +339,14 @@ async function resolveSemanticAction(pageSourceXml, instruction, options = {}) {
       "Snapshot:",
       snapshotToText(elements, { includeBounds: fused }),
       "",
+      pastSuccesses.length > 0
+        ? [
+            `Note: on ${pastSuccesses.length} past run(s), this exact instruction was correctly resolved to ` +
+              `${pastSuccesses.map((s) => `${s.selector.strategy}:${s.selector.value}`).join(", ")} -- ` +
+              "that same element is present in the snapshot below (marked by that identifier). This is a strong hint, not a requirement: prefer it if it still fits the instruction, but still decline if the screen genuinely no longer matches.",
+            "",
+          ].join("\n")
+        : undefined,
       pastFailures.length > 0
         ? [
             `Note: on ${pastFailures.length} past run(s), this exact instruction failed:`,

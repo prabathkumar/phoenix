@@ -552,6 +552,49 @@ function getPastSuccesses(instruction, options = {}) {
   }
 }
 
+/**
+ * Returns the most recent `limit` records from the log, newest first,
+ * optionally filtered to one `instruction`. Unlike getPastFailures/
+ * getPastSuccesses/etc. (each scoped to one narrow question the
+ * resolver asks itself), this is the general-purpose reader -- built
+ * for the MCP connector (mcp/server.js) and any other external
+ * consumer that wants a plain view of "what actually happened
+ * recently," not a resolver-specific filter. Same fail-soft contract
+ * as every other reader here: a corrupt/unreadable log returns [],
+ * never throws.
+ *
+ * Every record already excludes step `text`/secret values by
+ * construction (buildExecutionRecord only stores `hadText`/
+ * `textLength`, never the literal value) -- safe to hand back as-is to
+ * an external caller.
+ *
+ * @param {{limit?: number, instruction?: string}} [options]
+ * @returns {Array<Object>}
+ */
+function getRecentExecutions(options = {}) {
+  const limit = options.limit || 50;
+  try {
+    const filePath = logPath();
+    if (!fs.existsSync(filePath)) return [];
+    const lines = fs.readFileSync(filePath, "utf8").split("\n").filter(Boolean);
+    const out = [];
+    for (let i = lines.length - 1; i >= 0 && out.length < limit; i -= 1) {
+      let record;
+      try {
+        record = JSON.parse(lines[i]);
+      } catch {
+        continue;
+      }
+      if (options.instruction && record.instruction !== options.instruction) continue;
+      out.push(record);
+    }
+    return out;
+  } catch (err) {
+    console.warn("[generation/execution-log] couldn't read recent executions (continuing without them):", err.message);
+    return [];
+  }
+}
+
 module.exports = {
   logExecution,
   buildExecutionRecord,
@@ -560,6 +603,7 @@ module.exports = {
   getPastSuccesses,
   getDeadSelectors,
   getExpectFailedSelectors,
+  getRecentExecutions,
   pruneOldExecutions,
   retentionDays,
 };

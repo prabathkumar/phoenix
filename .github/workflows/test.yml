@@ -30,7 +30,13 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Bumped from 20 to 22 -- real CI failure (run 167, test (engine)):
+          # engine/test/locator-store.test.js requires node:sqlite, which
+          # doesn't exist before Node 22.5 -- same root cause as the
+          # Dockerfile's node:20.18.1-slim -> node:22.23.3-slim bump (see
+          # docs/STATUS.md's addons-run-ios-docker-16.log entry). 22 is the
+          # current Node.js LTS line.
+          node-version: 22
 
       - name: Install ${{ matrix.package }} dependencies
         working-directory: ${{ matrix.package }}

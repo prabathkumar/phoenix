@@ -66,19 +66,21 @@ Dockerfile's `VERSION` arg are all registry-agnostic.
 
 ## Base image pinning
 
-`Dockerfile`'s `FROM` line is pinned to `node:20.18.1-slim` — an exact
-upstream version tag, not the floating `node:20-slim` tag that can
-silently point at a different image (a new Debian point release, a new
-Node 20.x patch) between two builds of the same commit. This sandbox
-couldn't resolve and record the actual content digest behind that tag
-(outbound registry access is blocked here — the same constraint noted
-above), so it isn't pinned by digest yet. The strongest version of this
-pin is `node:20.18.1-slim@sha256:<digest>`; whoever runs the first real
-build with registry access should resolve that digest
-(`docker pull node:20.18.1-slim && docker inspect --format
-'{{index .RepoDigests 0}}' node:20.18.1-slim`) and update the `FROM` line
-to include it, bumping the tag and digest together on purpose from then
-on, never the digest alone.
+`Dockerfile`'s `FROM` line is pinned to
+`node:22.23.3-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c`
+— an exact upstream version tag AND content digest, not the floating
+`node:22-slim` tag that can silently point at a different image (a new
+Debian point release, a new Node 22.x patch) between two builds of the
+same commit. (Bumped from `node:20.18.1-slim` on 2026-10-04 — see
+`docs/STATUS.md`'s `addons-run-ios-docker-16.log` entry: `engine/locator-store.js`
+needs `node:sqlite`, Node 22.5+ only.) This sandbox's own network
+allowlist blocks the Docker Hub registry entirely — confirmed by an
+identical 403 on both the already-proven `node:20.18.1-slim` tag and a
+trivial public `alpine:latest` pull — so the tag and digest were
+resolved on the user's own machine instead
+(`docker pull node:22.23.3-slim && docker inspect --format
+'{{index .RepoDigests 0}}' node:22.23.3-slim`). Bump the tag and digest
+together on purpose from here on, never the digest alone.
 
 ## What's still genuinely open
 

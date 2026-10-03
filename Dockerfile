@@ -24,34 +24,30 @@
 # recorder, script generator, and the tester-facing frontend, all built and
 # ready to run against whatever Appium server you point them at.
 
-# Pinned to an exact upstream version tag, not the floating "20-slim" tag --
-# "latest"/"20-slim" can silently change under us (a new Debian point
-# release, a new Node 20.x patch) between two builds of the exact same
-# commit, which is the opposite of reproducible. This is the most specific
-# pin available from inside this sandbox: outbound registry access is
-# blocked here (see docs/RELEASING.md), so the exact content digest behind
-# this tag couldn't be resolved and recorded. Once this is built somewhere
-# with real registry access, prefer pinning by digest instead
-# (`node:22.23.3-slim@sha256:<digest>`, from `docker pull node:22.23.3-slim
-# && docker inspect --format '{{index .RepoDigests 0}}' node:22.23.3-slim`)
-# for the strongest guarantee; bump both the tag and digest together on
-# purpose, not by accident.
+# Pinned to an exact upstream version tag AND content digest, not the
+# floating "22-slim" tag -- "latest"/"22-slim" can silently change under us
+# (a new Debian point release, a new Node 22.x patch) between two builds of
+# the exact same commit, which is the opposite of reproducible. Bump both
+# the tag and digest together on purpose, not by accident
+# (`docker pull node:<tag> && docker inspect --format '{{index .RepoDigests 0}}' node:<tag>`
+# to get the new digest).
 #
-# Bumped from 20.18.1 to 22.23.3 -- real bug, found on a real BrowserStack
-# run (addons-run-ios-docker-16.log): engine/locator-store.js's optional
-# confidence/analytics layer requires `node:sqlite`, which doesn't exist at
-# all before Node 22.5 -- it failed with "No such built-in module:
+# Bumped from 20.18.1 to 22.23.3 on 2026-10-04 -- real bug, found on a real
+# BrowserStack run (addons-run-ios-docker-16.log): engine/locator-store.js's
+# optional confidence/analytics layer requires `node:sqlite`, which doesn't
+# exist at all before Node 22.5 -- it failed with "No such built-in module:
 # node:sqlite" inside the Node 20 image and silently fell back to running
 # without the store (fail-soft by design, so the actual test run wasn't
-# affected -- only the new locator-store feature was silently inert). This
-# exact version number (22.23.3) is confirmed to exist as a real Node
-# release (`npm view node` from this sandbox), but this sandbox has no
-# outbound registry access to confirm the matching `-slim` Docker tag
-# exists -- stated plainly: **unverified until the first real `docker
-# build` after this change**. If that tag doesn't resolve, swap in
-# whatever current Node 22.x-slim tag `docker pull` confirms is real, and
-# update this comment/digest-pin plan to match.
-FROM node:22.23.3-slim
+# affected -- only the new locator-store feature was silently inert).
+#
+# Tag and digest confirmed real via a real `docker pull node:22.23.3-slim`
+# on the user's own machine -- this sandbox's own network allowlist blocks
+# the Docker Hub registry entirely (confirmed by the identical 403 on the
+# already-proven node:20.18.1-slim tag, and even on a trivial public
+# `alpine:latest` pull), so no tag could ever have been verified from
+# inside this sandbox regardless of which one was chosen; the real
+# verification had to happen where Docker actually runs.
+FROM node:22.23.3-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c
 
 # Build-time version, threaded through to the OCI label below so a running
 # container can report exactly what it is (`docker inspect` or

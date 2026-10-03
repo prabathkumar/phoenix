@@ -751,3 +751,44 @@ Tracing the WebDriver command log precisely found the real cause: `elementSendKe
 - Full suite green, committed `6e97b92`.
 
 **Separately, started pushing past executions (not just failures) into the LLM's resolution prompt, going forward — not only pinning the handful of steps stable enough to cache.** `generation/execution-log.js` gains `getPastSuccesses(instruction, {limit})`, the positive counterpart to the existing `getPastFailures()`: scans `training-data/executions.jsonl` from the end for prior successful, non-cache-hit resolutions of the exact same instruction (a cache hit involved no model judgment, so it teaches nothing). `generation/semantic-act.js` wires it into the resolution prompt as a soft positive hint, filtered to only mention a past selector that's still present in the *current* live snapshot — framed explicitly as "a strong hint, not a requirement," so the model can still correctly decline if the screen genuinely no longer matches. 6 new tests in `generation/test/execution-log.test.js`; full suite green. Committed `17440f2`.
+
+## Android recording sessions on BrowserStack: `appium:deviceName` was never actually "ignored" there, and the default silently broke every such session
+
+A real BrowserStack run on 2026-10-03 — a "guided" recording session
+(`run-session.js`, i.e. `engine/session.js`'s Android path) with
+`PHOENIX_APPIUM_PROVIDER=browserstack` and no `PHOENIX_APPIUM_DEVICE_NAME`
+set — looped forever creating and immediately failing sessions:
+`[BROWSERSTACK_INVALID_DEVICE] Incorrect device name 'emulator-5554'
+specified for the 'device' capability`, retried 3x per attempt, then moved
+on to the next guided iteration and repeated, never recovering.
+
+- **Root cause:** `engine/session.js`'s own comment claimed
+  `appium:deviceName` was "ignored on BrowserStack, where the device comes
+  from BrowserStack's own catalog instead" — that claim was false.
+  BrowserStack validates `appium:deviceName` against its real device
+  catalog and rejects anything not in it, including a local ADB serial
+  like `emulator-5554`. `remote-provider.js`'s `buildCapabilities()`
+  already knew to swap out the local-only `appium:app`/`appium:bundleId`
+  for BrowserStack, but never touched `appium:deviceName` — so the
+  hardcoded Android default sailed straight through to a real BrowserStack
+  session every time `PHOENIX_APPIUM_DEVICE_NAME` wasn't set.
+- **Why this hadn't been caught by any of the real Android BrowserStack
+  runs already proven in this doc:** every one of those
+  (`test-cases/addons.json`'s batch/test-case runs) happened to set
+  `PHOENIX_APPIUM_DEVICE_NAME` explicitly. Nothing had exercised the
+  *default* on BrowserStack until this recording-mode session did.
+  `engine/ios-session.js`'s equivalent default (`"iPhone 15"`) only ever
+  worked by coincidence — it happens to be a real BrowserStack catalog
+  name too — not because iOS's deviceName is actually ignored there
+  either; the same latent bug exists in the iOS path, it just never
+  surfaced because the lucky default never collided with reality.
+- **Fix:** `engine/session.js` now picks a provider-appropriate default —
+  `"Google Pixel 7"` (a real BrowserStack App Automate catalog entry) on
+  BrowserStack, `"emulator-5554"` unchanged on local — instead of one
+  hardcoded value for both. An explicit `PHOENIX_APPIUM_DEVICE_NAME` still
+  wins on either provider, unchanged.
+- **3 new tests** in `engine/test/session.test.js`: local default
+  unchanged, BrowserStack default is a real catalog name and NOT the local
+  serial, and an explicit override always wins. Full suite green.
+- **Not yet re-run for real** — same "stated plainly, unverified until the
+  next real run" discipline as every other fix in this doc.

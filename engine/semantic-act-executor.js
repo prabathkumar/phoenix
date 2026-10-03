@@ -33,6 +33,9 @@ const { inferSemanticAssertions } = require("../generation/semantic-assertions")
 const { buildSelector } = require("../generation/pipeline");
 const { logExecution, buildExecutionRecord } = require("../generation/execution-log");
 const { verifyExpectedOutcome } = require("../generation/outcome-verification");
+const { detectWebviewContext } = require("./webview-context");
+const { resolveWebviewAction } = require("../generation/webview-act");
+const { SERIALIZE_DOM_SCRIPT } = require("../generation/webview-snapshot");
 
 const SUPPORTED_KINDS = new Set(["tap", "type", "scroll", "tapIfExists"]);
 
@@ -253,6 +256,34 @@ async function executeSemanticActionInner(driver, instruction, options = {}) {
       }
       // Cache miss -- the cached locator didn't resolve or act this
       // time. Fall through to a full, fresh semantic resolution.
+    }
+  }
+
+  // WebView/browser priority (engine/webview-context.js,
+  // generation/webview-act.js): explicit requirement -- "if there are
+  // web browsers in the app let it be prioritized". A real DOM gives
+  // far richer, more stable selectors than a native accessibility tree
+  // offers of the same rendered content, so when a WebView context is
+  // genuinely present, try resolving there BEFORE falling back to
+  // native resolution below. Fully automatic (no per-step opt-in flag
+  // needed) but entirely safe for an all-native app: detectWebviewContext
+  // returns null whenever there's no WEBVIEW_* context to find (every
+  // real app this has run against so far, including addons.json/
+  // addons.ios.json), so this block is a confirmed no-op for them and
+  // changes nothing about their behavior. tryWebviewAction() returns
+  // null (not a result) for "no usable webview answer here" -- couldn't
+  // switch, couldn't read the DOM, or the model declined -- which falls
+  // through to the existing native path exactly as if this block didn't
+  // run at all; it only returns a real result on an actual webview
+  // success or a genuine webview-side action failure (vetoed, element
+  // vanished, click/setValue threw).
+  if (!options.disableWebview) {
+    const webviewContext = await detectWebviewContext(driver);
+    if (webviewContext) {
+      const webviewOutcome = await tryWebviewAction(driver, webviewContext, instruction, options, kind);
+      if (webviewOutcome) {
+        return webviewOutcome;
+      }
     }
   }
 
@@ -494,6 +525,100 @@ async function verifyTypedValue(element, text) {
     ok: false,
     reason: `typed text was not found in the field afterward (sent ${text.length} character(s), field now shows ${actual.length} character(s)) -- the resolved element may not be the real input field`,
   };
+}
+
+/**
+ * Attempts one tap/type action inside a live WebView context, end to
+ * end: switch in, collect the DOM, resolve the instruction against it
+ * (generation/webview-act.js), act, switch back out -- ALWAYS switches
+ * back to NATIVE_APP before returning, success or failure, so a later
+ * native step is never silently left stuck in the wrong context.
+ *
+ * Returns `null` (not a result object) for "no usable answer from the
+ * WebView" -- couldn't switch into it, couldn't read its DOM, or the
+ * model declined to match anything -- which the caller treats as
+ * "nothing happened here, fall through to native resolution", not a
+ * failure. Only returns a real `{success, ...}` result on an actual
+ * WebView success, or a genuine WebView-side action failure (a vetoed
+ * resolution, the resolved element vanishing before the click, or the
+ * click/setValue itself throwing) -- those ARE final answers, not a
+ * reason to also try native.
+ *
+ * Deliberately does not attempt page-source diffing or outcome-settle
+ * polling the way the native actAndDiff() path does: getPageSource()
+ * while switched into a WEBVIEW context returns the page's HTML, not
+ * the native accessibility-tree XML semantic-diff.js/outcome-
+ * verification.js are built to parse, and feeding HTML into a native-
+ * tree diff would silently produce meaningless results rather than an
+ * honest "not computed" -- the diffSummary below says exactly that,
+ * rather than claiming a diff that was never actually taken.
+ *
+ * @param {import('webdriverio').Browser} driver
+ * @param {string} webviewContext - a real WEBVIEW_* name from
+ *   detectWebviewContext(), never invented.
+ * @param {string} instruction
+ * @param {Object} options - the same options executeSemanticAction()
+ *   received (kind, text, beforeAct).
+ * @param {"tap"|"type"} kind
+ * @returns {Promise<null|SemanticActionExecutionResult & {viaWebview: true}>}
+ */
+async function tryWebviewAction(driver, webviewContext, instruction, options, kind) {
+  try {
+    await driver.switchContext(webviewContext);
+  } catch (err) {
+    // Couldn't actually switch -- treat exactly like "no webview here",
+    // not a failure worth reporting as the step's own outcome.
+    return null;
+  }
+  try {
+    let domElements;
+    try {
+      domElements = await driver.execute(SERIALIZE_DOM_SCRIPT);
+    } catch (err) {
+      return null;
+    }
+    const resolution = await resolveWebviewAction(domElements, instruction, { kind });
+    if (!resolution.resolved) {
+      return null;
+    }
+    const selectorString = resolution.selector.value;
+    if (typeof options.beforeAct === "function") {
+      const vetoReason = options.beforeAct({ selector: resolution.selector, selectorString, kind, text: options.text });
+      if (vetoReason) {
+        return { success: false, reason: vetoReason, selector: resolution.selector, viaWebview: true };
+      }
+    }
+    let element;
+    try {
+      element = await driver.$(selectorString);
+      const exists = await element.isExisting();
+      if (!exists) {
+        return null; // vanished between resolve and act -- fall back to native rather than fail outright
+      }
+      if (kind === "type") {
+        await element.setValue(options.text);
+      } else {
+        await element.click();
+      }
+    } catch (err) {
+      return { success: false, reason: `WebView action failed: ${err.message}`, selector: resolution.selector, viaWebview: true };
+    }
+    return {
+      success: true,
+      selector: resolution.selector,
+      viaWebview: true,
+      diffSummary: "(WebView action -- page-source diffing not computed; see tryWebviewAction's doc comment)",
+    };
+  } finally {
+    try {
+      await driver.switchContext("NATIVE_APP");
+    } catch (err) {
+      // Best-effort restore. If this itself fails, nothing in this
+      // module depends on it having succeeded here -- a subsequent
+      // native call will surface its own clear error if the session is
+      // genuinely stuck in the wrong context.
+    }
+  }
 }
 
 async function actAndDiff(driver, selectorString, kind, text, pageSourceBefore, settleOptions = {}) {

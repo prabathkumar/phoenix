@@ -10,7 +10,7 @@
     "appium-uiautomator2-driver": "^8.7.0"
   },
   "scripts": {
-    "test": "node test/remote-provider.test.js && node test/session-pool.test.js && node test/session-manager.test.js && node test/semantic-act-executor.test.js && node test/semantic-loop.test.js && node test/auto-heal.test.js",
+    "test": "node test/remote-provider.test.js && node test/session-pool.test.js && node test/session-manager.test.js && node test/semantic-act-executor.test.js && node test/semantic-loop.test.js && node test/auto-heal.test.js && node test/webview-context.test.js",
     "stage0": "node stage0-session.js",
     "embedded-stage0": "node embedded-session-stage0.js",
     "ios-stage0": "node ios-stage0-session.js"

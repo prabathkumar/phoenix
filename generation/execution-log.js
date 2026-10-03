@@ -237,6 +237,13 @@ function buildExecutionRecord(instruction, options, result) {
     healedFromCache: Boolean(result.healedFromCache),
     selfHealedNoOp: Boolean(result.selfHealedNoOp),
     skipped: Boolean(result.skipped),
+    // Set when this action resolved/acted inside a WebView context
+    // (engine/webview-context.js, generation/webview-act.js) rather
+    // than natively -- distinguishes "a real accessibility-tree match"
+    // from "a real DOM match" in the log, same reasoning as usedCache/
+    // selfHealedNoOp already distinguishing which code path produced a
+    // result.
+    viaWebview: Boolean(result.viaWebview),
   };
 }
 

@@ -29,6 +29,8 @@ const EXECUTOR_PATH = require.resolve("../semantic-act-executor");
 const SEMANTIC_ACT_PATH = require.resolve("../../generation/semantic-act");
 const SEMANTIC_DIFF_PATH = require.resolve("../../generation/semantic-diff");
 const PIPELINE_PATH = require.resolve("../../generation/pipeline");
+const WEBVIEW_CONTEXT_PATH = require.resolve("../webview-context");
+const WEBVIEW_ACT_PATH = require.resolve("../../generation/webview-act");
 
 async function run(name, fn) {
   try {
@@ -46,8 +48,15 @@ async function run(name, fn) {
  * dependencies faked out, returning it plus a restore() to undo the
  * require.cache swap.
  */
-function freshExecutorWithFakes({ resolveSemanticActionImpl, diffSnapshotsImpl, buildSelectorImpl } = {}) {
-  for (const p of [EXECUTOR_PATH, SEMANTIC_ACT_PATH, SEMANTIC_DIFF_PATH, PIPELINE_PATH]) {
+function freshExecutorWithFakes({
+  resolveSemanticActionImpl,
+  diffSnapshotsImpl,
+  buildSelectorImpl,
+  detectWebviewContextImpl,
+  resolveWebviewActionImpl,
+} = {}) {
+  const allPaths = [EXECUTOR_PATH, SEMANTIC_ACT_PATH, SEMANTIC_DIFF_PATH, PIPELINE_PATH, WEBVIEW_CONTEXT_PATH, WEBVIEW_ACT_PATH];
+  for (const p of allPaths) {
     delete require.cache[p];
   }
 
@@ -79,11 +88,39 @@ function freshExecutorWithFakes({ resolveSemanticActionImpl, diffSnapshotsImpl, 
     exports: { ...realPipeline, buildSelector: buildSelectorImpl || realPipeline.buildSelector },
   };
 
+  // Default: no WebView ever detected -- every pre-existing test in this
+  // file (written before the WebView-priority feature existed) must see
+  // IDENTICAL behavior to the real detectWebviewContext() against a fake
+  // driver with no getContexts() at all, i.e. always null, so none of
+  // them need updating. Only tests that explicitly pass
+  // detectWebviewContextImpl are exercising the WebView path at all.
+  require.cache[WEBVIEW_CONTEXT_PATH] = {
+    id: WEBVIEW_CONTEXT_PATH,
+    filename: WEBVIEW_CONTEXT_PATH,
+    loaded: true,
+    exports: {
+      detectWebviewContext: detectWebviewContextImpl || (async () => null),
+    },
+  };
+
+  require.cache[WEBVIEW_ACT_PATH] = {
+    id: WEBVIEW_ACT_PATH,
+    filename: WEBVIEW_ACT_PATH,
+    loaded: true,
+    exports: {
+      resolveWebviewAction:
+        resolveWebviewActionImpl ||
+        (async () => {
+          throw new Error("resolveWebviewAction should never be called when no WebView context is detected");
+        }),
+    },
+  };
+
   const executor = require(EXECUTOR_PATH);
   return {
     executor,
     restore: () => {
-      for (const p of [EXECUTOR_PATH, SEMANTIC_ACT_PATH, SEMANTIC_DIFF_PATH, PIPELINE_PATH]) {
+      for (const p of allPaths) {
         delete require.cache[p];
       }
     },
@@ -461,6 +498,160 @@ function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl,
       assert.strictEqual(result.healedFromCache, true);
       assert.deepStrictEqual(result.selector, { strategy: "accessibility-id", value: "Login-v2" });
       assert.deepStrictEqual(calls.selectorsQueried, ["~Login-stale", "~Login-v2"]);
+    } finally {
+      restore();
+    }
+  });
+
+  // WebView priority (engine/webview-context.js, generation/webview-act.js):
+  // explicit requirement -- "if there are web browsers in the app let it
+  // be prioritized". These tests use real webview-context.js/webview-act.js
+  // (not faked) wired through a custom driver, EXCEPT where noted, to
+  // prove the actual integration, not just that the executor calls
+  // whatever fake was handed to it.
+  await run("executeSemanticAction resolves and acts inside a detected WebView context BEFORE ever trying native resolution", async () => {
+    const switchContextCalls = [];
+    let nativeResolutionCalled = false;
+    const { executor, restore } = freshExecutorWithFakes({
+      resolveSemanticActionImpl: async () => {
+        nativeResolutionCalled = true;
+        return { resolved: false, reason: "should not be reached" };
+      },
+      detectWebviewContextImpl: async () => "WEBVIEW_com.app.pkg",
+      resolveWebviewActionImpl: async (domElements, instruction) => {
+        assert.deepStrictEqual(domElements, [{ tag: "button", text: "Log In", id: "login-btn" }]);
+        return { resolved: true, selector: { strategy: "css", value: "#login-btn" } };
+      },
+    });
+    try {
+      let clicked = false;
+      const driver = {
+        getPageSource: async () => "<hierarchy />",
+        switchContext: async (name) => switchContextCalls.push(name),
+        execute: async () => [{ tag: "button", text: "Log In", id: "login-btn" }],
+        $: async (selectorString) => {
+          assert.strictEqual(selectorString, "#login-btn");
+          return {
+            isExisting: async () => true,
+            click: async () => {
+              clicked = true;
+            },
+          };
+        },
+      };
+      const result = await executor.executeSemanticAction(driver, "tap the Log In button");
+
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(result.viaWebview, true);
+      assert.deepStrictEqual(result.selector, { strategy: "css", value: "#login-btn" });
+      assert.strictEqual(clicked, true);
+      assert.strictEqual(nativeResolutionCalled, false, "native resolveSemanticAction must never be reached once the WebView already resolved and acted");
+      assert.deepStrictEqual(switchContextCalls, ["WEBVIEW_com.app.pkg", "NATIVE_APP"], "must switch INTO the webview, then back to NATIVE_APP afterward");
+    } finally {
+      restore();
+    }
+  });
+
+  await run("executeSemanticAction falls back to native resolution when a WebView is detected but declines to match anything", async () => {
+    const switchContextCalls = [];
+    const { executor, restore } = freshExecutorWithFakes({
+      resolveSemanticActionImpl: async () => ({
+        resolved: true,
+        element: { ref: 1, role: "Button", label: "Login" },
+        selector: { strategy: "accessibility-id", value: "Login" },
+      }),
+      diffSnapshotsImpl: () => ({ appeared: [], disappeared: [], changed: true }),
+      detectWebviewContextImpl: async () => "WEBVIEW_com.app.pkg",
+      resolveWebviewActionImpl: async () => ({ resolved: false, reason: "no element matches in the DOM" }),
+    });
+    try {
+      const { driver, calls } = makeFakeDriver({ pageSources: ["<hierarchy>before</hierarchy>", "<hierarchy>after</hierarchy>"] });
+      driver.switchContext = async (name) => switchContextCalls.push(name);
+      driver.execute = async () => [];
+      const result = await executor.executeSemanticAction(driver, "tap the Login button");
+
+      assert.strictEqual(result.success, true, "must fall through to the native path and succeed there, not fail just because the webview declined");
+      assert.strictEqual(result.viaWebview, undefined);
+      assert.deepStrictEqual(result.selector, { strategy: "accessibility-id", value: "Login" });
+      assert.strictEqual(calls.click, 1);
+      assert.deepStrictEqual(switchContextCalls, ["WEBVIEW_com.app.pkg", "NATIVE_APP"], "must still restore NATIVE_APP even though nothing was done in the webview");
+    } finally {
+      restore();
+    }
+  });
+
+  await run("executeSemanticAction goes straight to native resolution when no WebView context is detected at all (the common, all-native-app case)", async () => {
+    const { executor, restore } = freshExecutorWithFakes({
+      resolveSemanticActionImpl: async () => ({
+        resolved: true,
+        element: { ref: 1, role: "Button", label: "Login" },
+        selector: { strategy: "accessibility-id", value: "Login" },
+      }),
+      diffSnapshotsImpl: () => ({ appeared: [], disappeared: [], changed: true }),
+      detectWebviewContextImpl: async () => null,
+      // resolveWebviewActionImpl deliberately omitted -- the default
+      // fake throws if it's ever called, which would fail this test if
+      // the executor tried to use it despite no context being detected.
+    });
+    try {
+      const { driver, calls } = makeFakeDriver({ pageSources: ["<hierarchy>before</hierarchy>", "<hierarchy>after</hierarchy>"] });
+      const result = await executor.executeSemanticAction(driver, "tap the Login button");
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(calls.click, 1);
+    } finally {
+      restore();
+    }
+  });
+
+  await run("executeSemanticAction skips the WebView path entirely when options.disableWebview is set", async () => {
+    let webviewDetectionCalled = false;
+    const { executor, restore } = freshExecutorWithFakes({
+      resolveSemanticActionImpl: async () => ({
+        resolved: true,
+        element: { ref: 1, role: "Button", label: "Login" },
+        selector: { strategy: "accessibility-id", value: "Login" },
+      }),
+      diffSnapshotsImpl: () => ({ appeared: [], disappeared: [], changed: true }),
+      detectWebviewContextImpl: async () => {
+        webviewDetectionCalled = true;
+        return "WEBVIEW_com.app.pkg";
+      },
+    });
+    try {
+      const { driver, calls } = makeFakeDriver({ pageSources: ["<hierarchy>before</hierarchy>", "<hierarchy>after</hierarchy>"] });
+      const result = await executor.executeSemanticAction(driver, "tap the Login button", { disableWebview: true });
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(calls.click, 1);
+      assert.strictEqual(webviewDetectionCalled, false, "detectWebviewContext must not even be called when explicitly disabled");
+    } finally {
+      restore();
+    }
+  });
+
+  await run("executeSemanticAction reports a real WebView-side failure (not a silent native fallback) when the resolved element vetoes or the click itself throws", async () => {
+    const { executor, restore } = freshExecutorWithFakes({
+      resolveSemanticActionImpl: async () => {
+        throw new Error("native resolution should never be reached -- the webview click itself threw, which is a REAL final failure, not a 'try native instead' signal");
+      },
+      detectWebviewContextImpl: async () => "WEBVIEW_com.app.pkg",
+      resolveWebviewActionImpl: async () => ({ resolved: true, selector: { strategy: "css", value: "#login-btn" } }),
+    });
+    try {
+      const driver = {
+        getPageSource: async () => "<hierarchy />",
+        switchContext: async () => {},
+        execute: async () => [{ tag: "button", text: "Log In", id: "login-btn" }],
+        $: async () => ({
+          isExisting: async () => true,
+          click: async () => {
+            throw new Error("stale element reference");
+          },
+        }),
+      };
+      const result = await executor.executeSemanticAction(driver, "tap the Log In button");
+      assert.strictEqual(result.success, false);
+      assert.strictEqual(result.viaWebview, true);
+      assert.ok(result.reason.includes("stale element reference"));
     } finally {
       restore();
     }

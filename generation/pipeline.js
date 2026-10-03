@@ -390,6 +390,17 @@ function buildSelector(resolvedElement, platform = "android") {
         : `android=new UiSelector().text("${escapeForSelector(resolvedElement.value)}")`;
     case "xpath":
       return resolvedElement.value;
+    case "css":
+      // A WebView/browser context selector (generation/webview-act.js,
+      // engine/webview-context.js) -- a plain CSS selector string.
+      // WebdriverIO's $() already auto-detects a bare CSS selector with
+      // no special prefix, exactly like it does for xpath strings
+      // starting with "/" or "(" -- no extra wrapping needed, unlike
+      // accessibility-id's "~" or iOS's "-ios class chain:" prefixes,
+      // which exist specifically to tell WebdriverIO to use a NON-CSS
+      // strategy. `platform` is irrelevant here: CSS is the same on
+      // both Android and iOS WebViews.
+      return resolvedElement.value;
     case "class-chain":
       // WebDriverAgent/XCUITestDriver's natively-supported locator for
       // an iOS element with no resource-id/accessibility-id/label of

@@ -65,6 +65,20 @@ cp .env.example .env   # fill in required values -- see .env.example
 docker run --env-file .env -p 8090:8090 -p 8091:8091 testops-mobile:<version>
 ```
 
+**Before running against real BrowserStack hardware, check `.env` for free:**
+
+```
+node check-env.js test-cases/<your-test-case>.json
+```
+
+`check-env.js` (repo root, zero dependencies, no Docker/Appium/BrowserStack
+involved) parses `.env` the same way Docker's `--env-file` does, so a line
+like `PHOENIX_BATCH_LOGIN_PASSWORD=` (present, but nothing after the `=`)
+is correctly reported as `EMPTY`, never confused with `SET` or `MISSING` —
+the exact failure mode a quick `grep`/glance at `.env` can't catch. Exits
+non-zero on any problem, costs nothing, and never prints a credential's
+real value.
+
 Or, with the repo checked out (so `docker-compose.yml` is available):
 
 ```
@@ -92,6 +106,21 @@ Docker workflow needs to handle — the two are independent:
 See `docs/TESTOPS_INTEGRATION_GUIDE.md` for the data model/fields contract
 and the frothAI (Ollama) wiring details the dev team needs for that
 integration work.
+
+### The `mcp/` connector is separate from this image, on purpose
+
+`mcp/server.js` (see `mcp/README.md`) is a standard MCP server exposing
+Phoenix's locator-confidence data, test cases, and execution log to an
+external MCP client — built for the user's own TestOps MCP to pull from
+ahead of its Claude-marketplace integration. It is **not** built into the
+`testops-mobile` image above and doesn't need to be: it's a separate,
+optional Node process (`cd mcp && npm install && node server.js`), run
+wherever the MCP client that wants to query it can reach it — the same
+machine as this container, a different one, or directly against a cloned
+checkout with no container involved at all. Keeping it a separate package
+(its own `package.json`, its own dependency on `@modelcontextprotocol/sdk`)
+means the main image's dependency footprint is unaffected whether or not
+anyone ever runs the connector.
 
 ## 5. Known gaps / things not decided here
 

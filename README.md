@@ -22,6 +22,7 @@ Testers record a flow once, inside TestOps — no Appium Inspector, no local ins
 | [`docs/TESTOPS_MOBILE_DOCKER.md`](docs/TESTOPS_MOBILE_DOCKER.md) | TestOps dev team — getting the code running | Building/exporting the "TestOps Mobile" Docker image and pulling the source into their own GitHub org |
 | [`docs/RELEASING.md`](docs/RELEASING.md) | Cutting a release | The `vX.Y.Z` version-tag scheme and the automated `ghcr.io` build+push workflow — implemented, unverified until the first real tag push |
 | [`docs/COMPETITIVE_LANDSCAPE.md`](docs/COMPETITIVE_LANDSCAPE.md) | Evaluating Phoenix against alternatives | Full comparison vs. Appium-MCP and other AI-agent test tooling |
+| [`mcp/README.md`](mcp/README.md) | Connecting an external MCP client (e.g. TestOps's own MCP) | The `mcp/server.js` connector — tools exposed, setup, the real-run safety gate |
 
 | ![Live recording](docs/screenshots/frontend-live-recording.png) | ![Upload screen](docs/screenshots/frontend-upload-screen.png) |
 |:---:|:---:|
@@ -35,6 +36,8 @@ Testers record a flow once, inside TestOps — no Appium Inspector, no local ins
 | `capture/` | Records taps, accessibility-tree snapshots, and screenshots during a session |
 | `generation/` | Turns a captured session into a named, asserted, parameterized script |
 | `live-view/` | Embeddable component: streams the device screen and forwards taps into TestOps |
+| `mcp/` | MCP connector — exposes the locator store, test cases, and execution log to an external MCP client (stdio) |
+| `check-env.js` | Zero-cost, zero-dependency `.env` verification a tester runs before a real BrowserStack run (no Docker/device session) |
 | `docs/` | Architecture, spec, and decision records |
 
 ## Architecture
@@ -86,6 +89,16 @@ The diagram above is the guided-recording pipeline (Act 1) in isolation. Phoenix
 - **2. Semantic layer (Act 2) — shipped, proven on real hardware.** A plain-language instruction ("tap the LOGIN button") replaces a hand-authored selector. `generation/semantic-act.js`'s `resolveSemanticAction()` grounds the live accessibility tree into a numbered element list and asks the local model to pick one — or say "unresolved," never guess. `engine/semantic-act-executor.js` acts live via the same WebDriver calls the guided path uses, and diffs the screen before/after to know what really happened. This layer also self-heals live: a tap that produces "No visible change" triggers one automatic retry, excluding the dead element, before anything is reported — no log, no human, no separate chat needed. `engine/auto-heal.js` is where this layer and layer 1 meet: a guided script's recorded selector falls back to a fresh semantic resolution if it stops matching, or starts matching the wrong element.
 - **3. Vision fusion — shipped, opt-in.** Text alone is ambiguous on icon-only controls (an unlabeled "Right Icon" that's actually Logout; two sibling buttons sharing a generic id pattern). When a screenshot is available, `semantic-act.js` sends it alongside the numbered element list via Ollama's multimodal `images` field (`generation/llm.js`), and the model confirms its text-based match against what the screen actually looks like. Omitted entirely for a text-only model — nothing breaks, it just resolves on tree text alone, same as before fusion existed.
 - **4. Autonomous loop (Act 3) — Beta: wired in and usable, hardens through real-world use.** `engine/semantic-loop.js` takes a goal in plain language instead of a step list: read the snapshot → ask the model to decide the single next action (or stop) → execute it through the same executor as layer 2 → feed the resulting diff back in as context for the next decision → repeat. Stops explicitly on: goal reached, model asks to stop, an action fails or can't resolve, or a hard step-count limit — never a silent retry loop. It's wired into `run-batch-executions.js` as a real, selectable mode (`PHOENIX_BATCH_MODES=loop`), not dead code. It's less proven than layers 1-2 today — its own runtime warning says so, because it's repeatedly gotten stuck at the same points on real hardware — but the path to closing that gap is the same evidence-driven one used throughout this repo: real usage surfaces real failures, each gets diagnosed and fixed. With Hemant's team integrating it and testers running it continuously, that hardening loop runs far faster than one person manually. (Note: this is prompt/guardrail hardening, not literal model fine-tuning — no model weights change.)
+
+### Supporting infrastructure — confidence, pre-flight, and external access
+
+Three smaller pieces sit alongside the four layers above, closing gaps found through real usage rather than designed up front — each shown as its own band at the bottom of the architecture diagram above.
+
+| Component | What it does | Opt-in? | Docs |
+|---|---|:---:|---|
+| **Confidence-gated locator cache** (`engine/test-case-runner.js`'s gate + `engine/locator-store.js`) | A freshly self-healed selector is only pinned into a test case's `resolvedSelector` cache when there's real evidence it was right (a verified `expect`, or a real diff) — never on "the click didn't throw" alone. The optional store is an embedded SQLite DB (`node:sqlite`, zero new dependency, zero server) tracking verified/unverified hits and drift per step, for a suite-wide "is this regression suite rotting" view. | Gate: always on. Store: `PHOENIX_ENABLE_LOCATOR_STORE` | [`docs/STATUS.md`](docs/STATUS.md) |
+| **`check-env.js`** | A tester runs `node check-env.js <test-case>.json` before spending a real BrowserStack session — no Docker, no device, zero cost. Parses `.env` exactly like Docker's `--env-file` does, so a credential line present but empty (`KEY=`) is correctly flagged, not mistaken for "set." Never prints a credential's real value. | Always available, nothing to enable | this README's Quick start, below |
+| **`mcp/server.js`** | A standard MCP server (stdio) exposing the locator store, test cases, and execution log to an external MCP client — built for the user's TestOps MCP ahead of its Claude-marketplace integration. `run_test_case` spends a real device session, so it's gated behind `confirm: true` **and** the server's own `PHOENIX_MCP_ALLOW_RUN=1`, with no credential field on its schema at all. | Separate package (`mcp/`), run only if/when wired up | [`mcp/README.md`](mcp/README.md) |
 
 **The gap none of these four close on their own:** every layer is built to report "unresolved" rather than guess, but "succeeded" by itself only ever meant no step errored — not proof the real on-screen goal was reached. A step can click a real, functioning, *wrong* element and still report success. `generation/outcome-verification.js` is the first real piece of closing this: an opt-in `expect: {appeared?, disappeared?}` field on a test-case step, checked by plain substring matching against the real diff (deliberately not another model judgment call) — a step that "succeeds" but whose declared outcome never shows up is now reported as a failure, and its selector is never cached as proven-correct either. **Scope, stated plainly:** this only protects a step someone annotated with `expect` — it doesn't retroactively protect every existing step, so closing the gap everywhere is still a matter of adding `expect` to the steps that matter (navigate, confirm, submit). See `docs/STATUS.md`'s "Outcome verification" entry for the full detail and exactly which `addons.json` steps have it today.
 
@@ -140,12 +153,24 @@ Open **http://localhost:8091/**, drag in a `.apk`/`.ipa`, and click "Start recor
 **Option B — run an existing test case against real hardware (recommended for adopting Phoenix on a new flow — see Status above):**
 
 ```bash
+# Zero-cost pre-flight -- catches a missing/empty .env value before it
+# costs a real BrowserStack session:
+node check-env.js test-cases/login.json
+
 PHOENIX_APPIUM_PROVIDER=browserstack \
 PHOENIX_BATCH_MODES=test-case \
 PHOENIX_TEST_CASE_FILE=test-cases/login.json \
 node run-batch-executions.js
 ```
 
-Point `PHOENIX_TEST_CASE_FILE` at a new JSON step list to automate a new flow — no new code, no new commit. See [`docs/REAL_DEVICE_BATCH_TESTING.md`](docs/REAL_DEVICE_BATCH_TESTING.md) for every mode (`guided`/`semantic`/`loop`/`test-case`/`login-script`) and the full env-var reference, and [`docs/SETUP.md`](docs/SETUP.md) for credentials.
+Point `PHOENIX_TEST_CASE_FILE` (and `check-env.js`'s argument) at a new JSON step list to automate a new flow — no new code, no new commit. See [`docs/REAL_DEVICE_BATCH_TESTING.md`](docs/REAL_DEVICE_BATCH_TESTING.md) for every mode (`guided`/`semantic`/`loop`/`test-case`/`login-script`) and the full env-var reference, and [`docs/SETUP.md`](docs/SETUP.md) for credentials.
+
+**Option C — let an external MCP client (e.g. TestOps's own MCP) query Phoenix directly:**
+
+```bash
+cd mcp && npm install && node server.js
+```
+
+Exposes locator-confidence history, test cases, and the execution log as MCP tools over stdio — see [`mcp/README.md`](mcp/README.md) for the client config and the full tool list.
 
 For running the engine directly and the public GitHub Pages URL, see [`docs/STATUS.md`](docs/STATUS.md).

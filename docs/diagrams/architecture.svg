@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="980" viewBox="0 0 1240 980" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="1180" viewBox="0 0 1240 1180" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
   <defs>
     <filter id="cardShadow" x="-20%" y="-20%" width="140%" height="140%">
       <feDropShadow dx="0" dy="2" stdDeviation="6" flood-color="#0f172a" flood-opacity="0.10"/>
@@ -18,7 +18,7 @@
     </linearGradient>
   </defs>
 
-  <rect x="0" y="0" width="1240" height="980" fill="url(#bgGrad)"/>
+  <rect x="0" y="0" width="1240" height="1180" fill="url(#bgGrad)"/>
 
   <!-- ============ HEADER ============ -->
   <text x="48" y="52" font-size="25" font-weight="700" fill="#0f172a" letter-spacing="-0.3">Phoenix architecture</text>
@@ -166,9 +166,78 @@
        same column, stacked directly. -->
   <path d="M624,700 L624,722" stroke="#dc2626" stroke-width="2" marker-end="url(#arrowRed)"/>
 
+  <!-- ============ INFRASTRUCTURE & CONNECTORS ============ -->
+  <text x="48" y="908" font-size="15" font-weight="700" fill="#334155">Supporting infrastructure — confidence, pre-flight, and external access</text>
+
+  <!-- Card A: confidence-gated locator store -->
+  <g filter="url(#cardShadow)">
+    <rect x="48" y="924" width="368" height="178" rx="14" fill="#ffffff"/>
+    <rect x="48" y="924" width="368" height="6" rx="3" fill="#4f46e5"/>
+  </g>
+  <circle cx="76" cy="960" r="14" fill="#eef2ff"/>
+  <path d="M70,960 h12 M76,954 v12" stroke="#4f46e5" stroke-width="1.8" stroke-linecap="round"/>
+  <text x="98" y="957" font-size="10.5" font-weight="700" fill="#4f46e5" letter-spacing="0.4">CONFIDENCE GATE + STORE</text>
+  <text x="98" y="975" font-size="14.5" font-weight="700" fill="#0f172a">Locator confidence</text>
+  <text x="70" y="1000" font-size="11.5" fill="#475569">A fresh self-heal is only pinned into a test</text>
+  <text x="70" y="1016" font-size="11.5" fill="#475569">case's JSON cache with real evidence it was</text>
+  <text x="70" y="1032" font-size="11.5" fill="#475569">right (a verified `expect`, or a real diff) —</text>
+  <text x="70" y="1048" font-size="11.5" fill="#475569">never on "didn't throw" alone.</text>
+  <text x="70" y="1068" font-size="11" fill="#4f46e5" font-weight="600"><tspan fill="#334155" font-weight="700">engine/locator-store.js</tspan> — optional,</text>
+  <text x="70" y="1084" font-size="11" fill="#4f46e5" font-weight="600">embedded SQLite (node:sqlite), zero server,</text>
+  <text x="70" y="1098" font-size="11" fill="#4f46e5" font-weight="600">tracks verified/unverified hits + drift.</text>
+
+  <!-- Card B: check-env.js -->
+  <g filter="url(#cardShadow)">
+    <rect x="436" y="924" width="368" height="178" rx="14" fill="#ffffff"/>
+    <rect x="436" y="924" width="368" height="6" rx="3" fill="#16a34a"/>
+  </g>
+  <circle cx="464" cy="960" r="14" fill="#f0fdf4"/>
+  <path d="M458,960 l4,4 l8,-9" stroke="#16a34a" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="486" y="957" font-size="10.5" font-weight="700" fill="#16a34a" letter-spacing="0.4">PRE-FLIGHT, ZERO COST</text>
+  <text x="486" y="975" font-size="14.5" font-weight="700" fill="#0f172a">check-env.js</text>
+  <text x="458" y="1000" font-size="11.5" fill="#475569">Any tester runs `node check-env.js` before a</text>
+  <text x="458" y="1016" font-size="11.5" fill="#475569">real BrowserStack run — no Docker, no device</text>
+  <text x="458" y="1032" font-size="11.5" fill="#475569">session, zero cost. Parses .env exactly like</text>
+  <text x="458" y="1048" font-size="11.5" fill="#475569">Docker's --env-file does.</text>
+  <text x="458" y="1068" font-size="11" fill="#15803d" font-weight="600">Reports MISSING vs EMPTY vs SET — the exact</text>
+  <text x="458" y="1084" font-size="11" fill="#15803d" font-weight="600">bug class a glance at .env can't catch. Never</text>
+  <text x="458" y="1098" font-size="11" fill="#15803d" font-weight="600">prints a credential's real value.</text>
+
+  <!-- Card C: mcp/ connector -->
+  <g filter="url(#cardShadow)">
+    <rect x="824" y="924" width="368" height="178" rx="14" fill="#ffffff"/>
+    <rect x="824" y="924" width="368" height="6" rx="3" fill="#e11d48"/>
+  </g>
+  <circle cx="852" cy="960" r="14" fill="#fff1f2"/>
+  <circle cx="852" cy="960" r="5.5" fill="none" stroke="#e11d48" stroke-width="1.6"/>
+  <circle cx="846" cy="954" r="1.8" fill="#e11d48"/>
+  <circle cx="858" cy="966" r="1.8" fill="#e11d48"/>
+  <text x="874" y="957" font-size="10.5" font-weight="700" fill="#e11d48" letter-spacing="0.4">EXTERNAL MCP CONNECTOR</text>
+  <text x="874" y="975" font-size="14.5" font-weight="700" fill="#0f172a">mcp/server.js</text>
+  <text x="846" y="1000" font-size="11.5" fill="#475569">Standard MCP server (stdio) for an external</text>
+  <text x="846" y="1016" font-size="11.5" fill="#475569">client (TestOps's own MCP, Claude) to query:</text>
+  <text x="846" y="1032" font-size="11.5" fill="#475569">locator history/suite health, test cases, the</text>
+  <text x="846" y="1048" font-size="11.5" fill="#475569">execution log.</text>
+  <text x="846" y="1068" font-size="11" fill="#be123c" font-weight="600">`run_test_case` spends a real device session —</text>
+  <text x="846" y="1084" font-size="11" fill="#be123c" font-weight="600">gated behind confirm:true AND the server's own</text>
+  <text x="846" y="1098" font-size="11" fill="#be123c" font-weight="600">PHOENIX_MCP_ALLOW_RUN=1. No credential field.</text>
+
+  <!-- Connectors: locator store reads/writes the same selector cache
+       layers 1-2 use. Routed through the open left margin (x=24,
+       entirely to the LEFT of every card's x=48 edge) rather than
+       through any card's body, so the long vertical run never crosses
+       text, following the same "stay in the open gutter" rule the
+       layer 2/3/4 connectors already use on the right-hand margin above.
+       mcp/ reads from all three data sources but never calls Ollama or
+       any layer directly, so it is drawn with no arrow into the stack
+       at all, on purpose, to show it is a read-only external window,
+       not a participant. -->
+  <path d="M48,560 H24 V948 H46" stroke="#4f46e5" stroke-width="1.6" fill="none" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+  <text x="4" y="760" font-size="9.5" fill="#4f46e5" transform="rotate(-90, 14, 760)" text-anchor="middle">pins/reads resolvedSelector</text>
+
   <!-- ============ FOOTER / CODE MAP ============ -->
-  <line x1="48" y1="898" x2="1200" y2="898" stroke="#e2e8f0" stroke-width="1"/>
-  <text x="48" y="922" font-size="11.5" fill="#94a3b8">Code map: capture/recorder.js + generation/pipeline.js (layer 1)  ·  generation/semantic-act.js + engine/semantic-act-executor.js (layer 2, incl. self-heal)  ·</text>
-  <text x="48" y="940" font-size="11.5" fill="#94a3b8">generation/llm.js + execution-log.js (shared runtime + feedback loop)  ·  engine/semantic-loop.js (layer 4)  ·  engine/auto-heal.js (bridges 1↔2)</text>
-  <text x="48" y="962" font-size="11.5" fill="#94a3b8">Full detail: docs/PHOENIX_SPEC.md (architecture) · docs/STATUS.md (every bug, real evidence) · docs/CONTINUOUS_TRAINING.md (the feedback loop)</text>
+  <line x1="48" y1="1118" x2="1200" y2="1118" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="48" y="1138" font-size="11.5" fill="#94a3b8">Code map: capture/recorder.js + generation/pipeline.js (layer 1)  ·  generation/semantic-act.js + engine/semantic-act-executor.js (layer 2, incl. self-heal)  ·</text>
+  <text x="48" y="1154" font-size="11.5" fill="#94a3b8">generation/llm.js + execution-log.js (shared runtime)  ·  engine/semantic-loop.js (layer 4)  ·  engine/auto-heal.js (bridges 1↔2)  ·  engine/locator-store.js, check-env.js, mcp/ (infra)</text>
+  <text x="48" y="1172" font-size="11.5" fill="#94a3b8">Full detail: docs/PHOENIX_SPEC.md (architecture) · docs/STATUS.md (every bug, real evidence) · docs/CONTINUOUS_TRAINING.md (the feedback loop)</text>
 </svg>

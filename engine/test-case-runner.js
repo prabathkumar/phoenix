@@ -24,6 +24,7 @@
 const fs = require("fs");
 const { verifyExpectedOutcome, validateExpectShape } = require("../generation/outcome-verification");
 const { logExecution } = require("../generation/execution-log");
+const { recordResolution } = require("./locator-store");
 
 // Default pause for a "wait" step when the step doesn't specify its own
 // durationMs. Exists for a real timing gap found on real hardware
@@ -250,13 +251,19 @@ function resolveSteps(steps) {
  *
  * @param {Object} driver - a started WebdriverIO session
  * @param {Array<{kind: string, instruction: string, text?: string, direction?: string, durationMs?: number, optional?: boolean, resolvedSelector?: {strategy: string, value: string}, selector?: {strategy: string, value: string}}>} steps
- * @param {{platform: string, executeSemanticAction: Function, sleepFn?: Function}} options -
+ * @param {{platform: string, executeSemanticAction: Function, sleepFn?: Function, testCaseFile?: string, locatorStore?: {db: Object}}} options -
  *   `executeSemanticAction` is injected (not required() here) so
  *   callers/tests can fake it the same way existing tests already do
- *   for run-batch-executions.js.
+ *   for run-batch-executions.js. `locatorStore` (engine/locator-store.js's
+ *   openLocatorStore() result) is optional -- when omitted, behavior is
+ *   identical to before this store existed, nothing is recorded, and
+ *   the confidence gate on the JSON pin above still applies regardless
+ *   (the two are independent: the gate protects the committed file, the
+ *   store is an optional analytics layer on top).
  * @returns {Promise<{success: boolean, detail: string, updatedSteps: Array<Object>}>}
  */
-async function runScriptSteps(driver, steps, { platform, executeSemanticAction, sleepFn = defaultSleep }) {
+async function runScriptSteps(driver, steps, options) {
+  const { platform, executeSemanticAction, sleepFn = defaultSleep } = options;
   const resolvedSteps = steps.map((step) => ({ ...step, text: resolveStepText(step) }));
   // Carry the ORIGINAL (unresolved-text) steps forward for the
   // updatedSteps return value -- we must never write a resolved
@@ -347,8 +354,64 @@ async function runScriptSteps(driver, steps, { platform, executeSemanticAction, 
     // A "tapIfExists" step's selector is hand-authored evidence, not a
     // learned cache entry -- never let it get overwritten/duplicated
     // into `resolvedSelector` by the generic selector-learning below.
+    //
+    // Confidence gate (the fix for the real correctness risk flagged in
+    // docs/STATUS.md: a self-heal that merely "didn't throw" used to
+    // get pinned into the JSON cache unconditionally, so a confidently
+    // wrong-but-plausible resolution could silently become the
+    // regression baseline every future run trusts with zero further
+    // scrutiny). `verified` is real, concrete evidence the resolution
+    // did the right thing: the step declared `expect` and it was
+    // confirmed (we only reach this line when that passed -- a failed
+    // verification already returned above), OR, when no `expect` was
+    // declared, a real, non-empty diff was observed (a dead tap -- "No
+    // visible change." -- is NOT evidence of correctness, it's the
+    // absence of any). A cache HIT (`result.usedCache`) replaying an
+    // already-pinned selector is always safe to re-pin as-is: it was
+    // already vetted by this same gate when first written, or predates
+    // the gate and is already the trusted baseline -- re-pinning it is
+    // a no-op, not a new unvetted write.
+    const hasExpectEvidence = Boolean(step.expect); // only reached here if it passed
+    const hasDiffEvidence = !step.expect && result.diffSummary && result.diffSummary !== "No visible change.";
+    const verified = hasExpectEvidence || hasDiffEvidence;
+    const isFreshResolution = Boolean(result.selector) && !result.usedCache;
+
     if (result.selector && step.kind !== "tapIfExists") {
-      updatedSteps[i] = { ...updatedSteps[i], resolvedSelector: result.selector };
+      if (!isFreshResolution || verified) {
+        updatedSteps[i] = { ...updatedSteps[i], resolvedSelector: result.selector };
+      } else {
+        // Deliberately NOT pinned: a fresh resolution with no concrete
+        // evidence it hit the right element. Left as-is (no
+        // resolvedSelector written for this step this run) so the next
+        // run resolves it fresh again -- through the LLM, with its own
+        // decline-rather-than-guess contract -- rather than trusting an
+        // unverified guess as the new baseline. Logged so this is
+        // visible in training-data/executions.jsonl, not a silent gap.
+        logExecution({
+          instruction: step.instruction,
+          kind: step.kind,
+          success: true,
+          diffSummary: result.diffSummary,
+          selector: result.selector,
+          unverifiedResolution: true,
+          reason: "resolved and acted without a WebDriver error, but no `expect` was declared and no real diff was observed -- not enough evidence to trust as the new pinned selector",
+        });
+      }
+    }
+    if (options.locatorStore && result.selector && step.kind !== "tapIfExists") {
+      try {
+        recordResolution(options.locatorStore, {
+          testCaseFile: options.testCaseFile || "(unknown test case)",
+          stepIndex: i,
+          instruction: step.instruction,
+          selector: result.selector,
+          verified,
+        });
+      } catch (err) {
+        // The locator store is a confidence/analytics layer, never
+        // load-bearing for whether a run succeeds -- a write failure
+        // here must never fail or alter the actual test outcome.
+      }
     }
     lastResult = result;
   }

@@ -56,6 +56,7 @@ const path = require("path");
 const { executeSemanticAction } = require("./engine/semantic-act-executor");
 const { runAutonomousLoop } = require("./engine/semantic-loop");
 const { loadTestCaseSteps, requiredEnvVars, resolveSteps, runScriptSteps, persistResolvedSelectors } = require("./engine/test-case-runner");
+const { openLocatorStore } = require("./engine/locator-store");
 const { buildGroundedSnapshot } = require("./generation/semantic-snapshot");
 
 const TEST_CASES_DIR = path.join(__dirname, "test-cases");
@@ -449,9 +450,30 @@ async function runOneTestCaseIteration(platform, filePath) {
   const driver = await startSession();
   try {
     await waitForAppReady(driver);
-    const result = await runScriptSteps(driver, resolvedSteps, { platform, executeSemanticAction });
-    persistUpdatedSelectors(filePath, mergeResolvedSelectors(steps, result.updatedSteps));
-    return result;
+    // Opt-in: only touches anything (opens/creates a .db file) when
+    // PHOENIX_LOCATOR_DB_PATH or PHOENIX_ENABLE_LOCATOR_STORE is set --
+    // a deployment that never sets either sees zero behavior change
+    // from before this store existed.
+    let locatorStore;
+    if (process.env.PHOENIX_ENABLE_LOCATOR_STORE || process.env.PHOENIX_LOCATOR_DB_PATH) {
+      try {
+        locatorStore = openLocatorStore();
+      } catch (err) {
+        console.warn(`[run-batch-executions] couldn't open locator store (continuing without it): ${err.message}`);
+      }
+    }
+    try {
+      const result = await runScriptSteps(driver, resolvedSteps, {
+        platform,
+        executeSemanticAction,
+        testCaseFile: filePath,
+        locatorStore,
+      });
+      persistUpdatedSelectors(filePath, mergeResolvedSelectors(steps, result.updatedSteps));
+      return result;
+    } finally {
+      if (locatorStore) locatorStore.close();
+    }
   } finally {
     await driver.deleteSession();
   }

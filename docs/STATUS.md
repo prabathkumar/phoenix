@@ -832,3 +832,37 @@ only its id — is real, not theoretical. **What's still open:** only one
 step type (`tap`) and one real device session have been exercised this
 way; a full real test case (`type`, `wait`, `tapIfExists`, multiple steps
 in sequence) through this exact endpoint has not yet been run.
+
+### Vision fusion real-model accuracy: validated for real, 2026-10-04
+
+The real-model-accuracy gap flagged since vision fusion's wiring was
+built (see this doc's earlier vision-fusion entry) is now closed:
+
+```
+PHOENIX_VISION_INTEGRATION_TEST=1 PHOENIX_OLLAMA_MODEL=llava node test/semantic-act-vision-integration.test.js
+  ok - android-right-icon-logout
+1 passed, 0 failed, 0 skipped
+```
+
+A real local Ollama server running `llava`, given the real device
+screenshot + real accessibility-tree XML captured from bug #17's Profile
+screen, correctly resolved "tap the LOGOUT icon in the Profile screen's
+top header" to the unlabeled `content-desc="Right Icon"` element — the
+exact case with zero textual relation between the instruction and the
+on-screen label, which text-only resolution could never solve.
+
+**Real bug found and fixed on this same run**: the integration test's own
+assertion (`generation/test/semantic-act-vision-integration.test.js`) read
+`result.ref`, but `resolveSemanticAction()`'s resolved return shape is
+`{resolved, element, selector}` — there is no top-level `ref`, only
+`element.ref`. The old assertion compared `undefined` to the expected ref
+on every run regardless of the model's actual answer, so the test could
+never have passed and couldn't tell "model got it right" from "model got
+it wrong." First run (before the fix) failed with this masking bug, not
+necessarily because the model was wrong; after fixing the test to read
+`result.element.ref`, the same model/fixture pair passed cleanly.
+
+**What's still open:** only one fixture (one screen, one model) has been
+exercised this way — no evidence yet on a second ambiguous-icon case, a
+different model, or a case where the model *should* decline (expectRef:
+null).

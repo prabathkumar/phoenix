@@ -313,7 +313,7 @@ docker run --rm -p 8091:8091 --env-file .env testops-mobile node frontend/server
   or wrong `TESTOPS_MOBILE_APPIUM_HOST`/`PORT`), not TestOps Mobile's own code. Then
   open the frontend (either `http://localhost:<TESTOPS_MOBILE_FRONTEND_PORT>/?port=<TESTOPS_MOBILE_LIVE_VIEW_PORT>`
   from step 5, or the public URL at
-  https://prabathkumar.github.io/testops-mobile/ pointed at your live-view
+  https://prabathkumar.github.io/phoenix/ pointed at your live-view
   host via `?host=&port=`) and confirm the device mirror renders and
   taps register.
 - Alternatively, drive it headlessly with

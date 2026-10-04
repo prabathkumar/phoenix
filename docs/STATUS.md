@@ -271,7 +271,7 @@ node live-view/test-client.js
 
 `frontend/index.html` is also deployed via GitHub Actions (`.github/workflows/deploy-frontend.yml`) to GitHub Pages on every push to `main` that touches `frontend/`, so it has a stable public URL instead of needing `node frontend/server.js` run locally every time:
 
-**https://prabathkumar.github.io/testops-mobile/**
+**https://prabathkumar.github.io/phoenix/**
 
 **This deploys the static page only — it still needs a TestOps Mobile backend to talk to.** The page connects, in your own browser, to `run-session.js`'s live-view WebSocket. Two ways to use it:
 

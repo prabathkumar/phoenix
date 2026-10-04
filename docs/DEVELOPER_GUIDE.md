@@ -31,7 +31,7 @@ minimum a reachable live-view WebSocket and a frontend URL).
   with `?port=<that session's live-view port>` appended to the URL
   (ask whoever started it what port), which skips the upload screen and
   connects you straight in. The public frontend works this way too:
-  https://prabathkumar.github.io/testops-mobile/?host=<host>&port=<port> — a
+  https://prabathkumar.github.io/phoenix/?host=<host>&port=<port> — a
   static page auto-deployed from `frontend/index.html`, no local setup
   needed on your machine, but it can only connect to an
   already-running session, never accept an upload itself.

@@ -1,13 +1,13 @@
 # TestOps Mobile
 
-[![Test](https://github.com/prabathkumar/testops-mobile/actions/workflows/test.yml/badge.svg)](https://github.com/prabathkumar/testops-mobile/actions/workflows/test.yml)
-[![Deploy frontend](https://github.com/prabathkumar/testops-mobile/actions/workflows/deploy-frontend.yml/badge.svg)](https://github.com/prabathkumar/testops-mobile/actions/workflows/deploy-frontend.yml)
+[![Test](https://github.com/prabathkumar/phoenix/actions/workflows/test.yml/badge.svg)](https://github.com/prabathkumar/phoenix/actions/workflows/test.yml)
+[![Deploy frontend](https://github.com/prabathkumar/phoenix/actions/workflows/deploy-frontend.yml/badge.svg)](https://github.com/prabathkumar/phoenix/actions/workflows/deploy-frontend.yml)
 
 Proprietary mobile test-recording and generation engine for TestOps.
 
 Testers record a flow once, inside TestOps — no Appium Inspector, no local install, no separate device-farm dashboard. TestOps Mobile captures the session and generates a working automated script. Built on a fork of Appium's core engine (Apache 2.0), extended with an AI-native layer Appium doesn't have.
 
-**Live: [prabathkumar.github.io/testops-mobile](https://prabathkumar.github.io/testops-mobile/)** — the actual recording UI, connecting to a TestOps Mobile backend running against a real device.
+**Live: [prabathkumar.github.io/phoenix](https://prabathkumar.github.io/phoenix/)** — the actual recording UI, connecting to a TestOps Mobile backend running against a real device.
 
 | Doc | For | What's in it |
 |---|---|---|

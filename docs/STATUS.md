@@ -792,3 +792,43 @@ on to the next guided iteration and repeated, never recovering.
   serial, and an explicit override always wins. Full suite green.
 - **Not yet re-run for real** — same "stated plainly, unverified until the
   next real run" discipline as every other fix in this doc.
+
+### TestOps integration contract (POST /api/execute-test-case): validated for real, 2026-10-04
+
+The TestOps-owns-the-session integration decided earlier the same day (see
+README's "Supporting infrastructure" area and `frontend/execute-test-case-
+endpoint.js`'s header) was proven end-to-end on real hardware the same day
+it was built:
+
+- A real BrowserStack session was opened **completely independently** of
+  `/api/execute-test-case` (a standalone `startSession()` call, simulating
+  TestOps owning session creation), printing a real session id
+  (`fac5c93f311c2ebde4d74e42fb5c891977b356fb`).
+- That session id alone — no BrowserStack credentials, no device/app
+  knowledge — was POSTed to `/api/execute-test-case` along with one real
+  step (`tap the LOGIN button...`).
+- Phoenix attached to the externally-created session via
+  `engine/attach-session.js`, executed the step against the real device,
+  and correctly detected the result: `{"success":true,"detail":"Appeared:
+  \"Please enter your User ID.\"."}`
+- **Real bug found and fixed in the same session**: `attach-session.js`'s
+  first version passed `hostname`/`port`/`path`/`isSecure` flat, matching
+  webdriverio's `remote()` shape — but `attach()` actually reads connection
+  details from a nested `options` object with a `protocol` string, not
+  `isSecure`. The bug didn't surface at attach time (attach() never
+  validates a session) — it surfaced as a generic "couldn't read the
+  current screen: Invalid URL" on the first real WebDriver call. Fixed,
+  plus 3 new regression tests (`engine/test/attach-session.test.js`)
+  asserting the exact shape passed to `attach()`, so this can't silently
+  regress.
+- Also confirmed for real: a BrowserStack session attached-to after it's
+  gone idle/expired returns a clear, real error
+  (`"Session not started or terminated"`) rather than hanging or crashing
+  — exactly the kind of real evidence this doc exists to record.
+
+**What this proves:** the core assumption behind the whole TestOps
+integration — that Phoenix can drive a session it did not create, knowing
+only its id — is real, not theoretical. **What's still open:** only one
+step type (`tap`) and one real device session have been exercised this
+way; a full real test case (`type`, `wait`, `tapIfExists`, multiple steps
+in sequence) through this exact endpoint has not yet been run.

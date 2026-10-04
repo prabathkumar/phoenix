@@ -25,6 +25,14 @@
  * module's header for why it's gated: it's never been run against a
  * real device, and dev-team adoption of the semantic layer is
  * deliberately being held until that's proven.
+ *
+ * POST /api/execute-test-case (frontend/execute-test-case-endpoint.js)
+ * is the TestOps integration contract decided 2026-10-04: TestOps opens
+ * its own BrowserStack session (it already owns the credentials, device
+ * selection, and app upload) and calls this endpoint with that session's
+ * id plus a test case + test data for Phoenix to drive against it.
+ * Gated behind PHOENIX_ENABLE_EXECUTE_API=1, off by default -- brand
+ * new, never yet exercised against a real TestOps call.
  */
 
 const http = require("http");
@@ -36,6 +44,7 @@ const { handleUploadAndStart } = require("./upload-session");
 const PORT = Number(process.env.PHOENIX_FRONTEND_PORT) || 8091;
 const INDEX_PATH = path.join(__dirname, "index.html");
 const SEMANTIC_API_ENABLED = process.env.PHOENIX_ENABLE_SEMANTIC_API === "1";
+const EXECUTE_API_ENABLED = process.env.PHOENIX_ENABLE_EXECUTE_API === "1";
 
 const server = http.createServer((req, res) => {
   if (req.method === "POST" && req.url === "/api/sessions") {
@@ -48,6 +57,11 @@ const server = http.createServer((req, res) => {
     // it pulls in is only loaded when this experimental path is
     // actually turned on.
     require("./semantic-action-endpoint").handleSemanticAction(req, res);
+    return;
+  }
+
+  if (EXECUTE_API_ENABLED && req.method === "POST" && req.url === "/api/execute-test-case") {
+    require("./execute-test-case-endpoint").handleExecuteTestCase(req, res);
     return;
   }
 

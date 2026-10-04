@@ -111,8 +111,17 @@ async function main() {
 
     try {
       const result = await resolveSemanticAction(xml, fixture.instruction, { screenshotBase64, kind: "tap" });
-      const actualRef = result.resolved ? result.ref : null;
-      assert.strictEqual(actualRef, fixture.expectRef, `expected ref ${fixture.expectRef}, got ${actualRef} (reason: ${result.reason || "n/a"})`);
+      // REAL BUG, found 2026-10-04 on the first real-model run: this used
+      // to read `result.ref`, but resolveSemanticAction()'s resolved
+      // return shape is `{resolved: true, element, selector}` -- there is
+      // no top-level `ref`, only `element.ref` (see semantic-act.js). The
+      // old code compared `undefined` to the expected ref on EVERY run,
+      // resolved or not, making this test unable to ever pass and
+      // unable to distinguish "model got it right" from "model got it
+      // wrong" -- it always failed the same way regardless of the real
+      // model's actual answer. Fixed to read the real field.
+      const actualRef = result.resolved ? result.element.ref : null;
+      assert.strictEqual(actualRef, fixture.expectRef, `expected ref ${fixture.expectRef}, got ${actualRef} (resolved: ${result.resolved}, reason: ${result.reason || "n/a"}, element: ${result.resolved ? JSON.stringify(result.element) : "n/a"})`);
       console.log(`  ok - ${fixture.name}`);
       passed += 1;
     } catch (err) {

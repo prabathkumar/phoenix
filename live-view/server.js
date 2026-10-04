@@ -74,7 +74,17 @@ function startLiveView(driver, recorder, port = 8090, platform = "android") {
         await driver.execute(tapExtension, deviceCoordinate);
         const step = await recorder.completeStep(partialStep);
 
-        socket.send(JSON.stringify({ type: "step-recorded", stepIndex: recorder.steps.length - 1 }));
+        // resolvedElement included so a UI can show the tester exactly
+        // what their tap resolved to (e.g. a "Record this step" repair
+        // flow displaying "resource-id: buyAddonLayout" immediately) --
+        // purely additive, existing consumers (frontend/index.html,
+        // live-view/test-client.js) only ever read .stepIndex off this
+        // event and are unaffected by the extra field.
+        socket.send(JSON.stringify({
+          type: "step-recorded",
+          stepIndex: recorder.steps.length - 1,
+          resolvedElement: step.resolvedElement,
+        }));
       }
 
       if (message.type === "type") {

@@ -41,6 +41,16 @@
  * app upload/device list/session creation are mocked (no real
  * BrowserStack call); the test cases and their steps are real. Always
  * on (no gate) since nothing here touches a real device or credential.
+ *
+ * POST /api/record-step, POST /api/apply-recorded-step, and
+ * POST /api/record-step/:id/stop (frontend/record-step-endpoint.js,
+ * frontend/apply-recorded-step-endpoint.js) are the "Record this step"
+ * manual fallback: when a test-case step fails to resolve, TestOps's
+ * still-open session (never torn down on failure) is handed to a
+ * live-view instance so a tester can tap the real element themselves;
+ * the resulting selector is written into the test case's step. Gated
+ * behind TESTOPS_MOBILE_ENABLE_RECORD_STEP_API=1, off by default --
+ * brand new, never yet exercised against a real TestOps call.
  */
 
 const http = require("http");
@@ -55,6 +65,7 @@ const INDEX_PATH = path.join(__dirname, "index.html");
 const MOCK_TESTOPS_PATH = path.join(__dirname, "mock-testops.html");
 const SEMANTIC_API_ENABLED = process.env.TESTOPS_MOBILE_ENABLE_SEMANTIC_API === "1";
 const EXECUTE_API_ENABLED = process.env.TESTOPS_MOBILE_ENABLE_EXECUTE_API === "1";
+const RECORD_STEP_API_ENABLED = process.env.TESTOPS_MOBILE_ENABLE_RECORD_STEP_API === "1";
 
 const server = http.createServer((req, res) => {
   if (req.method === "POST" && req.url === "/api/sessions") {
@@ -72,6 +83,22 @@ const server = http.createServer((req, res) => {
 
   if (EXECUTE_API_ENABLED && req.method === "POST" && req.url === "/api/execute-test-case") {
     require("./execute-test-case-endpoint").handleExecuteTestCase(req, res);
+    return;
+  }
+
+  if (RECORD_STEP_API_ENABLED && req.method === "POST" && req.url === "/api/record-step") {
+    require("./record-step-endpoint").handleRecordStep(req, res);
+    return;
+  }
+
+  if (RECORD_STEP_API_ENABLED && req.method === "POST" && req.url === "/api/apply-recorded-step") {
+    require("./apply-recorded-step-endpoint").handleApplyRecordedStep(req, res);
+    return;
+  }
+
+  if (RECORD_STEP_API_ENABLED && req.method === "POST" && /^\/api\/record-step\/[^/]+\/stop$/.test(req.url)) {
+    const recordingId = decodeURIComponent(req.url.split("/")[3]);
+    require("./apply-recorded-step-endpoint").handleStopRecording(req, res, recordingId);
     return;
   }
 
@@ -127,6 +154,9 @@ server.listen(PORT, () => {
   console.log("[frontend] and run `node run-session.js` separately, as before.");
   if (SEMANTIC_API_ENABLED) {
     console.log("[frontend] TESTOPS_MOBILE_ENABLE_SEMANTIC_API=1 set — POST /api/semantic-action is live (experimental, unproven on real hardware).");
+  }
+  if (RECORD_STEP_API_ENABLED) {
+    console.log("[frontend] TESTOPS_MOBILE_ENABLE_RECORD_STEP_API=1 set — POST /api/record-step + /api/apply-recorded-step are live (experimental, unproven on real hardware).");
   }
   console.log(`[frontend] mock TestOps walkthrough: http://localhost:${PORT}/mock-testops.html (mocked device/session, real test cases)`);
 });

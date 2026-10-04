@@ -8,6 +8,6 @@
   },
   "scripts": {
     "dev": "node server.js",
-    "test": "node test/upload-session.test.js && node test/semantic-action-endpoint.test.js && node test/execute-test-case-endpoint.test.js"
+    "test": "node test/upload-session.test.js && node test/semantic-action-endpoint.test.js && node test/execute-test-case-endpoint.test.js && node test/record-step-endpoint.test.js && node test/apply-recorded-step-endpoint.test.js"
   }
 }

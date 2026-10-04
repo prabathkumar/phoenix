@@ -63,6 +63,21 @@ jobs:
         working-directory: generation
         run: npm install
 
+      # Real CI failure found 2026-10-04 (the "Record this step" wiring):
+      # frontend/record-step-endpoint.js cross-requires capture/recorder.js
+      # for real (unlike engine/attach-session.js and live-view/server.js,
+      # which frontend/test/record-step-endpoint.test.js fakes via
+      # require.cache BEFORE requiring the endpoint, so their real
+      # dependencies -- webdriverio, ws -- are never actually loaded).
+      # capture/recorder.js is NOT faked, so its real dependency
+      # (@xmldom/xmldom) must physically exist under capture/node_modules
+      # for that require to resolve -- same root cause as the existing
+      # generation-for-engine install step above, just one package over.
+      - name: Install capture dependencies (frontend cross-requires capture/recorder.js)
+        if: matrix.package == 'frontend'
+        working-directory: capture
+        run: npm install
+
       - name: Run ${{ matrix.package }} tests
         if: matrix.package != 'root'
         working-directory: ${{ matrix.package }}

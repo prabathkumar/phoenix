@@ -32,6 +32,21 @@
 const { attach } = require("webdriverio");
 
 /**
+ * REAL BUG, found 2026-10-04 on the first real-device validation of this
+ * module: webdriverio's attach() does NOT take hostname/port/path/isSecure
+ * at the top level (that's remote()'s shape, which this module's header
+ * comment wrongly assumed was the same). attach() instead reads connection
+ * details from a nested `options` object and a `protocol` string
+ * ("https"/"http"), not an `isSecure` boolean -- see
+ * node_modules/webdriverio/build/utils/detectBackend.js and
+ * node_modules/webdriverio/build/index.js's `attach` export. Passing the
+ * old flat shape left hostname/port effectively undefined, which
+ * surfaced downstream as a generic "Invalid URL" on the first real
+ * WebDriver call (getPageSource via the semantic-act executor), not as
+ * an attach()-time error -- attach() itself never validates the session,
+ * it just builds a client. Fixed by nesting under `options` and using
+ * `protocol` instead of `isSecure`.
+ *
  * @param {Object} params
  * @param {string} params.sessionId - the already-live session id TestOps's
  *   own BrowserStack/Appium session-start call returned.
@@ -40,7 +55,7 @@ const { attach } = require("webdriverio");
  *   WebDriver-protocol hub is accepted.
  * @param {number} [params.port]
  * @param {string} [params.path]
- * @param {boolean} [params.isSecure] - defaults to true (https), matching
+ * @param {string} [params.protocol] - defaults to "https", matching
  *   BrowserStack.
  * @param {Object} [params.capabilities] - optional; only needed if a
  *   caller wants attach() to know the platform up front rather than
@@ -52,7 +67,7 @@ async function attachSession({
   hostname = "hub-cloud.browserstack.com",
   port = 443,
   path = "/wd/hub",
-  isSecure = true,
+  protocol = "https",
   capabilities,
 }) {
   if (!sessionId) {
@@ -60,10 +75,7 @@ async function attachSession({
   }
   return attach({
     sessionId,
-    hostname,
-    port,
-    path,
-    isSecure,
+    options: { hostname, port, path, protocol },
     capabilities,
   });
 }

@@ -112,17 +112,22 @@ Two different things, deliberately kept separate:
    "passes the screenshot through to callOllamaJson's images option in
    fused mode" test proves `screenshotBase64` actually reaches the model
    call, against a fake model, on every CI build.
-2. **Real-model accuracy (opt-in, not yet populated):**
-   `generation/test/semantic-act-vision-integration.test.js` is a scaffold
-   for testing whether a REAL multimodal Ollama model actually resolves an
-   icon-only case correctly from a REAL captured screenshot. It's a
-   model-accuracy question, not a code-correctness one, so it's gated
-   behind `PHOENIX_VISION_INTEGRATION_TEST=1` + a reachable Ollama server
-   and skips cleanly without either. **It currently has zero registered
-   fixtures — this is the real gap new developers should close**, starting
-   with the "Right Icon" logout case below. See the test file's own header
-   for exactly how to add one (capture a real screenshot + page source,
-   drop them in `generation/test/fixtures/`, register the expected ref).
+2. **Real-model accuracy (opt-in, one real fixture registered):**
+   `generation/test/semantic-act-vision-integration.test.js` tests whether
+   a REAL multimodal Ollama model actually resolves an icon-only case
+   correctly from a REAL captured screenshot. Gated behind
+   `PHOENIX_VISION_INTEGRATION_TEST=1` + a reachable Ollama server (not run
+   in normal CI — this is model accuracy, not code correctness). The first
+   fixture is in: `generation/test/fixtures/android-right-icon-logout.{xml,b64}`
+   — the literal `getPageSource()` dump from `addons-run-android-14.log`
+   (the run that found bug #17) paired with a real device screenshot of
+   that same Profile screen, asserting the model resolves "tap the LOGOUT
+   icon in the Profile screen's top header" to ref 6 (the Right Icon
+   element). **Still needs a real multimodal model to actually run against**
+   — nobody has executed this one for real yet (no Ollama reachable from
+   the environment that built it); run it with a local `ollama pull llava`
+   (or whatever multimodal model is standard here) to get the first real
+   answer. Add more fixtures the same way for other ambiguous-icon cases.
 
 ### How to actually turn this on for a real run
 
@@ -142,14 +147,14 @@ which is an icon with content-desc `"Right Icon"`, no text relating it to
 "logout" anywhere in the accessibility tree.
 
 **Steps:**
-1. Run the Android batch test with `PHOENIX_ENABLE_VISUAL_GROUNDING=1` set.
-2. Confirm the tap on the Profile screen's top-right icon.
-3. **Capture the real fixture while you're there:** save the step's
-   `getPageSource()` XML and its screenshot (base64) into
-   `generation/test/fixtures/android-right-icon-logout.{xml,b64}`, then
-   register the case in `generation/test/semantic-act-vision-integration.test.js`'s
-   `FIXTURES` array with the ref the real snapshot assigns that element —
-   this is the first real accuracy fixture for this whole layer.
+1. Run `PHOENIX_VISION_INTEGRATION_TEST=1 node test/semantic-act-vision-integration.test.js`
+   (from `generation/`) with a real Ollama server reachable and a
+   multimodal model pulled — this is the first real run of the registered
+   fixture; nobody has executed it against a real model yet.
+2. Separately, to generate NEW fixtures for other ambiguous controls: run
+   the Android batch test with `PHOENIX_ENABLE_VISUAL_GROUNDING=1` set,
+   capture the step's `getPageSource()` XML and screenshot, and register
+   them the same way `android-right-icon-logout` was added.
 
 **Expected result (and the real bug this is for):** without vision fusion,
 a plain-language instruction has zero semantic signal to match "LOGOUT or
@@ -369,7 +374,7 @@ the same claim everywhere.
 |---|---|
 | Layer 1 (recording) | ✅ Proven, Android |
 | Layer 2 (semantic resolution) | ✅ Proven, both platforms (Android fully closed end to end; iOS partially — see `docs/E2E_CHECKLIST.md`) |
-| Layer 3 (vision fusion) | ⚠️ Wiring automated; real-model accuracy scaffold exists, zero fixtures registered — see the Layer 3 section above |
+| Layer 3 (vision fusion) | ⚠️ Wiring automated; 1 real fixture registered (Right Icon logout), never yet run against a real multimodal model — see the Layer 3 section above |
 | Layer 4 (autonomous loop) | ⚠️ Exists, unit-tested, thinner real-hardware track record than `test-case` mode |
 | Self-heal / outcome verification | ✅ Proven (bugs #13–#18), but `expect` coverage is opt-in per step, not universal |
 | Locator store | ❌ Never recorded a row from a real run (two blockers now fixed, unverified) |

@@ -44,14 +44,18 @@ const FIXTURES_DIR = path.join(__dirname, "fixtures");
 // Add real cases here once a fixture pair exists. Each entry names an
 // <name>.xml (page source) + <name>.b64 (screenshot) pair under
 // generation/test/fixtures/, an instruction to resolve, and the expected
-// outcome. Empty today -- see docs/DEV_ONBOARDING_CHECKLIST.md's Layer 3
-// section; the Android "Right Icon" logout case is the first candidate.
+// outcome.
 const FIXTURES = [
-  // {
-  //   name: "android-right-icon-logout",
-  //   instruction: "tap the LOGOUT icon in the Profile screen's top header",
-  //   expectRef: "whatever ref number the real snapshot assigns the Right Icon element",
-  // },
+  {
+    // Real evidence, both files: the XML is the literal getPageSource()
+    // dump extracted from addons-run-android-14.log (not reconstructed),
+    // and the screenshot is the real device capture of this same screen.
+    // ref 6 confirmed by running this exact fixture through
+    // buildGroundedSnapshot() directly -- the Right Icon is unambiguous.
+    name: "android-right-icon-logout",
+    instruction: "tap the LOGOUT icon in the Profile screen's top header",
+    expectRef: 6,
+  },
 ];
 
 let passed = 0;

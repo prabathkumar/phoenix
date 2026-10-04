@@ -55,6 +55,9 @@ else
   RESULTS+=("SKIP  Pre-flight (check-env.js)")
 fi
 
+# --- Root-level tests (check-env.js, run-batch-executions.js) --------------
+run_block "Root tests (check-env.js, run-batch-executions.js)" bash -c "cd '$ROOT' && node test/check-env.test.js && node test/run-batch-executions.test.js"
+
 # --- Layer 1: Guided recording ---------------------------------------------
 run_block "Layer 1 - Guided recording (capture/)" bash -c "cd '$ROOT/capture' && npm test"
 run_block "Layer 1 - Script generation (generation/)" bash -c "cd '$ROOT/generation' && npm test"

@@ -224,4 +224,8 @@ function main() {
   }
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = { parseArgs, parseDotEnv, requiredEnvVarsFromTestCase, displayValue, checkVar, SECRET_NAME_RE };

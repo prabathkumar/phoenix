@@ -106,9 +106,23 @@ needed for icon-only controls where text alone is ambiguous (an unlabeled
 id pattern).
 
 ### Automated tests
-No dedicated suite yet (opt-in path, exercised indirectly through
-`semantic-act.test.js`'s fixtures). **This is a real gap new developers
-should close** — see "what's genuinely untested" at the bottom.
+Two different things, deliberately kept separate:
+
+1. **Wiring (fully automated today):** `generation/test/semantic-act.test.js`'s
+   "passes the screenshot through to callOllamaJson's images option in
+   fused mode" test proves `screenshotBase64` actually reaches the model
+   call, against a fake model, on every CI build.
+2. **Real-model accuracy (opt-in, not yet populated):**
+   `generation/test/semantic-act-vision-integration.test.js` is a scaffold
+   for testing whether a REAL multimodal Ollama model actually resolves an
+   icon-only case correctly from a REAL captured screenshot. It's a
+   model-accuracy question, not a code-correctness one, so it's gated
+   behind `PHOENIX_VISION_INTEGRATION_TEST=1` + a reachable Ollama server
+   and skips cleanly without either. **It currently has zero registered
+   fixtures — this is the real gap new developers should close**, starting
+   with the "Right Icon" logout case below. See the test file's own header
+   for exactly how to add one (capture a real screenshot + page source,
+   drop them in `generation/test/fixtures/`, register the expected ref).
 
 ### Manual test case (real evidence)
 **Setup:** `test-cases/addons.json` step 24 (Android) — the LOGOUT control,
@@ -284,11 +298,16 @@ BrowserStack run — zero Docker, zero device session, zero cost. Parses
 `.env` exactly like Docker's `--env-file` does, reporting MISSING vs EMPTY
 vs SET (never printing a credential's real value).
 
-**Automated tests:** none yet (pure script, validated manually against
-synthetic `.env` fixtures during development — see conversation history).
-**Checklist item:** add a real `check-env.test.js` covering the
-MISSING/EMPTY/SET three-way distinction before this is considered
-"tested," not just "worked when I tried it."
+**Automated tests:**
+```bash
+node test/check-env.test.js   # repo root; 18 tests
+```
+Covers the MISSING/EMPTY/SET three-way distinction directly (including the
+`KEY=` empty-vs-absent case this tool exists for), `${VAR}` placeholder
+scanning in test-case files, and that a secret's real value never appears
+in any result object, not just the printed output. Wired into CI as the
+`root` matrix entry in `.github/workflows/test.yml` and into
+`scripts/onboarding-smoke-test.sh`.
 
 **Manual test case (real evidence):** this tool exists because of a real,
 repeated failure mode: a tester's `.env` had a credential variable declared
@@ -332,11 +351,11 @@ the same claim everywhere.
 |---|---|
 | Layer 1 (recording) | ✅ Proven, Android |
 | Layer 2 (semantic resolution) | ✅ Proven, both platforms (Android fully closed end to end; iOS partially — see `docs/E2E_CHECKLIST.md`) |
-| Layer 3 (vision fusion) | ❌ Never exercised on a real failing case — see the Layer 3 section above |
+| Layer 3 (vision fusion) | ⚠️ Wiring automated; real-model accuracy scaffold exists, zero fixtures registered — see the Layer 3 section above |
 | Layer 4 (autonomous loop) | ⚠️ Exists, unit-tested, thinner real-hardware track record than `test-case` mode |
 | Self-heal / outcome verification | ✅ Proven (bugs #13–#18), but `expect` coverage is opt-in per step, not universal |
 | Locator store | ❌ Never recorded a row from a real run (two blockers now fixed, unverified) |
-| `check-env.js` | ✅ Run for real against a real `.env`, no automated test yet |
+| `check-env.js` | ✅ Run for real against a real `.env`; 18 unit tests, wired into CI |
 | `mcp/server.js` | ⚠️ Unit + local stdio smoke-tested, never used by a real external client |
 
 iOS end-to-end closure specifically is the active focus (`docs/E2E_CHECKLIST.md`)

@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Mock TestOps — Phoenix execution walkthrough</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: -apple-system, system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; line-height: 1.4; }
+  h1 { font-size: 1.3rem; }
+  .note { background: #fff3cd; color: #664d03; border: 1px solid #ffe69c; border-radius: 6px; padding: 0.75rem 1rem; font-size: 0.9rem; margin-bottom: 1.5rem; }
+  fieldset { border: 1px solid #ccc; border-radius: 8px; margin-bottom: 1.25rem; padding: 1rem; }
+  legend { font-weight: 600; padding: 0 0.4rem; }
+  label { display: block; margin-bottom: 0.3rem; font-size: 0.85rem; opacity: 0.8; }
+  select, input[type="file"] { width: 100%; padding: 0.4rem; margin-bottom: 0.75rem; }
+  button { background: #2563eb; color: white; border: none; border-radius: 6px; padding: 0.6rem 1.2rem; font-size: 0.95rem; cursor: pointer; }
+  button:disabled { background: #94a3b8; cursor: not-allowed; }
+  #log { background: #0b1021; color: #d6e2ff; font-family: ui-monospace, monospace; font-size: 0.85rem; padding: 1rem; border-radius: 8px; min-height: 140px; white-space: pre-wrap; }
+  .step-ok { color: #7ee787; }
+  .step-wait { color: #ffd479; }
+  .meta { color: #8ba3d9; }
+  .final-pass { color: #7ee787; font-weight: bold; }
+  .final-fail { color: #ff7b72; font-weight: bold; }
+  #step-preview { font-size: 0.85rem; max-height: 180px; overflow-y: auto; border: 1px solid #ddd; border-radius: 6px; padding: 0.5rem 0.75rem; margin-bottom: 0.75rem; }
+</style>
+</head>
+<body>
+  <h1>Mock TestOps → Phoenix execution walkthrough</h1>
+  <div class="note">
+    This page stands in for TestOps so the real sequence can be clicked through once:
+    upload the app → pick a BrowserStack device → pick a test case → trigger. The app upload,
+    device list, and session creation are <strong>mocked</strong> (no real BrowserStack call,
+    no real device). The test cases listed below are your <strong>real</strong>
+    <code>test-cases/*.json</code> files from past real runs — the step list you see is real,
+    not sample data.
+  </div>
+
+  <fieldset>
+    <legend>1. Upload the app</legend>
+    <label for="app-file">.apk / .ipa (TestOps would upload this to BrowserStack for real; here it's just a filename)</label>
+    <input type="file" id="app-file" accept=".apk,.ipa" />
+  </fieldset>
+
+  <fieldset>
+    <legend>2. Select a BrowserStack device</legend>
+    <label for="device-select">Device (mocked list — real App Automate catalog names)</label>
+    <select id="device-select"></select>
+  </fieldset>
+
+  <fieldset>
+    <legend>3. Select a test case</legend>
+    <label for="testcase-select">Test case (real files from test-cases/)</label>
+    <select id="testcase-select"></select>
+    <div id="step-preview">Pick a test case to preview its real steps…</div>
+  </fieldset>
+
+  <button id="run-btn" disabled>Trigger execution</button>
+
+  <h3>Execution log</h3>
+  <div id="log">Waiting to start…</div>
+
+<script>
+const appFileInput = document.getElementById("app-file");
+const deviceSelect = document.getElementById("device-select");
+const testCaseSelect = document.getElementById("testcase-select");
+const stepPreview = document.getElementById("step-preview");
+const runBtn = document.getElementById("run-btn");
+const log = document.getElementById("log");
+
+let appName = null;
+
+appFileInput.addEventListener("change", () => {
+  appName = appFileInput.files[0] ? appFileInput.files[0].name : null;
+  updateRunButton();
+});
+
+async function loadDevices() {
+  const res = await fetch("/api/mock/devices");
+  const { devices } = await res.json();
+  deviceSelect.innerHTML = devices
+    .map((d) => `<option value="${d.name}">${d.name} (${d.platform}, OS ${d.osVersion})</option>`)
+    .join("");
+}
+
+async function loadTestCases() {
+  const res = await fetch("/api/mock/test-cases");
+  const { testCases } = await res.json();
+  testCaseSelect.innerHTML = testCases
+    .map((tc) => `<option value="${tc.fileName}">${tc.fileName} — ${tc.platform}, ${tc.stepCount ?? "?"} steps</option>`)
+    .join("");
+  if (testCases.length) await previewTestCase(testCases[0].fileName);
+}
+
+async function previewTestCase(fileName) {
+  const res = await fetch(`/api/mock/test-cases/${encodeURIComponent(fileName)}`);
+  const { steps } = await res.json();
+  stepPreview.innerHTML = steps
+    .map((s, i) => `${i + 1}. ${s.kind || "tap"} — ${s.instruction || s.selector || "(wait)"}`)
+    .join("<br>");
+}
+
+testCaseSelect.addEventListener("change", () => previewTestCase(testCaseSelect.value));
+
+function updateRunButton() {
+  runBtn.disabled = !appName || !deviceSelect.value || !testCaseSelect.value;
+}
+deviceSelect.addEventListener("change", updateRunButton);
+testCaseSelect.addEventListener("change", updateRunButton);
+
+function appendLog(html) {
+  log.innerHTML += (log.innerHTML === "Waiting to start…" ? "" : "\n") + html;
+  log.scrollTop = log.scrollHeight;
+}
+
+runBtn.addEventListener("click", async () => {
+  runBtn.disabled = true;
+  log.innerHTML = "";
+  const body = { appName, device: deviceSelect.value, testCaseFile: testCaseSelect.value };
+
+  const res = await fetch("/api/mock/run", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop();
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const event = JSON.parse(line);
+      if (event.type === "session-started") {
+        appendLog(`<span class="meta">[TestOps] opened session ${event.sessionId} for ${event.appName} on ${event.device}</span>`);
+        appendLog(`<span class="meta">  (${event.note})</span>`);
+      } else if (event.type === "attached") {
+        appendLog(`<span class="meta">[Phoenix] attached to session ${event.sessionId}</span>`);
+        appendLog(`<span class="meta">  (${event.note})</span>`);
+      } else if (event.type === "step") {
+        const cls = event.status === "waited" ? "step-wait" : "step-ok";
+        appendLog(`<span class="${cls}">[${event.index}/${event.total}] ${event.status}: ${event.label}</span>`);
+      } else if (event.type === "done") {
+        appendLog(`<span class="${event.success ? "final-pass" : "final-fail"}">RESULT: ${event.success ? "PASSED" : "FAILED"} — ${event.detail}</span>`);
+      }
+    }
+  }
+  runBtn.disabled = false;
+});
+
+loadDevices();
+loadTestCases();
+</script>
+</body>
+</html>

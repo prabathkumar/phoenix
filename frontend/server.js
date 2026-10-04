@@ -33,6 +33,14 @@
  * id plus a test case + test data for Phoenix to drive against it.
  * Gated behind PHOENIX_ENABLE_EXECUTE_API=1, off by default -- brand
  * new, never yet exercised against a real TestOps call.
+ *
+ * /mock-testops.html + /api/mock/* (frontend/mock-testops-endpoints.js)
+ * is a walkthrough of the above sequence while TestOps itself doesn't
+ * exist yet: upload an app, pick a BrowserStack device, pick a real
+ * test-cases/*.json file, trigger, watch it "run" step by step. The
+ * app upload/device list/session creation are mocked (no real
+ * BrowserStack call); the test cases and their steps are real. Always
+ * on (no gate) since nothing here touches a real device or credential.
  */
 
 const http = require("http");
@@ -40,9 +48,11 @@ const fs = require("fs");
 const path = require("path");
 
 const { handleUploadAndStart } = require("./upload-session");
+const mockTestOps = require("./mock-testops-endpoints");
 
 const PORT = Number(process.env.PHOENIX_FRONTEND_PORT) || 8091;
 const INDEX_PATH = path.join(__dirname, "index.html");
+const MOCK_TESTOPS_PATH = path.join(__dirname, "mock-testops.html");
 const SEMANTIC_API_ENABLED = process.env.PHOENIX_ENABLE_SEMANTIC_API === "1";
 const EXECUTE_API_ENABLED = process.env.PHOENIX_ENABLE_EXECUTE_API === "1";
 
@@ -65,6 +75,40 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (req.method === "GET" && req.url === "/mock-testops.html") {
+    fs.readFile(MOCK_TESTOPS_PATH, "utf8", (err, content) => {
+      if (err) {
+        res.writeHead(500);
+        res.end("Failed to read mock-testops.html: " + err.message);
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      res.end(content);
+    });
+    return;
+  }
+
+  if (req.method === "GET" && req.url === "/api/mock/devices") {
+    mockTestOps.handleListDevices(req, res);
+    return;
+  }
+
+  if (req.method === "GET" && req.url === "/api/mock/test-cases") {
+    mockTestOps.handleListTestCases(req, res);
+    return;
+  }
+
+  if (req.method === "GET" && req.url.startsWith("/api/mock/test-cases/")) {
+    const fileName = decodeURIComponent(req.url.slice("/api/mock/test-cases/".length));
+    mockTestOps.handleGetTestCase(req, res, fileName);
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/mock/run") {
+    mockTestOps.handleRun(req, res);
+    return;
+  }
+
   fs.readFile(INDEX_PATH, "utf8", (err, content) => {
     if (err) {
       res.writeHead(500);
@@ -84,4 +128,5 @@ server.listen(PORT, () => {
   if (SEMANTIC_API_ENABLED) {
     console.log("[frontend] PHOENIX_ENABLE_SEMANTIC_API=1 set — POST /api/semantic-action is live (experimental, unproven on real hardware).");
   }
+  console.log(`[frontend] mock TestOps walkthrough: http://localhost:${PORT}/mock-testops.html (mocked device/session, real test cases)`);
 });

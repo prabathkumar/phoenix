@@ -1,5 +1,5 @@
 /**
- * Capture layer (docs/PHOENIX_SPEC.md §4.2).
+ * Capture layer (docs/TESTOPS_MOBILE_SPEC.md §4.2).
  *
  * Records what happens during a guided session: every tap, the element
  * it resolved to, and a before/after screenshot + accessibility tree.
@@ -181,7 +181,7 @@ function buildXPath(element) {
  * Maps a tap coordinate to the element in the accessibility tree whose
  * bounds contain it, then picks the most stable identifier available.
  *
- * Locator priority (docs/PHOENIX_SPEC.md §4.2):
+ * Locator priority (docs/TESTOPS_MOBILE_SPEC.md §4.2):
  *   1. resource-id           — stable across app builds, when present
  *   2. accessibility-id      — content-desc, the WebDriver "accessibility id" strategy
  *   3. text / content-desc   — human-readable, can change with copy edits

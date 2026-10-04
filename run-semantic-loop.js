@@ -2,12 +2,12 @@
  * Standalone CLI entry point for proving engine/semantic-loop.js's
  * runAutonomousLoop() against a REAL session — the Phase 3 counterpart
  * to run-semantic-action.js, same shape and same env vars
- * (PHOENIX_PLATFORM/PHOENIX_APPIUM_PROVIDER/app path, see
+ * (TESTOPS_MOBILE_PLATFORM/TESTOPS_MOBILE_APPIUM_PROVIDER/app path, see
  * docs/SETUP.md). Everything in engine/semantic-loop.js is unit-tested
  * against fakes only; this is what actually runs it.
  *
- * Per docs/PHOENIX_SPEC.md §6, Phase 3 is R&D-only and not customer-
- * facing until proven — point this at one of Phoenix's own messiest
+ * Per docs/TESTOPS_MOBILE_SPEC.md §6, Phase 3 is R&D-only and not customer-
+ * facing until proven — point this at one of TestOps Mobile's own messiest
  * internal apps (logins, OTP, payment flows) before anything else, and
  * expect it to stop early and often; that's the loop's safety valve
  * working as intended, not a bug to work around.
@@ -47,7 +47,7 @@ async function main() {
     process.exit(1);
   }
 
-  const platform = process.env.PHOENIX_PLATFORM === "ios" ? "ios" : "android";
+  const platform = process.env.TESTOPS_MOBILE_PLATFORM === "ios" ? "ios" : "android";
   const { startSession } = require(platform === "ios" ? "./engine/ios-session" : "./engine/session");
 
   console.log(`[run-semantic-loop] starting Appium session (platform: ${platform})...`);

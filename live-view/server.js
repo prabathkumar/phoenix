@@ -1,5 +1,5 @@
 /**
- * Live view server (docs/PHOENIX_SPEC.md §4.1).
+ * Live view server (docs/TESTOPS_MOBILE_SPEC.md §4.1).
  *
  * Two responsibilities, both against the same Appium session TestOps
  * already started:

@@ -1,6 +1,6 @@
 /**
  * Tests for the Phase 2 state-diff reporter (generation/semantic-diff.js)
- * -- the third and last building block named in docs/PHOENIX_SPEC.md §6's
+ * -- the third and last building block named in docs/TESTOPS_MOBILE_SPEC.md §6's
  * Phase 2 bullets, after semantic-snapshot.js and semantic-act.js.
  *
  * Run with: npm test (from generation/) or `node test/semantic-diff.test.js`
@@ -13,15 +13,15 @@ const LOGIN_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
 <hierarchy>
   <android.widget.FrameLayout bounds="[0,0][1080,2400]">
     <android.widget.TextView text="Login" bounds="[42,166][305,237]" />
-    <android.widget.EditText resource-id="com.phoenix.demo:id/username_input" text="" bounds="[100,300][980,400]" />
-    <android.widget.Button resource-id="com.phoenix.demo:id/login_button" text="Log In" bounds="[100,560][980,660]" />
+    <android.widget.EditText resource-id="com.testopsmobile.demo:id/username_input" text="" bounds="[100,300][980,400]" />
+    <android.widget.Button resource-id="com.testopsmobile.demo:id/login_button" text="Log In" bounds="[100,560][980,660]" />
   </android.widget.FrameLayout>
 </hierarchy>`;
 
 const AFTER_LOGIN_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
 <hierarchy>
   <android.widget.FrameLayout bounds="[0,0][1080,2400]">
-    <android.widget.TextView resource-id="com.phoenix.demo:id/welcome_text" text="Welcome" bounds="[42,166][305,237]" />
+    <android.widget.TextView resource-id="com.testopsmobile.demo:id/welcome_text" text="Welcome" bounds="[42,166][305,237]" />
   </android.widget.FrameLayout>
 </hierarchy>`;
 
@@ -44,11 +44,11 @@ test("diffSnapshots reports the login screen's elements as disappeared and Welco
   assert.strictEqual(diff.changed, true);
   assert.strictEqual(diff.appeared.length, 1);
   assert.strictEqual(diff.appeared[0].label, "Welcome");
-  assert.strictEqual(diff.appeared[0].resourceId, "com.phoenix.demo:id/welcome_text");
+  assert.strictEqual(diff.appeared[0].resourceId, "com.testopsmobile.demo:id/welcome_text");
 
   assert.strictEqual(diff.disappeared.length, 3);
   const disappearedLabels = diff.disappeared.map((el) => el.label || el.resourceId).sort();
-  assert.deepStrictEqual(disappearedLabels, ["Log In", "Login", "com.phoenix.demo:id/username_input"].sort());
+  assert.deepStrictEqual(disappearedLabels, ["Log In", "Login", "com.testopsmobile.demo:id/username_input"].sort());
 });
 
 test("diffSnapshots reports no changes when before and after are identical", () => {

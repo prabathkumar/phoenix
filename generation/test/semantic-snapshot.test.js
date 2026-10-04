@@ -1,7 +1,7 @@
 /**
  * Tests for the Phase 2 grounded-snapshot module (see
  * generation/semantic-snapshot.js's header comment and
- * docs/PHOENIX_SPEC.md §6 for what this is building toward). Covers
+ * docs/TESTOPS_MOBILE_SPEC.md §6 for what this is building toward). Covers
  * both an Android UiAutomator2-style tree and an iOS XCUITest-style
  * tree, since buildGroundedSnapshot() reads the same attribute set
  * pipeline.js's extractLabels() does for both platforms.
@@ -17,8 +17,8 @@ const ANDROID_LOGIN_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='y
 <hierarchy>
   <android.widget.FrameLayout bounds="[0,0][1080,2400]">
     <android.widget.TextView text="Login" bounds="[42,166][305,237]" />
-    <android.widget.EditText resource-id="com.phoenix.demo:id/username_input" text="" bounds="[100,300][980,400]" />
-    <android.widget.Button resource-id="com.phoenix.demo:id/login_button" text="Log In" bounds="[100,560][980,660]" />
+    <android.widget.EditText resource-id="com.testopsmobile.demo:id/username_input" text="" bounds="[100,300][980,400]" />
+    <android.widget.Button resource-id="com.testopsmobile.demo:id/login_button" text="Log In" bounds="[100,560][980,660]" />
   </android.widget.FrameLayout>
 </hierarchy>`;
 
@@ -115,7 +115,7 @@ const FILLED_PASSWORD_DUPLICATE_RESOURCE_ID_SCREEN = `<?xml version='1.0' encodi
 const FILLED_UNIQUE_PASSWORD_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
 <hierarchy>
   <android.view.View bounds="[0,0][1080,2400]">
-    <android.widget.EditText resource-id="com.phoenix.demo:id/password_input" text="••••" password="true" bounds="[102,917][978,1054]" />
+    <android.widget.EditText resource-id="com.testopsmobile.demo:id/password_input" text="••••" password="true" bounds="[102,917][978,1054]" />
   </android.view.View>
 </hierarchy>`;
 
@@ -169,14 +169,14 @@ test("buildGroundedSnapshot assigns sequential refs and skips the unlabeled stru
   assert.strictEqual(title.resourceId, undefined);
 
   assert.strictEqual(username.role, "android.widget.EditText");
-  assert.strictEqual(username.resourceId, "com.phoenix.demo:id/username_input");
+  assert.strictEqual(username.resourceId, "com.testopsmobile.demo:id/username_input");
   // text="" is blank, so no label -- but resource-id alone is enough to
   // include the element.
   assert.strictEqual(username.label, undefined);
 
   assert.strictEqual(loginButton.role, "android.widget.Button");
   assert.strictEqual(loginButton.label, "Log In");
-  assert.strictEqual(loginButton.resourceId, "com.phoenix.demo:id/login_button");
+  assert.strictEqual(loginButton.resourceId, "com.testopsmobile.demo:id/login_button");
 });
 
 test("buildGroundedSnapshot treats a zero-width-space label as blank, same as pipeline.js's isBlank()", () => {
@@ -212,8 +212,8 @@ test("snapshotToText renders a compact, indented, ref-prefixed line per element"
     text,
     [
       '    [1] android.widget.TextView "Login"',
-      '    [2] android.widget.EditText (id: com.phoenix.demo:id/username_input)',
-      '    [3] android.widget.Button "Log In" (id: com.phoenix.demo:id/login_button)',
+      '    [2] android.widget.EditText (id: com.testopsmobile.demo:id/username_input)',
+      '    [3] android.widget.Button "Log In" (id: com.testopsmobile.demo:id/login_button)',
     ].join("\n")
   );
 });
@@ -230,7 +230,7 @@ test("snapshotToText omits the a11y suffix when it duplicates the label", () => 
 
 test("buildGroundedSnapshot parses Android's single-string bounds into {x,y,width,height}", () => {
   const elements = buildGroundedSnapshot(ANDROID_LOGIN_SCREEN);
-  const loginButton = elements.find((el) => el.resourceId === "com.phoenix.demo:id/login_button");
+  const loginButton = elements.find((el) => el.resourceId === "com.testopsmobile.demo:id/login_button");
   assert.deepStrictEqual(loginButton.bounds, { x: 100, y: 560, width: 880, height: 100 });
 });
 
@@ -252,7 +252,7 @@ test("snapshotToText only includes bounds when includeBounds is true", () => {
   const withBounds = snapshotToText(elements, { includeBounds: true });
 
   assert.ok(!plain.includes("at 100,560"));
-  assert.ok(withBounds.includes('[3] android.widget.Button "Log In" (id: com.phoenix.demo:id/login_button, at 100,560 880x100)'));
+  assert.ok(withBounds.includes('[3] android.widget.Button "Log In" (id: com.testopsmobile.demo:id/login_button, at 100,560 880x100)'));
 });
 
 test("buildFusedSnapshot pairs a bounds-annotated text render with the given screenshot", () => {
@@ -269,7 +269,7 @@ test("buildFusedSnapshot leaves screenshotBase64 undefined when none is given", 
 
 test("findByRef resolves a known ref and returns undefined for an unknown one", () => {
   const elements = buildGroundedSnapshot(ANDROID_LOGIN_SCREEN);
-  assert.strictEqual(findByRef(elements, 3).resourceId, "com.phoenix.demo:id/login_button");
+  assert.strictEqual(findByRef(elements, 3).resourceId, "com.testopsmobile.demo:id/login_button");
   assert.strictEqual(findByRef(elements, 99), undefined);
   assert.strictEqual(findByRef([], 1), undefined);
 });
@@ -337,7 +337,7 @@ test("buildGroundedSnapshot flags a shared resourceId as ambiguous even when eac
 
 test("buildGroundedSnapshot does NOT flag a resourceId that's actually unique on screen", () => {
   const elements = buildGroundedSnapshot(ANDROID_LOGIN_SCREEN);
-  const input = elements.find((el) => el.resourceId === "com.phoenix.demo:id/username_input");
+  const input = elements.find((el) => el.resourceId === "com.testopsmobile.demo:id/username_input");
   assert.strictEqual(input.ambiguousResourceId, undefined);
 });
 
@@ -376,7 +376,7 @@ test("buildGroundedSnapshot does not mark the non-secure sibling field as secure
 
 test("buildGroundedSnapshot flags a secure field as secure even when its resourceId is unique (not ambiguous)", () => {
   const elements = buildGroundedSnapshot(FILLED_UNIQUE_PASSWORD_SCREEN);
-  const passwordField = elements.find((el) => el.resourceId === "com.phoenix.demo:id/password_input");
+  const passwordField = elements.find((el) => el.resourceId === "com.testopsmobile.demo:id/password_input");
   assert.strictEqual(passwordField.secure, true);
   assert.strictEqual(passwordField.ambiguousResourceId, undefined, "a unique resourceId must not be flagged ambiguous");
 });

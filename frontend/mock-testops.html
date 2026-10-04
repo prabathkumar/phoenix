@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>Mock TestOps — Phoenix execution walkthrough</title>
+<title>Mock TestOps — TestOps Mobile execution walkthrough</title>
 <style>
   :root { color-scheme: light dark; }
   body { font-family: -apple-system, system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; line-height: 1.4; }
@@ -24,7 +24,7 @@
 </style>
 </head>
 <body>
-  <h1>Mock TestOps → Phoenix execution walkthrough</h1>
+  <h1>Mock TestOps → TestOps Mobile execution walkthrough</h1>
   <div class="note">
     This page stands in for TestOps so the real sequence can be clicked through once:
     upload the app → pick a BrowserStack device → pick a test case → trigger. The app upload,
@@ -138,7 +138,7 @@ runBtn.addEventListener("click", async () => {
         appendLog(`<span class="meta">[TestOps] opened session ${event.sessionId} for ${event.appName} on ${event.device}</span>`);
         appendLog(`<span class="meta">  (${event.note})</span>`);
       } else if (event.type === "attached") {
-        appendLog(`<span class="meta">[Phoenix] attached to session ${event.sessionId}</span>`);
+        appendLog(`<span class="meta">[TestOps Mobile] attached to session ${event.sessionId}</span>`);
         appendLog(`<span class="meta">  (${event.note})</span>`);
       } else if (event.type === "step") {
         const cls = event.status === "waited" ? "step-wait" : "step-ok";

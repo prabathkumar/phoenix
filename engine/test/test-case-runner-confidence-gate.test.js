@@ -44,7 +44,7 @@ async function run(name, fn) {
 }
 
 function tmpDbPath() {
-  return path.join(os.tmpdir(), `phoenix-gate-test-${process.pid}-${Math.random().toString(36).slice(2)}.db`);
+  return path.join(os.tmpdir(), `testops-mobile-gate-test-${process.pid}-${Math.random().toString(36).slice(2)}.db`);
 }
 
 (async () => {
@@ -63,9 +63,9 @@ function tmpDbPath() {
 
   await run("a FRESH resolution with 'No visible change.' and no `expect` is NOT pinned (no evidence it was right)", async () => {
     const steps = [{ kind: "tap", instruction: "tap something" }];
-    const originalLogPath = process.env.PHOENIX_TRAINING_LOG_PATH;
-    const tmpLog = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "phoenix-gate-log-")), "executions.jsonl");
-    process.env.PHOENIX_TRAINING_LOG_PATH = tmpLog;
+    const originalLogPath = process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH;
+    const tmpLog = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "testops-mobile-gate-log-")), "executions.jsonl");
+    process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH = tmpLog;
     try {
       const result = await runScriptSteps({}, steps, {
         platform: "android",
@@ -82,8 +82,8 @@ function tmpDbPath() {
       const record = JSON.parse(logged.split("\n")[0]);
       assert.strictEqual(record.unverifiedResolution, true);
     } finally {
-      if (originalLogPath === undefined) delete process.env.PHOENIX_TRAINING_LOG_PATH;
-      else process.env.PHOENIX_TRAINING_LOG_PATH = originalLogPath;
+      if (originalLogPath === undefined) delete process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH;
+      else process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH = originalLogPath;
     }
   });
 
@@ -146,8 +146,8 @@ function tmpDbPath() {
   await run("locatorStore records an UNVERIFIED hit for a fresh, unevidenced resolution (even though it's not pinned to the JSON file)", async () => {
     const dbPath = tmpDbPath();
     const store = openLocatorStore(dbPath);
-    const originalLogPath = process.env.PHOENIX_TRAINING_LOG_PATH;
-    process.env.PHOENIX_TRAINING_LOG_PATH = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "phoenix-gate-log-")), "executions.jsonl");
+    const originalLogPath = process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH;
+    process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "testops-mobile-gate-log-")), "executions.jsonl");
     try {
       const steps = [{ kind: "tap", instruction: "tap something" }];
       await runScriptSteps({}, steps, {
@@ -167,8 +167,8 @@ function tmpDbPath() {
     } finally {
       store.close();
       fs.rmSync(dbPath, { force: true });
-      if (originalLogPath === undefined) delete process.env.PHOENIX_TRAINING_LOG_PATH;
-      else process.env.PHOENIX_TRAINING_LOG_PATH = originalLogPath;
+      if (originalLogPath === undefined) delete process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH;
+      else process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH = originalLogPath;
     }
   });
 
@@ -203,9 +203,9 @@ function tmpDbPath() {
     assert.deepStrictEqual(result.updatedSteps[0].resolvedSelector, { strategy: "accessibility-id", value: "login_button" });
   });
 
-  await run("PHOENIX_ENABLE_VISUAL_GROUNDING=1 passes useVisualGrounding:true to executeSemanticAction (vision fusion can now actually be turned on from a real run)", async () => {
-    const previous = process.env.PHOENIX_ENABLE_VISUAL_GROUNDING;
-    process.env.PHOENIX_ENABLE_VISUAL_GROUNDING = "1";
+  await run("TESTOPS_MOBILE_ENABLE_VISUAL_GROUNDING=1 passes useVisualGrounding:true to executeSemanticAction (vision fusion can now actually be turned on from a real run)", async () => {
+    const previous = process.env.TESTOPS_MOBILE_ENABLE_VISUAL_GROUNDING;
+    process.env.TESTOPS_MOBILE_ENABLE_VISUAL_GROUNDING = "1";
     try {
       const steps = [{ kind: "tap", instruction: "tap LOGIN" }];
       const calls = [];
@@ -219,14 +219,14 @@ function tmpDbPath() {
       assert.strictEqual(calls.length, 1);
       assert.strictEqual(calls[0].useVisualGrounding, true);
     } finally {
-      if (previous === undefined) delete process.env.PHOENIX_ENABLE_VISUAL_GROUNDING;
-      else process.env.PHOENIX_ENABLE_VISUAL_GROUNDING = previous;
+      if (previous === undefined) delete process.env.TESTOPS_MOBILE_ENABLE_VISUAL_GROUNDING;
+      else process.env.TESTOPS_MOBILE_ENABLE_VISUAL_GROUNDING = previous;
     }
   });
 
-  await run("useVisualGrounding defaults to false when PHOENIX_ENABLE_VISUAL_GROUNDING isn't set to \"1\"", async () => {
-    const previous = process.env.PHOENIX_ENABLE_VISUAL_GROUNDING;
-    delete process.env.PHOENIX_ENABLE_VISUAL_GROUNDING;
+  await run("useVisualGrounding defaults to false when TESTOPS_MOBILE_ENABLE_VISUAL_GROUNDING isn't set to \"1\"", async () => {
+    const previous = process.env.TESTOPS_MOBILE_ENABLE_VISUAL_GROUNDING;
+    delete process.env.TESTOPS_MOBILE_ENABLE_VISUAL_GROUNDING;
     try {
       const steps = [{ kind: "tap", instruction: "tap LOGIN" }];
       const calls = [];
@@ -239,8 +239,8 @@ function tmpDbPath() {
       });
       assert.strictEqual(calls[0].useVisualGrounding, false);
     } finally {
-      if (previous === undefined) delete process.env.PHOENIX_ENABLE_VISUAL_GROUNDING;
-      else process.env.PHOENIX_ENABLE_VISUAL_GROUNDING = previous;
+      if (previous === undefined) delete process.env.TESTOPS_MOBILE_ENABLE_VISUAL_GROUNDING;
+      else process.env.TESTOPS_MOBILE_ENABLE_VISUAL_GROUNDING = previous;
     }
   });
 })();

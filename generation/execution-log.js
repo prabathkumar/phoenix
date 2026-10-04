@@ -21,7 +21,7 @@
  * automatic regression-test gate (replay the known bugs) before a new
  * model ever replaces the live one. Steps 2-3 need a training
  * toolchain and GPU infra this sandbox doesn't have -- see
- * docs/CONTINUOUS_TRAINING.md for that design. Old records past a 15-day retention window (configurable, PHOENIX_TRAINING_LOG_RETENTION_DAYS) are pruned automatically too -- once a training cycle has consumed them, the log itself doesn't need to be kept indefinitely, with no separate cleanup job to remember to run.
+ * docs/CONTINUOUS_TRAINING.md for that design. Old records past a 15-day retention window (configurable, TESTOPS_MOBILE_TRAINING_LOG_RETENTION_DAYS) are pruned automatically too -- once a training cycle has consumed them, the log itself doesn't need to be kept indefinitely, with no separate cleanup job to remember to run.
  */
 
 const fs = require("fs");
@@ -36,7 +36,7 @@ const path = require("path");
  * out-of-the-box in dev.
  */
 function logPath() {
-  return process.env.PHOENIX_TRAINING_LOG_PATH || path.join(process.cwd(), "training-data", "executions.jsonl");
+  return process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH || path.join(process.cwd(), "training-data", "executions.jsonl");
 }
 
 /**
@@ -47,7 +47,7 @@ function logPath() {
  * "remember to clean this up" step), defaulting to 15 days.
  */
 function retentionDays() {
-  const raw = process.env.PHOENIX_TRAINING_LOG_RETENTION_DAYS;
+  const raw = process.env.TESTOPS_MOBILE_TRAINING_LOG_RETENTION_DAYS;
   const parsed = raw !== undefined ? Number(raw) : NaN;
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 15;
 }
@@ -121,7 +121,7 @@ function pruneOldExecutions() {
  * log on every single execution. This is what makes cleanup a
  * framework capability rather than a cron job someone has to remember
  * to set up: it piggybacks on ordinary usage (any call to
- * logExecution), so as long as Phoenix is being run at all, the log
+ * logExecution), so as long as TestOps Mobile is being run at all, the log
  * stays bounded with zero separate scheduling step.
  */
 function maybePruneOldExecutions() {
@@ -182,7 +182,7 @@ function logExecution(record) {
  * Credential safety, same standard as mergeResolvedSelectors
  * (run-batch-executions.js): a "type" step's `options.text` is, after
  * substitution, a REAL value -- a real phone number or password when
- * it came from `${PHOENIX_BATCH_LOGIN_PASSWORD}` etc. This NEVER logs
+ * it came from `${TESTOPS_MOBILE_BATCH_LOGIN_PASSWORD}` etc. This NEVER logs
  * that value, only whether one was given and its length, so a training
  * dataset built from these logs can never leak a credential even if
  * the test-case author used one as a literal instead of an env

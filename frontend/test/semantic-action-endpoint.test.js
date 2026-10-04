@@ -1,7 +1,7 @@
 /**
  * Tests for the EXPERIMENTAL POST /api/semantic-action handler
  * (frontend/semantic-action-endpoint.js) -- gated behind
- * PHOENIX_ENABLE_SEMANTIC_API=1 in server.js, see that module's header
+ * TESTOPS_MOBILE_ENABLE_SEMANTIC_API=1 in server.js, see that module's header
  * for why. engine/session-manager.js and engine/semantic-act-executor.js
  * are faked via require.cache injection (same approach as
  * frontend/test/upload-session.test.js), and a real HTTP server + native

@@ -1,7 +1,7 @@
 /**
  * POST /api/semantic-action — EXPERIMENTAL, off by default. First real
  * product-surface entry point for Phase 2's semantic action layer
- * (docs/PHOENIX_SPEC.md §6 / README's Act 2 section), as opposed to
+ * (docs/TESTOPS_MOBILE_SPEC.md §6 / README's Act 2 section), as opposed to
  * run-semantic-action.js's CLI, which exists only to prove the executor
  * against real hardware by hand. This is what "wiring it into a real
  * product surface" (the item both docs called out as still open) looks
@@ -9,7 +9,7 @@
  * against whatever recording session is already active, via the same
  * engine/semantic-act-executor.js the CLI uses.
  *
- * Deliberately gated behind PHOENIX_ENABLE_SEMANTIC_API=1 (checked by
+ * Deliberately gated behind TESTOPS_MOBILE_ENABLE_SEMANTIC_API=1 (checked by
  * frontend/server.js before this module's handler is even reachable —
  * see server.js) and off by default, for two reasons:
  *   1. It has never been run against a real device (see README/spec) —

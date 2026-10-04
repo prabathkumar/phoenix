@@ -1,5 +1,5 @@
 {
-  "name": "@phoenix/frontend",
+  "name": "@testops-mobile/frontend",
   "version": "0.0.1",
   "private": true,
   "description": "Tester-facing recording UI: serves index.html and, since the app-upload flow was added, the POST /api/sessions endpoint that starts a recording session on demand against an uploaded .ipa/.apk.",

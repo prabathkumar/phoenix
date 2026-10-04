@@ -19,9 +19,9 @@
 // setTimeout, which would otherwise add ~800ms to every "tap" test in
 // this file for no reason: the fake driver below has no real screen
 // transition to wait for. Disabled here the same way the real engine
-// can disable it (PHOENIX_ACT_SETTLE_MS=0), not by special-casing
+// can disable it (TESTOPS_MOBILE_ACT_SETTLE_MS=0), not by special-casing
 // tests in the production code path.
-process.env.PHOENIX_ACT_SETTLE_MS = "0";
+process.env.TESTOPS_MOBILE_ACT_SETTLE_MS = "0";
 
 const assert = require("assert");
 
@@ -193,8 +193,8 @@ function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl,
     const { executor, restore } = freshExecutorWithFakes({
       resolveSemanticActionImpl: async () => ({
         resolved: true,
-        element: { ref: 3, role: "Button", label: "Log In", resourceId: "com.phoenix.demo:id/login_button" },
-        selector: { strategy: "resource-id", value: "com.phoenix.demo:id/login_button" },
+        element: { ref: 3, role: "Button", label: "Log In", resourceId: "com.testopsmobile.demo:id/login_button" },
+        selector: { strategy: "resource-id", value: "com.testopsmobile.demo:id/login_button" },
       }),
       diffSnapshotsImpl: () => ({ appeared: [{ label: "Welcome" }], disappeared: [], changed: true }),
     });
@@ -204,7 +204,7 @@ function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl,
 
       assert.strictEqual(result.success, true);
       assert.strictEqual(calls.click, 1);
-      assert.deepStrictEqual(result.selector, { strategy: "resource-id", value: "com.phoenix.demo:id/login_button" });
+      assert.deepStrictEqual(result.selector, { strategy: "resource-id", value: "com.testopsmobile.demo:id/login_button" });
       assert.strictEqual(result.diffSummary, "changed");
       assert.deepStrictEqual(result.assertions, [{ label: "Welcome", resourceId: undefined }]);
     } finally {
@@ -216,8 +216,8 @@ function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl,
     const { executor, restore } = freshExecutorWithFakes({
       resolveSemanticActionImpl: async () => ({
         resolved: true,
-        element: { ref: 1, role: "EditText", resourceId: "com.phoenix.demo:id/username_input" },
-        selector: { strategy: "resource-id", value: "com.phoenix.demo:id/username_input" },
+        element: { ref: 1, role: "EditText", resourceId: "com.testopsmobile.demo:id/username_input" },
+        selector: { strategy: "resource-id", value: "com.testopsmobile.demo:id/username_input" },
       }),
     });
     try {
@@ -276,7 +276,7 @@ function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl,
       resolveSemanticActionImpl: async () => ({
         resolved: true,
         element: { ref: 1, role: "EditText" },
-        selector: { strategy: "resource-id", value: "com.phoenix.demo:id/username_input" },
+        selector: { strategy: "resource-id", value: "com.testopsmobile.demo:id/username_input" },
       }),
     });
     try {
@@ -318,7 +318,7 @@ function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl,
       resolveSemanticActionImpl: async () => ({
         resolved: true,
         element: { ref: 1, role: "EditText" },
-        selector: { strategy: "resource-id", value: "com.phoenix.demo:id/username_input" },
+        selector: { strategy: "resource-id", value: "com.testopsmobile.demo:id/username_input" },
       }),
     });
     try {
@@ -338,7 +338,7 @@ function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl,
       resolveSemanticActionImpl: async () => ({
         resolved: true,
         element: { ref: 1, role: "EditText" },
-        selector: { strategy: "resource-id", value: "com.phoenix.demo:id/username_input" },
+        selector: { strategy: "resource-id", value: "com.testopsmobile.demo:id/username_input" },
       }),
     });
     try {
@@ -1039,8 +1039,8 @@ function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl,
     const { executor, restore } = freshExecutorWithFakes({
       resolveSemanticActionImpl: async () => ({
         resolved: true,
-        element: { ref: 1, role: "EditText", resourceId: "com.phoenix.demo:id/edtCommon" },
-        selector: { strategy: "resource-id", value: "com.phoenix.demo:id/edtCommon" },
+        element: { ref: 1, role: "EditText", resourceId: "com.testopsmobile.demo:id/edtCommon" },
+        selector: { strategy: "resource-id", value: "com.testopsmobile.demo:id/edtCommon" },
       }),
     });
     try {
@@ -1056,7 +1056,7 @@ function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl,
       });
       assert.strictEqual(result.success, true);
       assert.strictEqual(calls.setValue.length, 1);
-      assert.deepStrictEqual(seen.selector, { strategy: "resource-id", value: "com.phoenix.demo:id/edtCommon" });
+      assert.deepStrictEqual(seen.selector, { strategy: "resource-id", value: "com.testopsmobile.demo:id/edtCommon" });
       assert.strictEqual(seen.kind, "type");
       assert.strictEqual(seen.text, "hunter2");
     } finally {
@@ -1068,8 +1068,8 @@ function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl,
     const { executor, restore } = freshExecutorWithFakes({
       resolveSemanticActionImpl: async () => ({
         resolved: true,
-        element: { ref: 1, role: "EditText", resourceId: "com.phoenix.demo:id/edtCommon" },
-        selector: { strategy: "resource-id", value: "com.phoenix.demo:id/edtCommon" },
+        element: { ref: 1, role: "EditText", resourceId: "com.testopsmobile.demo:id/edtCommon" },
+        selector: { strategy: "resource-id", value: "com.testopsmobile.demo:id/edtCommon" },
       }),
     });
     try {
@@ -1209,7 +1209,7 @@ function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl,
     }
   });
 
-  await run("executeSemanticAction's settle delay defaults to PHOENIX_ACT_SETTLE_MS when actSettleMs isn't passed, and skips the pause entirely when it resolves to 0", async () => {
+  await run("executeSemanticAction's settle delay defaults to TESTOPS_MOBILE_ACT_SETTLE_MS when actSettleMs isn't passed, and skips the pause entirely when it resolves to 0", async () => {
     const { executor, restore } = freshExecutorWithFakes({
       resolveSemanticActionImpl: async () => ({ resolved: true, element: { ref: 1, role: "Button", label: "X" }, selector: { strategy: "text", value: "X" } }),
       // changed: true -- NOT the "No visible change." self-heal case
@@ -1219,21 +1219,21 @@ function makeFakeDriver({ pageSources, elementBehavior = {}, takeScreenshotImpl,
       // instead of about the settle-delay default/override it's testing).
       diffSnapshotsImpl: () => ({ appeared: [{ label: "X" }], disappeared: [], changed: true }),
     });
-    const previousEnv = process.env.PHOENIX_ACT_SETTLE_MS;
+    const previousEnv = process.env.TESTOPS_MOBILE_ACT_SETTLE_MS;
     try {
       const { driver } = makeFakeDriver({ pageSources: ["<hierarchy>before</hierarchy>", "<hierarchy>after</hierarchy>"] });
       const sleepCalls = [];
-      process.env.PHOENIX_ACT_SETTLE_MS = "250";
+      process.env.TESTOPS_MOBILE_ACT_SETTLE_MS = "250";
       await executor.executeSemanticAction(driver, "tap X", { sleep: async (ms) => sleepCalls.push(ms) });
       assert.deepStrictEqual(sleepCalls, [250], "with no explicit actSettleMs, the env var should be used");
 
       sleepCalls.length = 0;
-      process.env.PHOENIX_ACT_SETTLE_MS = "0";
+      process.env.TESTOPS_MOBILE_ACT_SETTLE_MS = "0";
       await executor.executeSemanticAction(driver, "tap X", { sleep: async (ms) => sleepCalls.push(ms) });
-      assert.deepStrictEqual(sleepCalls, [], "PHOENIX_ACT_SETTLE_MS=0 should disable the pause entirely, no sleep call at all");
+      assert.deepStrictEqual(sleepCalls, [], "TESTOPS_MOBILE_ACT_SETTLE_MS=0 should disable the pause entirely, no sleep call at all");
     } finally {
-      if (previousEnv === undefined) delete process.env.PHOENIX_ACT_SETTLE_MS;
-      else process.env.PHOENIX_ACT_SETTLE_MS = previousEnv;
+      if (previousEnv === undefined) delete process.env.TESTOPS_MOBILE_ACT_SETTLE_MS;
+      else process.env.TESTOPS_MOBILE_ACT_SETTLE_MS = previousEnv;
       restore();
     }
   });

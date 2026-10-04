@@ -1,6 +1,6 @@
 /**
  * Attaches to a WebDriver/Appium session that something OTHER than
- * Phoenix already opened, instead of session.js/ios-session.js's
+ * TestOps Mobile already opened, instead of session.js/ios-session.js's
  * startSession() which always creates a brand-new one.
  *
  * Why this exists: TestOps already holds the BrowserStack credentials
@@ -8,7 +8,7 @@
  * (decided 2026-10-04 -- see README's element-identification section
  * for the equivalent decision on WebView snapshotting; this is the
  * execution-ownership equivalent). So for a TestOps-triggered run,
- * Phoenix must never create its own BrowserStack session or hold
+ * TestOps Mobile must never create its own BrowserStack session or hold
  * BrowserStack credentials at all -- it only needs the session TestOps
  * already started (its id and hub URL) to drive it.
  *
@@ -21,9 +21,9 @@
  * WebdriverIO Browser) -- same reasoning remote-provider.js's own
  * header comment makes for BrowserStack vs local.
  *
- * Ownership rule: a session Phoenix attached to (rather than started)
- * must NEVER be torn down by Phoenix (`driver.deleteSession()`) --
- * that is TestOps's session to close, not Phoenix's. Callers must not
+ * Ownership rule: a session TestOps Mobile attached to (rather than started)
+ * must NEVER be torn down by TestOps Mobile (`driver.deleteSession()`) --
+ * that is TestOps's session to close, not TestOps Mobile's. Callers must not
  * call deleteSession on the object this returns; see
  * frontend/execute-test-case-endpoint.js, the only current caller, for
  * how that's honored.

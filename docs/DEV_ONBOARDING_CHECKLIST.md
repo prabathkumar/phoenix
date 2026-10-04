@@ -42,13 +42,13 @@ at least one Compose-rendered input field with no `resource-id`/label).
 **Expected result (and the real bug this guards against):** every tapped
 element — including unlabeled Compose inputs — appears in the generated
 script with a selector that actually resolves on replay, not a blank/null
-selector. `docs/PHOENIX_SPEC.md`'s "Real-hardware proof" section documents
+selector. `docs/TESTOPS_MOBILE_SPEC.md`'s "Real-hardware proof" section documents
 the real bug this check exists for: a Compose-rendered input with no
 resource-id was originally invisible to the snapshot builder entirely,
 producing a script that silently skipped a real step.
 
 **Pass/fail:** FAIL if any tapped element in the recording produces a step
-with no selector, or if replaying the generated script (`PHOENIX_BATCH_MODES=test-case`)
+with no selector, or if replaying the generated script (`TESTOPS_MOBILE_BATCH_MODES=test-case`)
 fails on a step that visibly worked during recording.
 
 ---
@@ -73,7 +73,7 @@ cd engine && npm test       # semantic-act-executor.test.js
 unlabeled on iOS) against a real device/BrowserStack session.
 
 **Steps:**
-1. Run the batch test: `PHOENIX_TEST_CASE_FILE=test-cases/addons.ios.json node run-batch-executions.js`
+1. Run the batch test: `TESTOPS_MOBILE_TEST_CASE_FILE=test-cases/addons.ios.json node run-batch-executions.js`
 2. Watch the step that types into the phone-number field.
 
 **Expected result (and the real bug class this guards against):** the
@@ -116,7 +116,7 @@ Two different things, deliberately kept separate:
    `generation/test/semantic-act-vision-integration.test.js` tests whether
    a REAL multimodal Ollama model actually resolves an icon-only case
    correctly from a REAL captured screenshot. Gated behind
-   `PHOENIX_VISION_INTEGRATION_TEST=1` + a reachable Ollama server (not run
+   `TESTOPS_MOBILE_VISION_INTEGRATION_TEST=1` + a reachable Ollama server (not run
    in normal CI — this is model accuracy, not code correctness). The first
    fixture is in: `generation/test/fixtures/android-right-icon-logout.{xml,b64}`
    — the literal `getPageSource()` dump from `addons-run-android-14.log`
@@ -134,7 +134,7 @@ Two different things, deliberately kept separate:
 Found while closing this gap: `useVisualGrounding` existed in
 `engine/semantic-act-executor.js` but nothing ever wired it to an env var —
 there was no way to turn vision fusion on from a real batch run at all
-before now. Fixed: set `PHOENIX_ENABLE_VISUAL_GROUNDING=1` and it flows
+before now. Fixed: set `TESTOPS_MOBILE_ENABLE_VISUAL_GROUNDING=1` and it flows
 through `test-case-runner.js` (test-case mode), `run-batch-executions.js`
 (semantic mode), and `semantic-loop.js` (loop mode) alike. Off by default —
 a screenshot capture per step has a real cost (extra WebDriver round-trip,
@@ -147,12 +147,12 @@ which is an icon with content-desc `"Right Icon"`, no text relating it to
 "logout" anywhere in the accessibility tree.
 
 **Steps:**
-1. Run `PHOENIX_VISION_INTEGRATION_TEST=1 node test/semantic-act-vision-integration.test.js`
+1. Run `TESTOPS_MOBILE_VISION_INTEGRATION_TEST=1 node test/semantic-act-vision-integration.test.js`
    (from `generation/`) with a real Ollama server reachable and a
    multimodal model pulled — this is the first real run of the registered
    fixture; nobody has executed it against a real model yet.
 2. Separately, to generate NEW fixtures for other ambiguous controls: run
-   the Android batch test with `PHOENIX_ENABLE_VISUAL_GROUNDING=1` set,
+   the Android batch test with `TESTOPS_MOBILE_ENABLE_VISUAL_GROUNDING=1` set,
    capture the step's `getPageSource()` XML and screenshot, and register
    them the same way `android-right-icon-logout` was added.
 
@@ -191,7 +191,7 @@ cd engine && npm test   # semantic-loop.test.js
 `run-batch-executions.js`'s `loop` mode against a real device.
 
 **Steps:**
-1. `PHOENIX_BATCH_MODES=loop PHOENIX_LOOP_GOAL="log in and reach the home screen" node run-batch-executions.js`
+1. `TESTOPS_MOBILE_BATCH_MODES=loop TESTOPS_MOBILE_LOOP_GOAL="log in and reach the home screen" node run-batch-executions.js`
 2. Watch the step-by-step decisions in the log.
 
 **Expected result:** the loop makes forward progress each iteration
@@ -309,8 +309,8 @@ lacked `node:sqlite` (fixed, Node 22 now), (2) a Docker bind-mount to a
 non-existent host path gets auto-created as a directory, breaking the
 database open (fixed: `touch locator-store.db` before the first mounted
 run). **Checklist item: be the first to confirm a row actually lands** —
-run a batch test with `PHOENIX_ENABLE_LOCATOR_STORE=1` and
-`PHOENIX_LOCATOR_DB_PATH` pointed at a touched, mounted file, then query it
+run a batch test with `TESTOPS_MOBILE_ENABLE_LOCATOR_STORE=1` and
+`TESTOPS_MOBILE_LOCATOR_DB_PATH` pointed at a touched, mounted file, then query it
 (`getAllLocatorStats` via a short script, or the MCP connector's
 `get_suite_health` tool) and confirm non-zero rows.
 
@@ -334,7 +334,7 @@ in any result object, not just the printed output. Wired into CI as the
 
 **Manual test case (real evidence):** this tool exists because of a real,
 repeated failure mode: a tester's `.env` had a credential variable declared
-with no value (`PHOENIX_BATCH_LOGIN_PASSWORD=`), which is silently
+with no value (`TESTOPS_MOBILE_BATCH_LOGIN_PASSWORD=`), which is silently
 different from the variable being absent entirely, and both looked
 identical in a plain `cat .env`. Run `node check-env.js test-cases/addons.ios.json`
 against a `.env` with one var set to empty and confirm it reports `EMPTY`,
@@ -345,7 +345,7 @@ not `MISSING` or a false "all good."
 **What it does:** a standard MCP server (stdio) for an external client
 (TestOps's own MCP, Claude) to query locator history/suite health, test
 cases, and the execution log. `run_test_case` is gated behind
-`confirm: true` AND the server's own `PHOENIX_MCP_ALLOW_RUN=1` — no
+`confirm: true` AND the server's own `TESTOPS_MOBILE_MCP_ALLOW_RUN=1` — no
 credential field exists on the tool schema at all.
 
 **Automated tests:**

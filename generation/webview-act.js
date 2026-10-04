@@ -4,7 +4,7 @@
  * same model (local Ollama), same fail-safe contract (never throws,
  * never guesses: an unconfident match returns `{resolved: false,
  * reason}` rather than picking anything), same "a wrong guess is worse
- * than declining" reasoning from docs/PHOENIX_SPEC.md §2. Kept as a
+ * than declining" reasoning from docs/TESTOPS_MOBILE_SPEC.md §2. Kept as a
  * separate function rather than branching inside resolveSemanticAction()
  * itself so neither resolver's prompt/candidate shape has to compromise
  * for the other's.

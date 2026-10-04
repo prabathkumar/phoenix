@@ -1,7 +1,7 @@
 /**
  * Stage 0 milestone script.
  *
- * Goal (per docs/PHOENIX_SPEC.md §4.1): one clean session, end to end —
+ * Goal (per docs/TESTOPS_MOBILE_SPEC.md §4.1): one clean session, end to end —
  * launch an app on an Android emulator, take a screenshot, read the
  * accessibility tree, inject a tap. Nothing else. This is the equivalent
  * of Strata's first lexer -> parser -> AST pass: proof the pipe works
@@ -9,7 +9,7 @@
  *
  * Once this runs reliably against a local emulator, the actual Appium
  * fork work starts: vendor appium-uiautomator2-driver and
- * appium-xcuitest-driver into this directory, strip what Phoenix
+ * appium-xcuitest-driver into this directory, strip what TestOps Mobile
  * doesn't need, and replace these raw calls with the fork's internals.
  */
 
@@ -33,7 +33,7 @@ async function stage0() {
   // JSONWP touch-actions endpoint, which Appium 3 + uiautomator2-driver 3.x
   // no longer implement (404 unknown command). The current UiAutomator2
   // driver exposes taps via the `mobile: clickGesture` execute-script
-  // extension instead, so Phoenix uses that going forward.
+  // extension instead, so TestOps Mobile uses that going forward.
   await driver.execute("mobile: clickGesture", { x: 200, y: 400 });
   console.log("[stage0] tap injected");
 

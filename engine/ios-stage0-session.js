@@ -7,7 +7,7 @@
  * XCUITest's tap gesture extension is `mobile: tap` (x, y) — different
  * from UiAutomator2's `mobile: clickGesture` used in stage0-session.js.
  *
- * Run: PHOENIX_IOS_APP_PATH=/path/to/YourApp.app node engine/ios-stage0-session.js
+ * Run: TESTOPS_MOBILE_IOS_APP_PATH=/path/to/YourApp.app node engine/ios-stage0-session.js
  * (with `appium` running separately and `appium driver install xcuitest`
  * already done — same spawn model as stage0-session.js, see its header)
  */

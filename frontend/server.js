@@ -13,15 +13,15 @@
  * Run: cd frontend && npm install && node server.js
  * Then open: http://localhost:8091/
  *
- * (The older env-var-configured flow — set PHOENIX_STAGE0_APP_PATH etc.
+ * (The older env-var-configured flow — set TESTOPS_MOBILE_STAGE0_APP_PATH etc.
  * and run `node run-session.js` before opening this page — still works
  * unchanged; see README's "Uploading an app directly" section for how
  * the two relate.)
  *
  * POST /api/semantic-action (frontend/semantic-action-endpoint.js) is
  * an EXPERIMENTAL, opt-in endpoint for Phase 2's semantic action layer
- * (docs/PHOENIX_SPEC.md §6) — only registered when
- * PHOENIX_ENABLE_SEMANTIC_API=1 is set, off by default. See that
+ * (docs/TESTOPS_MOBILE_SPEC.md §6) — only registered when
+ * TESTOPS_MOBILE_ENABLE_SEMANTIC_API=1 is set, off by default. See that
  * module's header for why it's gated: it's never been run against a
  * real device, and dev-team adoption of the semantic layer is
  * deliberately being held until that's proven.
@@ -30,8 +30,8 @@
  * is the TestOps integration contract decided 2026-10-04: TestOps opens
  * its own BrowserStack session (it already owns the credentials, device
  * selection, and app upload) and calls this endpoint with that session's
- * id plus a test case + test data for Phoenix to drive against it.
- * Gated behind PHOENIX_ENABLE_EXECUTE_API=1, off by default -- brand
+ * id plus a test case + test data for TestOps Mobile to drive against it.
+ * Gated behind TESTOPS_MOBILE_ENABLE_EXECUTE_API=1, off by default -- brand
  * new, never yet exercised against a real TestOps call.
  *
  * /mock-testops.html + /api/mock/* (frontend/mock-testops-endpoints.js)
@@ -50,11 +50,11 @@ const path = require("path");
 const { handleUploadAndStart } = require("./upload-session");
 const mockTestOps = require("./mock-testops-endpoints");
 
-const PORT = Number(process.env.PHOENIX_FRONTEND_PORT) || 8091;
+const PORT = Number(process.env.TESTOPS_MOBILE_FRONTEND_PORT) || 8091;
 const INDEX_PATH = path.join(__dirname, "index.html");
 const MOCK_TESTOPS_PATH = path.join(__dirname, "mock-testops.html");
-const SEMANTIC_API_ENABLED = process.env.PHOENIX_ENABLE_SEMANTIC_API === "1";
-const EXECUTE_API_ENABLED = process.env.PHOENIX_ENABLE_EXECUTE_API === "1";
+const SEMANTIC_API_ENABLED = process.env.TESTOPS_MOBILE_ENABLE_SEMANTIC_API === "1";
+const EXECUTE_API_ENABLED = process.env.TESTOPS_MOBILE_ENABLE_EXECUTE_API === "1";
 
 const server = http.createServer((req, res) => {
   if (req.method === "POST" && req.url === "/api/sessions") {
@@ -123,10 +123,10 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => {
   console.log(`[frontend] serving http://localhost:${PORT}/`);
   console.log("[frontend] upload a .ipa/.apk from the page to start a session, or set");
-  console.log("[frontend] PHOENIX_STAGE0_APP_PATH/PHOENIX_IOS_APP_PATH/PHOENIX_BROWSERSTACK_APP_URL");
+  console.log("[frontend] TESTOPS_MOBILE_STAGE0_APP_PATH/TESTOPS_MOBILE_IOS_APP_PATH/TESTOPS_MOBILE_BROWSERSTACK_APP_URL");
   console.log("[frontend] and run `node run-session.js` separately, as before.");
   if (SEMANTIC_API_ENABLED) {
-    console.log("[frontend] PHOENIX_ENABLE_SEMANTIC_API=1 set — POST /api/semantic-action is live (experimental, unproven on real hardware).");
+    console.log("[frontend] TESTOPS_MOBILE_ENABLE_SEMANTIC_API=1 set — POST /api/semantic-action is live (experimental, unproven on real hardware).");
   }
   console.log(`[frontend] mock TestOps walkthrough: http://localhost:${PORT}/mock-testops.html (mocked device/session, real test cases)`);
 });

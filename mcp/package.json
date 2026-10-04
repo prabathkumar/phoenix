@@ -1,8 +1,8 @@
 {
-  "name": "@phoenix/mcp",
+  "name": "@testops-mobile/mcp",
   "version": "0.0.1",
   "private": true,
-  "description": "MCP connector exposing Phoenix's locator store, execution log, and test cases to an external MCP client (e.g. TestOps's own MCP, ahead of its Claude-marketplace integration). stdio transport.",
+  "description": "MCP connector exposing TestOps Mobile's locator store, execution log, and test cases to an external MCP client (e.g. TestOps's own MCP, ahead of its Claude-marketplace integration). stdio transport.",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.0"
   },

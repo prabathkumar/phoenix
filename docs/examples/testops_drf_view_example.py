@@ -1,9 +1,9 @@
 """
 Example Django REST Framework view for TestOps' backend (confirmed
-stack: Django 4.2.11, DRF 3.14.0) to call Phoenix's experimental
+stack: Django 4.2.11, DRF 3.14.0) to call TestOps Mobile's experimental
 semantic-action endpoint. This wraps testops_semantic_action_client.py
 (same directory) — read that file's header first for the full contract
-(response shapes, when PHOENIX_ENABLE_SEMANTIC_API is required, why a
+(response shapes, when TESTOPS_MOBILE_ENABLE_SEMANTIC_API is required, why a
 {"success": false} result is not an error).
 
 This is a starting point to adapt into TestOps' actual app structure
@@ -12,12 +12,12 @@ final file — it assumes nothing about TestOps' existing views beyond
 "DRF 3.14 on Django 4.2".
 
 Suggested urls.py wiring:
-    path("phoenix/semantic-action/", SemanticActionView.as_view())
+    path("testops-mobile/semantic-action/", SemanticActionView.as_view())
 
 Settings (add to TestOps' Django settings, not hardcoded here — a
-running Phoenix instance's URL is deployment-specific and will differ
+running TestOps Mobile instance's URL is deployment-specific and will differ
 between local dev, staging, and wherever the device host actually is):
-    PHOENIX_BASE_URL = env("PHOENIX_BASE_URL", default="http://localhost:8091")
+    TESTOPS_MOBILE_BASE_URL = env("TESTOPS_MOBILE_BASE_URL", default="http://localhost:8091")
 """
 
 from __future__ import annotations
@@ -35,14 +35,14 @@ from .testops_semantic_action_client import SemanticActionError, run_semantic_ac
 class SemanticActionRequestSerializer:
     """
     Plain validation helper rather than a full DRF Serializer, since
-    this is a pass-through to Phoenix's own JSON contract (see
+    this is a pass-through to TestOps Mobile's own JSON contract (see
     engine/semantic-act-executor.js) and there's no model behind it in
     TestOps to serialize against. Swap for a real
     `rest_framework.serializers.Serializer` subclass if TestOps'
     conventions prefer that everywhere — the validation rules are the
     same ones frontend/semantic-action-endpoint.js already enforces on
-    the Phoenix side, duplicated here only so a bad request fails fast
-    with a TestOps-shaped 400 instead of round-tripping to Phoenix first.
+    the TestOps Mobile side, duplicated here only so a bad request fails fast
+    with a TestOps-shaped 400 instead of round-tripping to TestOps Mobile first.
     """
 
     ALLOWED_KINDS = {"tap", "type"}
@@ -72,17 +72,17 @@ class SemanticActionRequestSerializer:
 
 class SemanticActionView(APIView):
     """
-    POST /phoenix/semantic-action/
+    POST /testops-mobile/semantic-action/
 
-    Runs one semantic action against whatever Phoenix recording session
+    Runs one semantic action against whatever TestOps Mobile recording session
     is currently active, on behalf of a TestOps user/test run. This is
-    a thin proxy — Phoenix owns the actual resolution/execution logic
+    a thin proxy — TestOps Mobile owns the actual resolution/execution logic
     (engine/semantic-act-executor.js); this view's job is auth, request
-    shaping, and turning Phoenix's response into a TestOps-shaped one.
+    shaping, and turning TestOps Mobile's response into a TestOps-shaped one.
 
-    Requires PHOENIX_ENABLE_SEMANTIC_API=1 on the target Phoenix
+    Requires TESTOPS_MOBILE_ENABLE_SEMANTIC_API=1 on the target TestOps Mobile
     instance, and a recording session already started there (via
-    Phoenix's own upload flow) — this view does not start one.
+    TestOps Mobile's own upload flow) — this view does not start one.
     """
 
     permission_classes = [IsAuthenticated]
@@ -92,31 +92,31 @@ class SemanticActionView(APIView):
         if errors:
             return Response({"errors": errors}, status=status.HTTP_400_BAD_REQUEST)
 
-        phoenix_base_url = getattr(settings, "PHOENIX_BASE_URL", None)
-        if not phoenix_base_url:
+        testops_mobile_base_url = getattr(settings, "TESTOPS_MOBILE_BASE_URL", None)
+        if not testops_mobile_base_url:
             # A misconfigured deployment, not a bad request from the
             # caller -- surfaced as 503 rather than a confusing 400/500.
             return Response(
-                {"error": "PHOENIX_BASE_URL is not configured for this TestOps instance."},
+                {"error": "TESTOPS_MOBILE_BASE_URL is not configured for this TestOps instance."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
         try:
             result = run_semantic_action(
-                phoenix_base_url,
+                testops_mobile_base_url,
                 instruction=cleaned["instruction"],
                 kind=cleaned["kind"],
                 text=cleaned["text"],
                 use_visual_grounding=cleaned["use_visual_grounding"],
             )
         except SemanticActionError as err:
-            # Phoenix itself was unreachable -- a transport failure, not
+            # TestOps Mobile itself was unreachable -- a transport failure, not
             # "the instruction couldn't be resolved" (that comes back as
             # an ordinary {"success": False} result below, not this
             # branch).
             return Response({"error": str(err)}, status=status.HTTP_502_BAD_GATEWAY)
 
-        # Phoenix's own status code distinguishes success (200) from an
+        # TestOps Mobile's own status code distinguishes success (200) from an
         # unresolved/failed action (422) from no active session (409) --
         # pass that through as-is rather than collapsing everything to
         # 200 with a success flag buried in the body.

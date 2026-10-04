@@ -1,5 +1,5 @@
 /**
- * Grounded snapshot layer (docs/PHOENIX_SPEC.md §6, Phase 2 — "AI-native
+ * Grounded snapshot layer (docs/TESTOPS_MOBILE_SPEC.md §6, Phase 2 — "AI-native
  * semantic layer"). First building block of the unattended/semantic
  * track: everything else Phase 2 needs (`act("tap the Login button")`,
  * and eventually Phase 3's autonomous loop) depends on turning a raw
@@ -66,7 +66,7 @@ function clean(value) {
  *   text-only snapshot rendering, but is what a fused (screenshot +
  *   snapshot) resolution needs to relate a ref to a region of the
  *   image — see buildFusedSnapshot() below and
- *   docs/PHOENIX_SPEC.md §6's "merge accessibility tree + screenshot"
+ *   docs/TESTOPS_MOBILE_SPEC.md §6's "merge accessibility tree + screenshot"
  *   bullet.
  * @property {string} [nearbyLabel] - set on a blank editable input (see
  *   INPUT_ROLE_RE) that has none of label/resourceId/accessibilityId of
@@ -586,7 +586,7 @@ function snapshotToText(elements, options = {}) {
 /**
  * Phase 2's "grounded screen snapshot: merge accessibility tree +
  * screenshot into one compact structured format an LLM reads directly"
- * bullet (docs/PHOENIX_SPEC.md §6) — the fusion itself is deliberately
+ * bullet (docs/TESTOPS_MOBILE_SPEC.md §6) — the fusion itself is deliberately
  * simple: package the same ref-indexed element list (now carrying
  * bounds) alongside the raw screenshot bytes, rendered WITH bounds so a
  * multimodal model can relate "[3] Button "Log In" (at 100,560 880x100)"

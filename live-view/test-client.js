@@ -10,26 +10,26 @@
  * row of the Views submenu, then stop. Two real, sequential taps across
  * two different screens — proves step-chaining, not just a single tap.
  *
- * Override via PHOENIX_TAP_SEQUENCE, a JSON array of {xRatio, yRatio}
+ * Override via TESTOPS_MOBILE_TAP_SEQUENCE, a JSON array of {xRatio, yRatio}
  * (and optional typedValue to send a "type" message after that tap),
  * to record a different flow without editing this file, e.g.:
- *   PHOENIX_TAP_SEQUENCE='[{"xRatio":0.5,"yRatio":0.14}]' node live-view/test-client.js
+ *   TESTOPS_MOBILE_TAP_SEQUENCE='[{"xRatio":0.5,"yRatio":0.14}]' node live-view/test-client.js
  *
  * Run: node live-view/test-client.js   (with run-session.js already running)
  */
 
 const WebSocket = require("ws");
 
-const PORT = Number(process.env.PHOENIX_LIVE_VIEW_PORT) || 8090;
-const SETTLE_MS = Number(process.env.PHOENIX_TAP_SETTLE_MS) || 1200; // time for a screen transition to finish before the next tap
+const PORT = Number(process.env.TESTOPS_MOBILE_LIVE_VIEW_PORT) || 8090;
+const SETTLE_MS = Number(process.env.TESTOPS_MOBILE_TAP_SETTLE_MS) || 1200; // time for a screen transition to finish before the next tap
 
 const DEFAULT_SEQUENCE = [
   { xRatio: 0.5, yRatio: 0.732 }, // "Views" row, ApiDemos home screen
   { xRatio: 0.5, yRatio: 0.14 }, // first row of the Views submenu
 ];
 
-const sequence = process.env.PHOENIX_TAP_SEQUENCE
-  ? JSON.parse(process.env.PHOENIX_TAP_SEQUENCE)
+const sequence = process.env.TESTOPS_MOBILE_TAP_SEQUENCE
+  ? JSON.parse(process.env.TESTOPS_MOBILE_TAP_SEQUENCE)
   : DEFAULT_SEQUENCE;
 
 const socket = new WebSocket(`ws://localhost:${PORT}`);

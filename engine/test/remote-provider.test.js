@@ -51,8 +51,8 @@ function test(name, fn) {
 
 console.log("engine/remote-provider:");
 
-test("defaults to the local provider when PHOENIX_APPIUM_PROVIDER is unset", () => {
-  withEnv({ PHOENIX_APPIUM_PROVIDER: undefined }, () => {
+test("defaults to the local provider when TESTOPS_MOBILE_APPIUM_PROVIDER is unset", () => {
+  withEnv({ TESTOPS_MOBILE_APPIUM_PROVIDER: undefined }, () => {
     const remoteProvider = freshProvider();
     assert.strictEqual(remoteProvider.provider(), remoteProvider.LOCAL);
   });
@@ -60,7 +60,7 @@ test("defaults to the local provider when PHOENIX_APPIUM_PROVIDER is unset", () 
 
 test("local connection config is unchanged from before BrowserStack support existed", () => {
   withEnv(
-    { PHOENIX_APPIUM_PROVIDER: undefined, PHOENIX_APPIUM_HOST: undefined, PHOENIX_APPIUM_PORT: undefined },
+    { TESTOPS_MOBILE_APPIUM_PROVIDER: undefined, TESTOPS_MOBILE_APPIUM_HOST: undefined, TESTOPS_MOBILE_APPIUM_PORT: undefined },
     () => {
       const remoteProvider = freshProvider();
       assert.deepStrictEqual(remoteProvider.buildConnectionConfig(), {
@@ -73,7 +73,7 @@ test("local connection config is unchanged from before BrowserStack support exis
 });
 
 test("local capabilities pass through with overrides applied last, unchanged from before BrowserStack support existed", () => {
-  withEnv({ PHOENIX_APPIUM_PROVIDER: undefined }, () => {
+  withEnv({ TESTOPS_MOBILE_APPIUM_PROVIDER: undefined }, () => {
     const remoteProvider = freshProvider();
     const base = { platformName: "Android", "appium:app": "/path/to.apk" };
     const result = remoteProvider.buildCapabilities(base, { "appium:app": "/other.apk" });
@@ -82,14 +82,14 @@ test("local capabilities pass through with overrides applied last, unchanged fro
 });
 
 test("rejects an unrecognized provider value", () => {
-  withEnv({ PHOENIX_APPIUM_PROVIDER: "sauce-labs" }, () => {
+  withEnv({ TESTOPS_MOBILE_APPIUM_PROVIDER: "sauce-labs" }, () => {
     const remoteProvider = freshProvider();
-    assert.throws(() => remoteProvider.provider(), /Unknown PHOENIX_APPIUM_PROVIDER/);
+    assert.throws(() => remoteProvider.provider(), /Unknown TESTOPS_MOBILE_APPIUM_PROVIDER/);
   });
 });
 
 test("browserstack connection config points at the App Automate hub over HTTPS", () => {
-  withEnv({ PHOENIX_APPIUM_PROVIDER: "browserstack" }, () => {
+  withEnv({ TESTOPS_MOBILE_APPIUM_PROVIDER: "browserstack" }, () => {
     const remoteProvider = freshProvider();
     assert.deepStrictEqual(remoteProvider.buildConnectionConfig(), {
       protocol: "https",
@@ -103,16 +103,16 @@ test("browserstack connection config points at the App Automate hub over HTTPS",
 test("browserstack capabilities require auth env vars", () => {
   withEnv(
     {
-      PHOENIX_APPIUM_PROVIDER: "browserstack",
-      PHOENIX_BROWSERSTACK_USER: undefined,
-      PHOENIX_BROWSERSTACK_KEY: undefined,
-      PHOENIX_BROWSERSTACK_APP_URL: "bs://abc123",
+      TESTOPS_MOBILE_APPIUM_PROVIDER: "browserstack",
+      TESTOPS_MOBILE_BROWSERSTACK_USER: undefined,
+      TESTOPS_MOBILE_BROWSERSTACK_KEY: undefined,
+      TESTOPS_MOBILE_BROWSERSTACK_APP_URL: "bs://abc123",
     },
     () => {
       const remoteProvider = freshProvider();
       assert.throws(
         () => remoteProvider.buildCapabilities({ platformName: "iOS" }),
-        /PHOENIX_BROWSERSTACK_USER and PHOENIX_BROWSERSTACK_KEY/
+        /TESTOPS_MOBILE_BROWSERSTACK_USER and TESTOPS_MOBILE_BROWSERSTACK_KEY/
       );
     }
   );
@@ -121,29 +121,29 @@ test("browserstack capabilities require auth env vars", () => {
 test("browserstack capabilities require an uploaded app URL", () => {
   withEnv(
     {
-      PHOENIX_APPIUM_PROVIDER: "browserstack",
-      PHOENIX_BROWSERSTACK_USER: "someuser",
-      PHOENIX_BROWSERSTACK_KEY: "somekey",
-      PHOENIX_BROWSERSTACK_APP_URL: undefined,
+      TESTOPS_MOBILE_APPIUM_PROVIDER: "browserstack",
+      TESTOPS_MOBILE_BROWSERSTACK_USER: "someuser",
+      TESTOPS_MOBILE_BROWSERSTACK_KEY: "somekey",
+      TESTOPS_MOBILE_BROWSERSTACK_APP_URL: undefined,
     },
     () => {
       const remoteProvider = freshProvider();
       assert.throws(
         () => remoteProvider.buildCapabilities({ platformName: "iOS" }),
-        /PHOENIX_BROWSERSTACK_APP_URL/
+        /TESTOPS_MOBILE_BROWSERSTACK_APP_URL/
       );
     }
   );
 });
 
-test("browserstack capabilities accept an appium:app override without requiring PHOENIX_BROWSERSTACK_APP_URL " +
+test("browserstack capabilities accept an appium:app override without requiring TESTOPS_MOBILE_BROWSERSTACK_APP_URL " +
   "-- the on-demand upload flow resolves a fresh bs:// URL per session and passes it this way", () => {
   withEnv(
     {
-      PHOENIX_APPIUM_PROVIDER: "browserstack",
-      PHOENIX_BROWSERSTACK_USER: "someuser",
-      PHOENIX_BROWSERSTACK_KEY: "somekey",
-      PHOENIX_BROWSERSTACK_APP_URL: undefined,
+      TESTOPS_MOBILE_APPIUM_PROVIDER: "browserstack",
+      TESTOPS_MOBILE_BROWSERSTACK_USER: "someuser",
+      TESTOPS_MOBILE_BROWSERSTACK_KEY: "somekey",
+      TESTOPS_MOBILE_BROWSERSTACK_APP_URL: undefined,
     },
     () => {
       const remoteProvider = freshProvider();
@@ -159,13 +159,13 @@ test("browserstack capabilities accept an appium:app override without requiring 
 test("browserstack capabilities replace the local app reference with the uploaded app's bs:// URL, wrapped in bstack:options", () => {
   withEnv(
     {
-      PHOENIX_APPIUM_PROVIDER: "browserstack",
-      PHOENIX_BROWSERSTACK_USER: "someuser",
-      PHOENIX_BROWSERSTACK_KEY: "somekey",
-      PHOENIX_BROWSERSTACK_APP_URL: "bs://abc123",
-      PHOENIX_BROWSERSTACK_PROJECT: undefined,
-      PHOENIX_BROWSERSTACK_BUILD: undefined,
-      PHOENIX_BROWSERSTACK_SESSION_NAME: undefined,
+      TESTOPS_MOBILE_APPIUM_PROVIDER: "browserstack",
+      TESTOPS_MOBILE_BROWSERSTACK_USER: "someuser",
+      TESTOPS_MOBILE_BROWSERSTACK_KEY: "somekey",
+      TESTOPS_MOBILE_BROWSERSTACK_APP_URL: "bs://abc123",
+      TESTOPS_MOBILE_BROWSERSTACK_PROJECT: undefined,
+      TESTOPS_MOBILE_BROWSERSTACK_BUILD: undefined,
+      TESTOPS_MOBILE_BROWSERSTACK_SESSION_NAME: undefined,
     },
     () => {
       const remoteProvider = freshProvider();
@@ -185,23 +185,23 @@ test("browserstack capabilities replace the local app reference with the uploade
       assert.deepStrictEqual(result["bstack:options"], {
         userName: "someuser",
         accessKey: "somekey",
-        projectName: "Phoenix",
-        buildName: "phoenix-recording",
-        sessionName: "Phoenix recording session",
+        projectName: "TestOps Mobile",
+        buildName: "testops-mobile-recording",
+        sessionName: "TestOps Mobile recording session",
       });
     }
   );
 });
 
-test("browserstack capabilities omit local/localIdentifier when PHOENIX_BROWSERSTACK_LOCAL is unset", () => {
+test("browserstack capabilities omit local/localIdentifier when TESTOPS_MOBILE_BROWSERSTACK_LOCAL is unset", () => {
   withEnv(
     {
-      PHOENIX_APPIUM_PROVIDER: "browserstack",
-      PHOENIX_BROWSERSTACK_USER: "someuser",
-      PHOENIX_BROWSERSTACK_KEY: "somekey",
-      PHOENIX_BROWSERSTACK_APP_URL: "bs://abc123",
-      PHOENIX_BROWSERSTACK_LOCAL: undefined,
-      PHOENIX_BROWSERSTACK_LOCAL_IDENTIFIER: undefined,
+      TESTOPS_MOBILE_APPIUM_PROVIDER: "browserstack",
+      TESTOPS_MOBILE_BROWSERSTACK_USER: "someuser",
+      TESTOPS_MOBILE_BROWSERSTACK_KEY: "somekey",
+      TESTOPS_MOBILE_BROWSERSTACK_APP_URL: "bs://abc123",
+      TESTOPS_MOBILE_BROWSERSTACK_LOCAL: undefined,
+      TESTOPS_MOBILE_BROWSERSTACK_LOCAL_IDENTIFIER: undefined,
     },
     () => {
       const remoteProvider = freshProvider();
@@ -212,21 +212,21 @@ test("browserstack capabilities omit local/localIdentifier when PHOENIX_BROWSERS
   );
 });
 
-test("browserstack capabilities set local:true when PHOENIX_BROWSERSTACK_LOCAL=1, with an optional localIdentifier", () => {
+test("browserstack capabilities set local:true when TESTOPS_MOBILE_BROWSERSTACK_LOCAL=1, with an optional localIdentifier", () => {
   withEnv(
     {
-      PHOENIX_APPIUM_PROVIDER: "browserstack",
-      PHOENIX_BROWSERSTACK_USER: "someuser",
-      PHOENIX_BROWSERSTACK_KEY: "somekey",
-      PHOENIX_BROWSERSTACK_APP_URL: "bs://abc123",
-      PHOENIX_BROWSERSTACK_LOCAL: "1",
-      PHOENIX_BROWSERSTACK_LOCAL_IDENTIFIER: "phoenix-tunnel-1",
+      TESTOPS_MOBILE_APPIUM_PROVIDER: "browserstack",
+      TESTOPS_MOBILE_BROWSERSTACK_USER: "someuser",
+      TESTOPS_MOBILE_BROWSERSTACK_KEY: "somekey",
+      TESTOPS_MOBILE_BROWSERSTACK_APP_URL: "bs://abc123",
+      TESTOPS_MOBILE_BROWSERSTACK_LOCAL: "1",
+      TESTOPS_MOBILE_BROWSERSTACK_LOCAL_IDENTIFIER: "testops-mobile-tunnel-1",
     },
     () => {
       const remoteProvider = freshProvider();
       const result = remoteProvider.buildCapabilities({ platformName: "iOS" });
       assert.strictEqual(result["bstack:options"].local, true);
-      assert.strictEqual(result["bstack:options"].localIdentifier, "phoenix-tunnel-1");
+      assert.strictEqual(result["bstack:options"].localIdentifier, "testops-mobile-tunnel-1");
     }
   );
 });
@@ -234,10 +234,10 @@ test("browserstack capabilities set local:true when PHOENIX_BROWSERSTACK_LOCAL=1
 test("browserstack capability overrides still apply last, on top of the provider's own additions", () => {
   withEnv(
     {
-      PHOENIX_APPIUM_PROVIDER: "browserstack",
-      PHOENIX_BROWSERSTACK_USER: "someuser",
-      PHOENIX_BROWSERSTACK_KEY: "somekey",
-      PHOENIX_BROWSERSTACK_APP_URL: "bs://abc123",
+      TESTOPS_MOBILE_APPIUM_PROVIDER: "browserstack",
+      TESTOPS_MOBILE_BROWSERSTACK_USER: "someuser",
+      TESTOPS_MOBILE_BROWSERSTACK_KEY: "somekey",
+      TESTOPS_MOBILE_BROWSERSTACK_APP_URL: "bs://abc123",
     },
     () => {
       const remoteProvider = freshProvider();

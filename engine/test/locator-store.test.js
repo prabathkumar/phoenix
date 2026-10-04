@@ -7,7 +7,7 @@ const { test } = require("node:test");
 const { openLocatorStore, recordResolution, getLocatorStats, getAllLocatorStats } = require("../locator-store");
 
 function tmpDbPath() {
-  return path.join(os.tmpdir(), `phoenix-locator-test-${process.pid}-${Math.random().toString(36).slice(2)}.db`);
+  return path.join(os.tmpdir(), `testops-mobile-locator-test-${process.pid}-${Math.random().toString(36).slice(2)}.db`);
 }
 
 test("openLocatorStore creates a fresh, empty store", () => {

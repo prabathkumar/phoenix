@@ -1,22 +1,22 @@
 #!/usr/bin/env node
 /**
- * mcp/server.js -- the Phoenix-side MCP connector.
+ * mcp/server.js -- the TestOps Mobile side MCP connector.
  *
  * What this is: a standard MCP server (stdio transport, the Model
- * Context Protocol's local-process convention) exposing Phoenix's own
+ * Context Protocol's local-process convention) exposing TestOps Mobile's own
  * data -- the locator confidence store, the execution-training log,
  * and the test-case files themselves -- as tools an MCP CLIENT can
  * call. The user's own TestOps product already has its own MCP,
  * headed for the Claude marketplace later; this is NOT that server,
- * and doesn't try to be. This is Phoenix's side of the wire: something
+ * and doesn't try to be. This is TestOps Mobile's side of the wire: something
  * TestOps's MCP (or Claude Code, or any other MCP client) can launch
- * as a subprocess and query for data that only Phoenix actually has.
+ * as a subprocess and query for data that only TestOps Mobile actually has.
  *
- * Why this doesn't require Ollama (Phoenix's own local resolver model)
+ * Why this doesn't require Ollama (TestOps Mobile's own local resolver model)
  * to support tool-calling: it doesn't touch Ollama at all. MCP here is
  * a completely separate, external-facing channel -- an MCP CLIENT
  * (TestOps, Claude, anything speaking the protocol) calls INTO this
- * server; Phoenix's own internal `generation/llm.js` resolver keeps
+ * server; TestOps Mobile's own internal `generation/llm.js` resolver keeps
  * calling Ollama's plain /api/generate exactly as before, completely
  * decoupled from this file. Two different directions, two different
  * models, zero interaction between them.
@@ -28,7 +28,7 @@
  * BrowserStack session and can take real device-minutes -- see its own
  * doc comment below for why it requires an explicit `confirm: true`
  * argument and is opt-in at the server level
- * (PHOENIX_MCP_ALLOW_RUN=1), after this exact engagement's own history
+ * (TESTOPS_MOBILE_MCP_ALLOW_RUN=1), after this exact engagement's own history
  * of real sessions burned by an unintended run.
  *
  * Run standalone: `node mcp/server.js` (talks stdio, so run it from an
@@ -86,8 +86,8 @@ function summarizeHealth(rows) {
  * run_test_case's implementation -- spawns the SAME docker-free local
  * entry point testers already use directly
  * (run-batch-executions.js), passing through only
- * PHOENIX_PLATFORM/PHOENIX_TEST_CASE_FILE/PHOENIX_BATCH_MODES/
- * PHOENIX_BATCH_TOTAL. Deliberately does NOT accept or forward any
+ * TESTOPS_MOBILE_PLATFORM/TESTOPS_MOBILE_TEST_CASE_FILE/TESTOPS_MOBILE_BATCH_MODES/
+ * TESTOPS_MOBILE_BATCH_TOTAL. Deliberately does NOT accept or forward any
  * credential (BrowserStack keys, login phone/password) as a tool
  * argument -- those must already be present in the server process's
  * own environment (its .env/exported vars), exactly like a human
@@ -105,10 +105,10 @@ function runTestCase({ platform, testCaseFile }) {
         cwd: REPO_ROOT,
         env: {
           ...process.env,
-          PHOENIX_PLATFORM: platform,
-          PHOENIX_TEST_CASE_FILE: testCaseFile,
-          PHOENIX_BATCH_MODES: "test-case",
-          PHOENIX_BATCH_TOTAL: "1",
+          TESTOPS_MOBILE_PLATFORM: platform,
+          TESTOPS_MOBILE_TEST_CASE_FILE: testCaseFile,
+          TESTOPS_MOBILE_BATCH_MODES: "test-case",
+          TESTOPS_MOBILE_BATCH_TOTAL: "1",
         },
       }
     );
@@ -133,7 +133,7 @@ const TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        testCaseFile: { type: "string", description: "e.g. \"addons.ios.json\" -- must match the test_case key used by past runs (usually the path passed as PHOENIX_TEST_CASE_FILE)" },
+        testCaseFile: { type: "string", description: "e.g. \"addons.ios.json\" -- must match the test_case key used by past runs (usually the path passed as TESTOPS_MOBILE_TEST_CASE_FILE)" },
         stepIndex: { type: "number", description: "Optional: narrow to one step." },
       },
       required: ["testCaseFile"],
@@ -179,7 +179,7 @@ const TOOLS = [
   {
     name: "run_test_case",
     description:
-      "DANGER: runs a real test case against a real device session (local Appium or real BrowserStack, per the server's own PHOENIX_APPIUM_PROVIDER) -- this can cost real money/device-minutes on BrowserStack. Disabled unless the server process has PHOENIX_MCP_ALLOW_RUN=1 set, and requires confirm:true on every call regardless. Never pass credentials here -- they must already be configured in the server's own environment.",
+      "DANGER: runs a real test case against a real device session (local Appium or real BrowserStack, per the server's own TESTOPS_MOBILE_APPIUM_PROVIDER) -- this can cost real money/device-minutes on BrowserStack. Disabled unless the server process has TESTOPS_MOBILE_MCP_ALLOW_RUN=1 set, and requires confirm:true on every call regardless. Never pass credentials here -- they must already be configured in the server's own environment.",
     inputSchema: {
       type: "object",
       properties: {
@@ -254,9 +254,9 @@ async function handleToolCall(name, args = {}) {
     if (args.confirm !== true) {
       return errorResult("Refusing to run: confirm must be exactly true. This spends a real device session.");
     }
-    if (process.env.PHOENIX_MCP_ALLOW_RUN !== "1") {
+    if (process.env.TESTOPS_MOBILE_MCP_ALLOW_RUN !== "1") {
       return errorResult(
-        "Refusing to run: this MCP server was started without PHOENIX_MCP_ALLOW_RUN=1. " +
+        "Refusing to run: this MCP server was started without TESTOPS_MOBILE_MCP_ALLOW_RUN=1. " +
           "An operator must explicitly opt this server into running real test cases before any client can trigger one."
       );
     }
@@ -272,7 +272,7 @@ async function handleToolCall(name, args = {}) {
 
 function createServer() {
   const server = new Server(
-    { name: "phoenix-mcp", version: "0.0.1" },
+    { name: "testops-mobile-mcp", version: "0.0.1" },
     { capabilities: { tools: {} } }
   );
 
@@ -297,7 +297,7 @@ async function main() {
 
 if (require.main === module) {
   main().catch((err) => {
-    console.error("[phoenix-mcp] fatal error:", err);
+    console.error("[testops-mobile-mcp] fatal error:", err);
     process.exit(1);
   });
 }

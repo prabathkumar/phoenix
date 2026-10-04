@@ -1,17 +1,17 @@
-# Where Phoenix sits vs. what's already out there
+# Where TestOps Mobile sits vs. what's already out there
 
 Short answer up front: **nobody else combines guided recording and a
 semantic layer into one product story with the same guessing
-discipline.** Every individual piece Phoenix does has prior art
+discipline.** Every individual piece TestOps Mobile does has prior art
 somewhere — that's expected, not a problem — but the combination, and
 one specific design choice (refuse rather than guess), isn't something
 any of these ship today. This doc is the honest version of that claim:
-what each comparable tool actually does, where Phoenix is ahead, and
+what each comparable tool actually does, where TestOps Mobile is ahead, and
 where it isn't.
 
 Researched 2026-09-29 via public docs/READMEs — re-check before quoting
 externally, this space moves fast (Kobiton's product launched within
-the last few months). Phoenix's own "Maturity" row below was updated
+the last few months). TestOps Mobile's own "Maturity" row below was updated
 2026-10-04 to correct a real staleness bug: it previously said "never
 run on a real device," which stopped being true weeks ago (see
 `docs/STATUS.md` for the full real-BrowserStack bug-by-bug history) —
@@ -20,7 +20,7 @@ it, not just this one.
 
 ## The comparison
 
-| | **Phoenix** | **appium/appium-mcp** | **headspinio/appium-llm-plugin** | **Kobiton "Appium AI"** | **minitap-ai/mobile-use** |
+| | **TestOps Mobile** | **appium/appium-mcp** | **headspinio/appium-llm-plugin** | **Kobiton "Appium AI"** | **minitap-ai/mobile-use** |
 |---|---|---|---|---|---|
 | **What it is** | Guided recording + a semantic layer built on the same engine | Official Appium team MCP server — exposes Appium to an AI assistant | Experimental Appium plugin — natural-language selectors | Commercial cloud add-on to Appium scripts | Vision-driven autonomous phone control, no Appium |
 | **Grounding** | Compact ref-indexed **text** snapshot of the accessibility tree | Accessibility-id/resource-id first, vision fallback | Screenshot→bbox, XML→xpath, or XML→bbox (3 modes) | Page metadata + optional vision model | Screenshot/vision only |
@@ -34,7 +34,7 @@ it, not just this one.
 
 ## What this means, plainly
 
-**Where Phoenix is actually ahead:** the specific combination of (a) a
+**Where TestOps Mobile is actually ahead:** the specific combination of (a) a
 human-in-the-loop recording product with (b) an opt-in semantic layer
 that (c) reuses one deterministic selector pipeline for both, with (d)
 a hard "stop rather than guess" contract on every resolution. That's
@@ -44,9 +44,9 @@ philosophy, accessibility-id before vision) but it's solving a
 different problem: giving an *external* AI agent hands, not building a
 recording/generation product a tester uses directly.
 
-**Where Phoenix is behind, and should say so out loud:** maturity.
+**Where TestOps Mobile is behind, and should say so out loud:** maturity.
 `appium-mcp` has 683 commits and production hardening (tracing,
-caching, permission controls) behind it; Phoenix's semantic layer has
+caching, permission controls) behind it; TestOps Mobile's semantic layer has
 proven itself through a real evidence-driven bug-fix process on actual
 BrowserStack hardware (dozens of real bugs found and fixed, full
 trail in `docs/STATUS.md`), but it's still a handful of modules built
@@ -57,7 +57,7 @@ more mature by commit count or contributor base, we're solving a
 narrower and different problem (a guided product with a safety-first
 semantic layer bolted on) that nothing mature currently solves, and
 we've earned real-device credibility the hard way on our own flows.
-That's a legitimate answer. Claiming Phoenix
+That's a legitimate answer. Claiming TestOps Mobile
 is more mature would not be.
 
 **Where the comparison could age badly:** Kobiton's Appium AI is
@@ -75,6 +75,6 @@ again.
 - [minitap-ai/mobile-use](https://github.com/minitap-ai/mobile-use)
 - [mobilerun.ai — Appium alternative](https://mobilerun.ai/alternatives/appium/)
 
-See `docs/PHOENIX_SPEC.md` §6 for what Phoenix's own semantic layer
+See `docs/TESTOPS_MOBILE_SPEC.md` §6 for what TestOps Mobile's own semantic layer
 does and doesn't do yet, and the README's "AI question" section for the
 Act 1 / Act 2 framing this comparison sits alongside.

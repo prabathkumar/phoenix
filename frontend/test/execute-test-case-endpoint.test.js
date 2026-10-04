@@ -203,21 +203,21 @@ async function main() {
     const seen = [];
     const { handleExecuteTestCase } = freshEndpointWithFakes({
       runScriptStepsImpl: async () => {
-        seen.push(process.env.PHOENIX_TEST_LOGIN_PHONE);
+        seen.push(process.env.TESTOPS_MOBILE_TEST_LOGIN_PHONE);
         return { success: true, detail: "ok" };
       },
     });
     const server = await startTestServer(handleExecuteTestCase);
-    const before = process.env.PHOENIX_TEST_LOGIN_PHONE;
+    const before = process.env.TESTOPS_MOBILE_TEST_LOGIN_PHONE;
     try {
       await post(server.address().port, {
         sessionId: "s3",
         platform: "android",
         testCase: { steps: [] },
-        testData: { PHOENIX_TEST_LOGIN_PHONE: "0123456789" },
+        testData: { TESTOPS_MOBILE_TEST_LOGIN_PHONE: "0123456789" },
       });
       assert.strictEqual(seen[0], "0123456789");
-      assert.strictEqual(process.env.PHOENIX_TEST_LOGIN_PHONE, before);
+      assert.strictEqual(process.env.TESTOPS_MOBILE_TEST_LOGIN_PHONE, before);
     } finally {
       server.close();
     }

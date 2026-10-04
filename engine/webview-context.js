@@ -3,7 +3,7 @@
  * hybrid-app resolution module discussed and scoped (but deliberately
  * not built) earlier: "we can wire into the framework but opt it -- if
  * the need arises for the webview then the tester can enable the
- * option to the browser view", kept as "a module" behind Phoenix's
+ * option to the browser view", kept as "a module" behind TestOps Mobile's
  * existing single resolution interface so nobody calling
  * executeSemanticAction() needs to know or care whether a given step
  * resolved natively or via a WebView's own DOM. Explicit follow-up

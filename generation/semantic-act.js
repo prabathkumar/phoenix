@@ -1,5 +1,5 @@
 /**
- * Semantic action layer (docs/PHOENIX_SPEC.md §6, Phase 2 — "AI-native
+ * Semantic action layer (docs/TESTOPS_MOBILE_SPEC.md §6, Phase 2 — "AI-native
  * semantic layer"). Second building block of the unattended/semantic
  * track, built directly on top of semantic-snapshot.js's grounded
  * snapshot: given a plain-language instruction like
@@ -14,7 +14,7 @@
  * there is no rule-based fallback *result* to fall back to (there is no
  * v1 rule for "which element does 'the Login button' mean") — so on any
  * failure resolveSemanticAction() returns a structured "unresolved"
- * result instead of guessing. Per docs/PHOENIX_SPEC.md §2's whole
+ * result instead of guessing. Per docs/TESTOPS_MOBILE_SPEC.md §2's whole
  * argument for guided-first, a wrong guess here (tapping the wrong
  * element unattended) is worse than stopping and saying so; callers are
  * expected to treat an unresolved action as "stop and hand back to a
@@ -152,7 +152,7 @@ function toSelector(element, options = {}) {
  * @param {string} instruction - e.g. "tap the Login button".
  * @param {Object} [options]
  * @param {string} [options.screenshotBase64] - when given, resolves in
- *   "fused" mode (docs/PHOENIX_SPEC.md §6): the prompt includes bounds
+ *   "fused" mode (docs/TESTOPS_MOBILE_SPEC.md §6): the prompt includes bounds
  *   per element and the screenshot is sent alongside via Ollama's
  *   `images` field (generation/llm.js), for a multimodal-capable model
  *   to cross-check the text snapshot against what's actually visible.

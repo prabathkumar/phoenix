@@ -3,14 +3,14 @@
  * TestOps integration (decided 2026-10-04): TestOps already owns
  * BrowserStack credentials, device selection, app upload, and test-case/
  * test-data selection, and already opens the BrowserStack/Appium
- * session itself. Phoenix's only job here is: attach to that already-
+ * session itself. TestOps Mobile's only job here is: attach to that already-
  * live session and drive the given test case against it -- never start
  * a session, never hold a BrowserStack credential, never close the
  * session when done (see engine/attach-session.js's header comment on
  * why teardown must stay TestOps's job).
  *
  * Gated the same way the other real-execution surface is
- * (mcp/server.js's run_test_case): PHOENIX_ENABLE_EXECUTE_API=1, off by
+ * (mcp/server.js's run_test_case): TESTOPS_MOBILE_ENABLE_EXECUTE_API=1, off by
  * default, since this is a brand-new, never-yet-exercised-against-a-
  * real-TestOps-call surface.
  *
@@ -42,7 +42,7 @@
  *     own network boundary, same assumption upload-session.js makes)
  *   - no concurrency guard across multiple simultaneous TestOps calls
  *     (session-manager.js's isSessionActive() guard doesn't apply here,
- *     since Phoenix isn't the one managing the device/session lifecycle)
+ *     since TestOps Mobile isn't the one managing the device/session lifecycle)
  *   - testData is applied via process.env for the duration of the call
  *     (matching how resolveStepText already reads secrets) and restored
  *     after -- fine for one request at a time, NOT safe for two

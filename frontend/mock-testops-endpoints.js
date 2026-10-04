@@ -1,7 +1,7 @@
 /**
  * Mock TestOps endpoints -- a stand-in for the real TestOps backend, so
  * the full sequence Prabath described (upload app -> pick a BrowserStack
- * device -> pick a test case -> trigger -> Phoenix executes) can be
+ * device -> pick a test case -> trigger -> TestOps Mobile executes) can be
  * clicked through end-to-end without spending a real BrowserStack
  * session or needing TestOps actually built yet.
  *
@@ -36,7 +36,7 @@ const TEST_CASES_DIR = path.join(__dirname, "..", "test-cases");
 
 // Real BrowserStack App Automate catalog names actually used earlier in
 // this engagement (session.js/ios-session.js's own defaults, and the
-// explicit PHOENIX_APPIUM_DEVICE_NAME values used in real runs) -- not
+// explicit TESTOPS_MOBILE_APPIUM_DEVICE_NAME values used in real runs) -- not
 // invented names, just not fetched live from BrowserStack's API here.
 const MOCK_DEVICES = [
   { id: "google-pixel-7", name: "Google Pixel 7", platform: "android", osVersion: "13.0" },
@@ -153,7 +153,7 @@ async function handleRun(req, res) {
   emit({ type: "session-started", sessionId: fakeSessionId, appName, device, note: "TestOps would open this via a real BrowserStack App Automate call here -- mocked." });
   await new Promise((r) => setTimeout(r, 400));
 
-  emit({ type: "attached", sessionId: fakeSessionId, note: "Phoenix's /api/execute-test-case would attach to this session id here -- mocked, no real device." });
+  emit({ type: "attached", sessionId: fakeSessionId, note: "TestOps Mobile's /api/execute-test-case would attach to this session id here -- mocked, no real device." });
   await new Promise((r) => setTimeout(r, 300));
 
   let allPassed = true;

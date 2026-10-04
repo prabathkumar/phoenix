@@ -1,6 +1,6 @@
 /**
  * Tests for the Phase 3 autonomous-loop skeleton (engine/semantic-loop.js)
- * -- R&D track per docs/PHOENIX_SPEC.md §6, not customer-facing. Fakes
+ * -- R&D track per docs/TESTOPS_MOBILE_SPEC.md §6, not customer-facing. Fakes
  * generation/llm's callOllamaJson and semantic-act-executor's
  * executeSemanticAction via require.cache injection (same technique as
  * engine/test/session-manager.test.js and

@@ -13,7 +13,7 @@
  *   node check-env.js --env-file .env test-cases/addons.ios.json
  *
  * Why this exists: Docker's --env-file treats a line like
- *   PHOENIX_BATCH_LOGIN_PASSWORD=
+ *   TESTOPS_MOBILE_BATCH_LOGIN_PASSWORD=
  * as a genuinely empty string, NOT as "unset". A plain `grep VAR .env` or
  * glancing at the file makes an empty value look identical to a correctly
  * set one. This script parses .env the same way Docker does, and reports
@@ -139,7 +139,7 @@ function main() {
   const args = parseArgs(process.argv.slice(2));
   const envPath = path.resolve(process.cwd(), args.envFile);
 
-  console.log(`Phoenix env check`);
+  console.log(`TestOps Mobile env check`);
   console.log(`==================`);
   console.log(`Reading: ${envPath}`);
 
@@ -160,22 +160,22 @@ function main() {
   };
 
   console.log(`\n-- Appium provider --`);
-  const providerResult = checkVar("PHOENIX_APPIUM_PROVIDER", envMap, { optional: true });
+  const providerResult = checkVar("TESTOPS_MOBILE_APPIUM_PROVIDER", envMap, { optional: true });
   record(providerResult);
   const providerValue =
     providerResult.status === "SET"
-      ? process.env.PHOENIX_APPIUM_PROVIDER ?? envMap.get("PHOENIX_APPIUM_PROVIDER")
+      ? process.env.TESTOPS_MOBILE_APPIUM_PROVIDER ?? envMap.get("TESTOPS_MOBILE_APPIUM_PROVIDER")
       : null;
 
   if (providerValue !== "browserstack") {
     console.log(
-      `  NOTE: PHOENIX_APPIUM_PROVIDER is ${
+      `  NOTE: TESTOPS_MOBILE_APPIUM_PROVIDER is ${
         providerValue ? `"${providerValue}"` : "not set"
       }, not "browserstack" -- a run will try a local Appium server/emulator instead of real BrowserStack devices.`
     );
   } else {
-    console.log(`\n-- BrowserStack credentials (required because PHOENIX_APPIUM_PROVIDER=browserstack) --`);
-    for (const name of ["PHOENIX_BROWSERSTACK_USER", "PHOENIX_BROWSERSTACK_KEY", "PHOENIX_BROWSERSTACK_APP_URL"]) {
+    console.log(`\n-- BrowserStack credentials (required because TESTOPS_MOBILE_APPIUM_PROVIDER=browserstack) --`);
+    for (const name of ["TESTOPS_MOBILE_BROWSERSTACK_USER", "TESTOPS_MOBILE_BROWSERSTACK_KEY", "TESTOPS_MOBILE_BROWSERSTACK_APP_URL"]) {
       record(checkVar(name, envMap));
     }
   }

@@ -13,7 +13,7 @@
  * multimodal model pulled, e.g. `ollama pull llava`).
  *
  * This is SKIPPED by default. It only runs when:
- *   1. PHOENIX_VISION_INTEGRATION_TEST=1 is set, AND
+ *   1. TESTOPS_MOBILE_VISION_INTEGRATION_TEST=1 is set, AND
  *   2. a real Ollama server is reachable, AND
  *   3. a fixture pair exists for the case being tested (see FIXTURES below).
  *
@@ -32,7 +32,7 @@
  *   4. Add an entry to FIXTURES below with the instruction and the
  *      expected result (a ref index, or null for "should decline").
  *
- * Run with: PHOENIX_VISION_INTEGRATION_TEST=1 node test/semantic-act-vision-integration.test.js
+ * Run with: TESTOPS_MOBILE_VISION_INTEGRATION_TEST=1 node test/semantic-act-vision-integration.test.js
  */
 
 const assert = require("assert");
@@ -67,7 +67,7 @@ function test(name, fn) {
 }
 
 async function ollamaReachable() {
-  const host = process.env.PHOENIX_OLLAMA_HOST || "http://localhost:11434";
+  const host = process.env.TESTOPS_MOBILE_OLLAMA_HOST || "http://localhost:11434";
   try {
     const res = await fetch(`${host}/api/tags`, { signal: AbortSignal.timeout(2000) });
     return res.ok;
@@ -79,14 +79,14 @@ async function ollamaReachable() {
 async function main() {
   console.log("generation/semantic-act vision-fusion integration test:");
 
-  if (process.env.PHOENIX_VISION_INTEGRATION_TEST !== "1") {
-    console.log("  SKIPPED -- set PHOENIX_VISION_INTEGRATION_TEST=1 to run (needs a real multimodal Ollama model).");
+  if (process.env.TESTOPS_MOBILE_VISION_INTEGRATION_TEST !== "1") {
+    console.log("  SKIPPED -- set TESTOPS_MOBILE_VISION_INTEGRATION_TEST=1 to run (needs a real multimodal Ollama model).");
     console.log("  This is expected to be skipped in normal CI runs; it is not part of the required-tests gate.");
     process.exit(0);
   }
 
   if (!(await ollamaReachable())) {
-    console.log("  SKIPPED -- no Ollama server reachable at " + (process.env.PHOENIX_OLLAMA_HOST || "http://localhost:11434"));
+    console.log("  SKIPPED -- no Ollama server reachable at " + (process.env.TESTOPS_MOBILE_OLLAMA_HOST || "http://localhost:11434"));
     process.exit(0);
   }
 

@@ -1,8 +1,8 @@
 /**
  * Tests for session.js's Android capability building, specifically the
  * device-name default -- a real bug, found on a real BrowserStack run
- * (a "guided" recording session with PHOENIX_APPIUM_PROVIDER=browserstack
- * and no PHOENIX_APPIUM_DEVICE_NAME set): BrowserStack rejected the old
+ * (a "guided" recording session with TESTOPS_MOBILE_APPIUM_PROVIDER=browserstack
+ * and no TESTOPS_MOBILE_APPIUM_DEVICE_NAME set): BrowserStack rejected the old
  * hardcoded default "emulator-5554" with BROWSERSTACK_INVALID_DEVICE,
  * looping failed session-creation retries forever. See session.js's
  * updated docstring for the full real-evidence writeup.
@@ -52,7 +52,7 @@ console.log("engine/session:");
 
 test("local provider, no override: defaults to the local emulator serial (unchanged from before BrowserStack support)", () => {
   withEnv(
-    { PHOENIX_APPIUM_PROVIDER: undefined, PHOENIX_APPIUM_DEVICE_NAME: undefined, PHOENIX_STAGE0_APP_PATH: "/x.apk" },
+    { TESTOPS_MOBILE_APPIUM_PROVIDER: undefined, TESTOPS_MOBILE_APPIUM_DEVICE_NAME: undefined, TESTOPS_MOBILE_STAGE0_APP_PATH: "/x.apk" },
     () => {
       const session = freshSession();
       const caps = session.buildCapabilities();
@@ -64,11 +64,11 @@ test("local provider, no override: defaults to the local emulator serial (unchan
 test("browserstack provider, no override: defaults to a real BrowserStack catalog name, NOT the local emulator serial", () => {
   withEnv(
     {
-      PHOENIX_APPIUM_PROVIDER: "browserstack",
-      PHOENIX_APPIUM_DEVICE_NAME: undefined,
-      PHOENIX_BROWSERSTACK_USER: "user",
-      PHOENIX_BROWSERSTACK_KEY: "key",
-      PHOENIX_BROWSERSTACK_APP_URL: "bs://abc123",
+      TESTOPS_MOBILE_APPIUM_PROVIDER: "browserstack",
+      TESTOPS_MOBILE_APPIUM_DEVICE_NAME: undefined,
+      TESTOPS_MOBILE_BROWSERSTACK_USER: "user",
+      TESTOPS_MOBILE_BROWSERSTACK_KEY: "key",
+      TESTOPS_MOBILE_BROWSERSTACK_APP_URL: "bs://abc123",
     },
     () => {
       const session = freshSession();
@@ -79,14 +79,14 @@ test("browserstack provider, no override: defaults to a real BrowserStack catalo
   );
 });
 
-test("an explicit PHOENIX_APPIUM_DEVICE_NAME always wins, on either provider", () => {
+test("an explicit TESTOPS_MOBILE_APPIUM_DEVICE_NAME always wins, on either provider", () => {
   withEnv(
     {
-      PHOENIX_APPIUM_PROVIDER: "browserstack",
-      PHOENIX_APPIUM_DEVICE_NAME: "Samsung Galaxy S23",
-      PHOENIX_BROWSERSTACK_USER: "user",
-      PHOENIX_BROWSERSTACK_KEY: "key",
-      PHOENIX_BROWSERSTACK_APP_URL: "bs://abc123",
+      TESTOPS_MOBILE_APPIUM_PROVIDER: "browserstack",
+      TESTOPS_MOBILE_APPIUM_DEVICE_NAME: "Samsung Galaxy S23",
+      TESTOPS_MOBILE_BROWSERSTACK_USER: "user",
+      TESTOPS_MOBILE_BROWSERSTACK_KEY: "key",
+      TESTOPS_MOBILE_BROWSERSTACK_APP_URL: "bs://abc123",
     },
     () => {
       const session = freshSession();

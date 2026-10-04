@@ -32,10 +32,10 @@ function parse(result) {
   // Isolate every test behind its own tmp DB/log/test-cases dir so
   // nothing here touches the real repo's actual locator-store.db or
   // training-data/executions.jsonl.
-  const tmpDbPath = path.join(os.tmpdir(), `phoenix-mcp-test-${process.pid}-${Math.random().toString(36).slice(2)}.db`);
-  const tmpLogDir = fs.mkdtempSync(path.join(os.tmpdir(), "phoenix-mcp-log-"));
-  process.env.PHOENIX_LOCATOR_DB_PATH = tmpDbPath;
-  process.env.PHOENIX_TRAINING_LOG_PATH = path.join(tmpLogDir, "executions.jsonl");
+  const tmpDbPath = path.join(os.tmpdir(), `testops-mobile-mcp-test-${process.pid}-${Math.random().toString(36).slice(2)}.db`);
+  const tmpLogDir = fs.mkdtempSync(path.join(os.tmpdir(), "testops-mobile-mcp-log-"));
+  process.env.TESTOPS_MOBILE_LOCATOR_DB_PATH = tmpDbPath;
+  process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH = path.join(tmpLogDir, "executions.jsonl");
 
   const { handleToolCall, TOOLS, summarizeHealth } = require("../server");
   const { openLocatorStore, recordResolution } = require("../../engine/locator-store");
@@ -143,29 +143,29 @@ function parse(result) {
     }
   });
 
-  await run("run_test_case refuses without confirm:true, even if PHOENIX_MCP_ALLOW_RUN=1", async () => {
-    const original = process.env.PHOENIX_MCP_ALLOW_RUN;
-    process.env.PHOENIX_MCP_ALLOW_RUN = "1";
+  await run("run_test_case refuses without confirm:true, even if TESTOPS_MOBILE_MCP_ALLOW_RUN=1", async () => {
+    const original = process.env.TESTOPS_MOBILE_MCP_ALLOW_RUN;
+    process.env.TESTOPS_MOBILE_MCP_ALLOW_RUN = "1";
     try {
       const result = await handleToolCall("run_test_case", { platform: "ios", testCaseFile: "test-cases/addons.ios.json", confirm: false });
       assert.ok(result.isError);
       assert.ok(result.content[0].text.includes("confirm"));
     } finally {
-      if (original === undefined) delete process.env.PHOENIX_MCP_ALLOW_RUN;
-      else process.env.PHOENIX_MCP_ALLOW_RUN = original;
+      if (original === undefined) delete process.env.TESTOPS_MOBILE_MCP_ALLOW_RUN;
+      else process.env.TESTOPS_MOBILE_MCP_ALLOW_RUN = original;
     }
   });
 
-  await run("run_test_case refuses when the server wasn't started with PHOENIX_MCP_ALLOW_RUN=1, even with confirm:true", async () => {
-    const original = process.env.PHOENIX_MCP_ALLOW_RUN;
-    delete process.env.PHOENIX_MCP_ALLOW_RUN;
+  await run("run_test_case refuses when the server wasn't started with TESTOPS_MOBILE_MCP_ALLOW_RUN=1, even with confirm:true", async () => {
+    const original = process.env.TESTOPS_MOBILE_MCP_ALLOW_RUN;
+    delete process.env.TESTOPS_MOBILE_MCP_ALLOW_RUN;
     try {
       const result = await handleToolCall("run_test_case", { platform: "ios", testCaseFile: "test-cases/addons.ios.json", confirm: true });
       assert.ok(result.isError);
-      assert.ok(result.content[0].text.includes("PHOENIX_MCP_ALLOW_RUN"));
+      assert.ok(result.content[0].text.includes("TESTOPS_MOBILE_MCP_ALLOW_RUN"));
     } finally {
-      if (original === undefined) delete process.env.PHOENIX_MCP_ALLOW_RUN;
-      else process.env.PHOENIX_MCP_ALLOW_RUN = original;
+      if (original === undefined) delete process.env.TESTOPS_MOBILE_MCP_ALLOW_RUN;
+      else process.env.TESTOPS_MOBILE_MCP_ALLOW_RUN = original;
     }
   });
 

@@ -13,7 +13,7 @@
  * a DIFFERENT feature from what this file does). `node:sqlite` is
  * built into Node 22+: no server, no native-module install, no extra
  * dependency in package.json, just one file on disk
- * (PHOENIX_LOCATOR_DB_PATH, default `locator-store.db` at the repo
+ * (TESTOPS_MOBILE_LOCATOR_DB_PATH, default `locator-store.db` at the repo
  * root) -- as lightweight as this problem actually is.
  *
  * What this DOES that the JSON file alone can't:
@@ -43,7 +43,7 @@
 const path = require("path");
 
 function dbPath() {
-  return process.env.PHOENIX_LOCATOR_DB_PATH || path.join(process.cwd(), "locator-store.db");
+  return process.env.TESTOPS_MOBILE_LOCATOR_DB_PATH || path.join(process.cwd(), "locator-store.db");
 }
 
 /**

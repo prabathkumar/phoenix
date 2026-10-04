@@ -1,8 +1,8 @@
 /**
  * Shared connection-config builder for both platforms' startSession().
  *
- * Phoenix's engine has always talked to Appium over a plain
- * hostname/port (PHOENIX_APPIUM_HOST/PORT) rather than assuming
+ * TestOps Mobile's engine has always talked to Appium over a plain
+ * hostname/port (TESTOPS_MOBILE_APPIUM_HOST/PORT) rather than assuming
  * localhost, so pointing it at a *remote* Appium server was already
  * possible with zero code changes — see session.js's and
  * ios-session.js's original docstrings. What this module adds is the
@@ -20,7 +20,7 @@
  * directly on the same Linux VM. BrowserStack App Automate is an
  * already-licensed way to get a real Appium session against real
  * hardware without operating a Mac at all; this module is what lets
- * `PHOENIX_APPIUM_PROVIDER=browserstack` redirect an existing Phoenix
+ * `TESTOPS_MOBILE_APPIUM_PROVIDER=browserstack` redirect an existing TestOps Mobile
  * session there instead of a local Appium server, with no changes
  * needed anywhere else in the pipeline (capture/generation/live-view
  * only ever see a normal WebdriverIO `Browser`, regardless of where
@@ -31,10 +31,10 @@ const LOCAL = "local";
 const BROWSERSTACK = "browserstack";
 
 function provider() {
-  const value = (process.env.PHOENIX_APPIUM_PROVIDER || LOCAL).toLowerCase();
+  const value = (process.env.TESTOPS_MOBILE_APPIUM_PROVIDER || LOCAL).toLowerCase();
   if (value !== LOCAL && value !== BROWSERSTACK) {
     throw new Error(
-      `Unknown PHOENIX_APPIUM_PROVIDER "${value}" — expected "${LOCAL}" or "${BROWSERSTACK}".`
+      `Unknown TESTOPS_MOBILE_APPIUM_PROVIDER "${value}" — expected "${LOCAL}" or "${BROWSERSTACK}".`
     );
   }
   return value;
@@ -56,8 +56,8 @@ function buildConnectionConfig() {
   }
 
   return {
-    hostname: process.env.PHOENIX_APPIUM_HOST || "127.0.0.1",
-    port: Number(process.env.PHOENIX_APPIUM_PORT) || 4723,
+    hostname: process.env.TESTOPS_MOBILE_APPIUM_HOST || "127.0.0.1",
+    port: Number(process.env.TESTOPS_MOBILE_APPIUM_PORT) || 4723,
     path: "/",
   };
 }
@@ -72,7 +72,7 @@ function buildConnectionConfig() {
  * On BROWSERSTACK, the local-only app reference (`appium:app` pointing
  * at a file on this machine, or `appium:bundleId` naming something
  * already installed on a local Simulator/emulator) is replaced
- * entirely with PHOENIX_BROWSERSTACK_APP_URL — carrying the local one
+ * entirely with TESTOPS_MOBILE_BROWSERSTACK_APP_URL — carrying the local one
  * over alongside it would be actively misleading even though
  * BrowserStack ignores capability keys it doesn't recognize.
  */
@@ -81,22 +81,22 @@ function buildCapabilities(baseCapabilities, overrides = {}) {
     return { ...baseCapabilities, ...overrides };
   }
 
-  if (!process.env.PHOENIX_BROWSERSTACK_USER || !process.env.PHOENIX_BROWSERSTACK_KEY) {
+  if (!process.env.TESTOPS_MOBILE_BROWSERSTACK_USER || !process.env.TESTOPS_MOBILE_BROWSERSTACK_KEY) {
     throw new Error(
-      "PHOENIX_APPIUM_PROVIDER=browserstack requires PHOENIX_BROWSERSTACK_USER and " +
-        "PHOENIX_BROWSERSTACK_KEY (an Automate access key from your BrowserStack account " +
+      "TESTOPS_MOBILE_APPIUM_PROVIDER=browserstack requires TESTOPS_MOBILE_BROWSERSTACK_USER and " +
+        "TESTOPS_MOBILE_BROWSERSTACK_KEY (an Automate access key from your BrowserStack account " +
         "settings — not your account password)."
     );
   }
-  // Normally this comes from PHOENIX_BROWSERSTACK_APP_URL (the env-var-
+  // Normally this comes from TESTOPS_MOBILE_BROWSERSTACK_APP_URL (the env-var-
   // configured flow), but the on-demand upload path (frontend/upload-session.js)
   // already resolved a fresh bs:// URL for *this* session and passes it as
   // an "appium:app" override -- that's just as valid a source, and check
   // for it first so a concurrent request with a different uploaded app
   // never has to touch process.env (which every session shares).
-  if (!overrides["appium:app"] && !process.env.PHOENIX_BROWSERSTACK_APP_URL) {
+  if (!overrides["appium:app"] && !process.env.TESTOPS_MOBILE_BROWSERSTACK_APP_URL) {
     throw new Error(
-      "PHOENIX_APPIUM_PROVIDER=browserstack requires PHOENIX_BROWSERSTACK_APP_URL. " +
+      "TESTOPS_MOBILE_APPIUM_PROVIDER=browserstack requires TESTOPS_MOBILE_BROWSERSTACK_APP_URL. " +
         "Upload the app first with `node engine/browserstack-upload.js <path-to-app>` " +
         "and set its bs:// URL here — BrowserStack doesn't accept a local file path or a " +
         "bundle id the way a local Appium server does."
@@ -108,23 +108,23 @@ function buildCapabilities(baseCapabilities, overrides = {}) {
 
   return {
     ...platformCapabilities,
-    "appium:app": overrides["appium:app"] || process.env.PHOENIX_BROWSERSTACK_APP_URL,
+    "appium:app": overrides["appium:app"] || process.env.TESTOPS_MOBILE_BROWSERSTACK_APP_URL,
     "bstack:options": {
-      userName: process.env.PHOENIX_BROWSERSTACK_USER,
-      accessKey: process.env.PHOENIX_BROWSERSTACK_KEY,
-      projectName: process.env.PHOENIX_BROWSERSTACK_PROJECT || "Phoenix",
-      buildName: process.env.PHOENIX_BROWSERSTACK_BUILD || "phoenix-recording",
-      sessionName: process.env.PHOENIX_BROWSERSTACK_SESSION_NAME || "Phoenix recording session",
+      userName: process.env.TESTOPS_MOBILE_BROWSERSTACK_USER,
+      accessKey: process.env.TESTOPS_MOBILE_BROWSERSTACK_KEY,
+      projectName: process.env.TESTOPS_MOBILE_BROWSERSTACK_PROJECT || "TestOps Mobile",
+      buildName: process.env.TESTOPS_MOBILE_BROWSERSTACK_BUILD || "testops-mobile-recording",
+      sessionName: process.env.TESTOPS_MOBILE_BROWSERSTACK_SESSION_NAME || "TestOps Mobile recording session",
       // Routes this session's device traffic through a BrowserStackLocal
-      // tunnel running on PHOENIX_BROWSERSTACK_USER's machine (or wherever
+      // tunnel running on TESTOPS_MOBILE_BROWSERSTACK_USER's machine (or wherever
       // it was started), so the app-under-test can reach a backend that
       // isn't reachable from the public internet (e.g. an internal VPN-only
       // API). Requires that tunnel to already be running separately --
       // this flag only tells BrowserStack to use it, it doesn't start one.
-      ...(process.env.PHOENIX_BROWSERSTACK_LOCAL === "1" && {
+      ...(process.env.TESTOPS_MOBILE_BROWSERSTACK_LOCAL === "1" && {
         local: true,
-        ...(process.env.PHOENIX_BROWSERSTACK_LOCAL_IDENTIFIER && {
-          localIdentifier: process.env.PHOENIX_BROWSERSTACK_LOCAL_IDENTIFIER,
+        ...(process.env.TESTOPS_MOBILE_BROWSERSTACK_LOCAL_IDENTIFIER && {
+          localIdentifier: process.env.TESTOPS_MOBILE_BROWSERSTACK_LOCAL_IDENTIFIER,
         }),
       }),
     },

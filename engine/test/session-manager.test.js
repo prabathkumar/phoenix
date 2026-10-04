@@ -141,9 +141,9 @@ async function main() {
     );
   });
 
-  await run("PHOENIX_SESSION_POOL_SIZE=2 allows two concurrent sessions with distinct auto-allocated ports", async () => {
-    const previous = process.env.PHOENIX_SESSION_POOL_SIZE;
-    process.env.PHOENIX_SESSION_POOL_SIZE = "2";
+  await run("TESTOPS_MOBILE_SESSION_POOL_SIZE=2 allows two concurrent sessions with distinct auto-allocated ports", async () => {
+    const previous = process.env.TESTOPS_MOBILE_SESSION_POOL_SIZE;
+    process.env.TESTOPS_MOBILE_SESSION_POOL_SIZE = "2";
     try {
       let sessionCounter = 0;
       const { sessionManager } = freshSessionManagerWithFakes({
@@ -164,8 +164,8 @@ async function main() {
         /full|capacity/i
       );
     } finally {
-      if (previous === undefined) delete process.env.PHOENIX_SESSION_POOL_SIZE;
-      else process.env.PHOENIX_SESSION_POOL_SIZE = previous;
+      if (previous === undefined) delete process.env.TESTOPS_MOBILE_SESSION_POOL_SIZE;
+      else process.env.TESTOPS_MOBILE_SESSION_POOL_SIZE = previous;
     }
   });
 

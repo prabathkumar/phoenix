@@ -13,7 +13,7 @@
  *
  * Concurrency: how many recording sessions can run at once is governed
  * by `session-pool.js`'s `SessionPool` (capacity via
- * `PHOENIX_SESSION_POOL_SIZE`, default **1** — unchanged default
+ * `TESTOPS_MOBILE_SESSION_POOL_SIZE`, default **1** — unchanged default
  * behavior from before this pool existed). Each session gets its own
  * live-view port, allocated by the pool so two concurrent sessions
  * never collide on the same WebSocket port. A `startRecordingSession()`
@@ -35,8 +35,8 @@ const { SessionPool } = require("./session-pool");
 const OUTPUT_DIR = path.join(__dirname, "..", "generated");
 
 // One pool per process, created at module load so its slot/port
-// bookkeeping persists across calls. Reads PHOENIX_SESSION_POOL_SIZE /
-// PHOENIX_LIVE_VIEW_PORT at that point (same timing env vars are read
+// bookkeeping persists across calls. Reads TESTOPS_MOBILE_SESSION_POOL_SIZE /
+// TESTOPS_MOBILE_LIVE_VIEW_PORT at that point (same timing env vars are read
 // everywhere else in this file's call sites) -- a test that needs a
 // different capacity sets the env var before requiring this module
 // fresh (see engine/test/session-manager.test.js and
@@ -87,7 +87,7 @@ function listActiveSessions() {
 /**
  * @param {object} [options]
  * @param {"android"|"ios"} [options.platform] - defaults to
- *   PHOENIX_PLATFORM env var, then "android" — same default chain
+ *   TESTOPS_MOBILE_PLATFORM env var, then "android" — same default chain
  *   run-session.js always used.
  * @param {object} [options.capabilityOverrides] - passed straight
  *   through to engine/session.js or engine/ios-session.js's
@@ -96,9 +96,9 @@ function listActiveSessions() {
  *   touching process.env (which a concurrent request could race on).
  * @param {number} [options.liveViewPort] - explicit port override
  *   (mainly for tests). Defaults to the pool's own allocator, which
- *   hands out the next free port starting at PHOENIX_LIVE_VIEW_PORT
+ *   hands out the next free port starting at TESTOPS_MOBILE_LIVE_VIEW_PORT
  *   (default 8090) not already held by another concurrent session.
- * @param {boolean} [options.useLlm] - defaults to PHOENIX_USE_LLM=1.
+ * @param {boolean} [options.useLlm] - defaults to TESTOPS_MOBILE_USE_LLM=1.
  * @returns {Promise<{ platform: string, port: number, sessionId: string }>}
  */
 async function startRecordingSession(options = {}) {
@@ -108,7 +108,7 @@ async function startRecordingSession(options = {}) {
   // real Appium sessions. The slot is keyed by a temporary id until the
   // real driver.sessionId is known, then rekeyed (see below).
   const reservationKey = `pending-${crypto.randomUUID()}`;
-  const platform = options.platform === "ios" ? "ios" : (options.platform === "android" ? "android" : (process.env.PHOENIX_PLATFORM === "ios" ? "ios" : "android"));
+  const platform = options.platform === "ios" ? "ios" : (options.platform === "android" ? "android" : (process.env.TESTOPS_MOBILE_PLATFORM === "ios" ? "ios" : "android"));
   const liveViewPort = options.liveViewPort || pool.allocatePort();
 
   // SessionPool.acquire() throws SessionPoolFullError (message includes
@@ -119,7 +119,7 @@ async function startRecordingSession(options = {}) {
   let driver;
   try {
     const { startSession } = require(platform === "ios" ? "./ios-session" : "./session");
-    const useLlm = options.useLlm !== undefined ? options.useLlm : process.env.PHOENIX_USE_LLM === "1";
+    const useLlm = options.useLlm !== undefined ? options.useLlm : process.env.TESTOPS_MOBILE_USE_LLM === "1";
 
     console.log(`[session-manager] starting Appium session (platform: ${platform}, port: ${liveViewPort})...`);
     driver = await startSession(options.capabilityOverrides);

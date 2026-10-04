@@ -1,9 +1,9 @@
 {
   "name": "addons",
-  "description": "UNVERIFIED FIRST DRAFT -- blind-authored from a plain-language description only, never run against real hardware. Login into the app, close any post-login notification dialogs, view the Add-ons screen, then log out. Steps 1-7 (dismiss system dialog through submit) are copied from the already-proven test-cases/login.json sequence (bugs 18-23, closed out end to end on real BrowserStack hardware for both platforms); steps 8+ (notifications, Add-ons, logout) are new guesses about this app's UI and have NOT been confirmed against a real screen. Expect this file to need the same bug-by-bug correction login.json did -- run it once via PHOENIX_BATCH_MODES=test-case, PHOENIX_TEST_CASE_FILE=test-cases/addons.json, and report back whatever the log/report actually shows so the guessed steps can be fixed from real evidence, not another guess.",
+  "description": "UNVERIFIED FIRST DRAFT -- blind-authored from a plain-language description only, never run against real hardware. Login into the app, close any post-login notification dialogs, view the Add-ons screen, then log out. Steps 1-7 (dismiss system dialog through submit) are copied from the already-proven test-cases/login.json sequence (bugs 18-23, closed out end to end on real BrowserStack hardware for both platforms); steps 8+ (notifications, Add-ons, logout) are new guesses about this app's UI and have NOT been confirmed against a real screen. Expect this file to need the same bug-by-bug correction login.json did -- run it once via TESTOPS_MOBILE_BATCH_MODES=test-case, TESTOPS_MOBILE_TEST_CASE_FILE=test-cases/addons.json, and report back whatever the log/report actually shows so the guessed steps can be fixed from real evidence, not another guess.",
   "requiredEnv": [
-    "PHOENIX_BATCH_LOGIN_PHONE",
-    "PHOENIX_BATCH_LOGIN_PASSWORD"
+    "TESTOPS_MOBILE_BATCH_LOGIN_PHONE",
+    "TESTOPS_MOBILE_BATCH_LOGIN_PASSWORD"
   ],
   "steps": [
     {
@@ -53,7 +53,7 @@
     {
       "kind": "type",
       "instruction": "type the phone number into the phone/account number field",
-      "text": "${PHOENIX_BATCH_LOGIN_PHONE}",
+      "text": "${TESTOPS_MOBILE_BATCH_LOGIN_PHONE}",
       "resolvedSelector": {
         "strategy": "xpath",
         "value": "/hierarchy[1]/android.widget.FrameLayout[1]/android.widget.LinearLayout[1]/android.widget.FrameLayout[1]/android.widget.LinearLayout[1]/android.widget.FrameLayout[1]/android.widget.RelativeLayout[1]/android.widget.ScrollView[1]/android.widget.LinearLayout[1]/android.view.ViewGroup[2]/android.widget.LinearLayout[1]/android.widget.EditText[1]"
@@ -90,7 +90,7 @@
     {
       "kind": "type",
       "instruction": "type the password into the password field",
-      "text": "${PHOENIX_BATCH_LOGIN_PASSWORD}",
+      "text": "${TESTOPS_MOBILE_BATCH_LOGIN_PASSWORD}",
       "resolvedSelector": {
         "strategy": "xpath",
         "value": "/hierarchy[1]/android.widget.FrameLayout[1]/android.widget.LinearLayout[1]/android.widget.FrameLayout[1]/android.widget.LinearLayout[1]/android.widget.FrameLayout[1]/android.widget.RelativeLayout[1]/android.widget.ScrollView[1]/android.widget.LinearLayout[1]/android.view.ViewGroup[2]/android.widget.LinearLayout[2]/android.widget.EditText[1]"

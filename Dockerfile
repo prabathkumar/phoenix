@@ -1,4 +1,4 @@
-# Phoenix — containerizes the Node-side pipeline only:
+# TestOps Mobile — containerizes the Node-side pipeline only:
 # run-session.js (engine/session.js spawn-path client + live-view + capture +
 # generation), run-batch-executions.js (test-case/batch mode, including the
 # BrowserStack provider path), and frontend/server.js.
@@ -8,12 +8,12 @@
 #     and a GPU-capable host; a real device needs USB passthrough. Neither
 #     belongs in this image. Point this container at an Appium server
 #     running on a host (or device farm) that has real hardware access, via
-#     PHOENIX_APPIUM_HOST / PHOENIX_APPIUM_PORT (see .env.example).
+#     TESTOPS_MOBILE_APPIUM_HOST / TESTOPS_MOBILE_APPIUM_PORT (see .env.example).
 #   - The `appium` server process itself. It has its own driver-install step
 #     (`appium driver install uiautomator2`) tied to whichever machine can
 #     see the device, and infra teams typically already have a place to run
 #     it (a device-farm host, an existing Appium container image). Run it
-#     there and point PHOENIX_APPIUM_HOST/PORT at it.
+#     there and point TESTOPS_MOBILE_APPIUM_HOST/PORT at it.
 #   - The embedded path (engine/embedded-session.js). It talks to the
 #     UiAutomator2 driver in-process, which still needs ADB access to a real
 #     device/emulator on the same host — so it belongs on that host, not in
@@ -62,15 +62,15 @@ ARG VERSION=dev
 # code identifier inside the repo (nothing in engine/, generation/,
 # capture/, live-view/, or frontend/ changes). "TestOps Mobile" is the name
 # this image is handed to the TestOps dev team under; the code underneath
-# is still Phoenix. See docs/TESTOPS_MOBILE_DOCKER.md for the full handoff
+# is still TestOps Mobile. See docs/TESTOPS_MOBILE_DOCKER.md for the full handoff
 # workflow (build, save/load without a registry, and the separate
 # GitHub-pull path for the source code itself), and docs/RELEASING.md for
 # the version-tag/registry-push process.
 LABEL org.opencontainers.image.title="TestOps Mobile" \
-      org.opencontainers.image.description="Phoenix semantic mobile-automation pipeline, packaged for TestOps integration" \
+      org.opencontainers.image.description="TestOps Mobile semantic mobile-automation pipeline, packaged for TestOps integration" \
       org.opencontainers.image.vendor="YTL / Robotico" \
       org.opencontainers.image.version="${VERSION}" \
-      org.opencontainers.image.source="https://github.com/prabathkumar/phoenix"
+      org.opencontainers.image.source="https://github.com/prabathkumar/testops-mobile"
 
 WORKDIR /app
 
@@ -100,11 +100,11 @@ COPY test-cases/ ./test-cases/
 # live-view + frontend ports (see .env.example for what each does).
 EXPOSE 8090 8091
 
-# PHOENIX_STAGE0_APP_PATH must point at a .apk reachable from wherever the
+# TESTOPS_MOBILE_STAGE0_APP_PATH must point at a .apk reachable from wherever the
 # Appium server this container talks to actually runs — not from inside
 # this container — since the server/device installs and launches it, not us.
-# Not applicable when PHOENIX_APPIUM_PROVIDER=browserstack, which uses
-# PHOENIX_BROWSERSTACK_APP_URL instead (see .env.example).
+# Not applicable when TESTOPS_MOBILE_APPIUM_PROVIDER=browserstack, which uses
+# TESTOPS_MOBILE_BROWSERSTACK_APP_URL instead (see .env.example).
 #
 # Runs run-session.js (the live-view/session/recorder/generation pipeline)
 # by default. To run batch/test-case mode instead (the mode that drives

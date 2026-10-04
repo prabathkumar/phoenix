@@ -24,16 +24,16 @@ const LOGIN_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
 <hierarchy>
   <android.widget.FrameLayout bounds="[0,0][1080,2400]">
     <android.widget.TextView text="Login" bounds="[42,166][305,237]" />
-    <android.widget.EditText resource-id="com.phoenix.demo:id/username_input" text="" bounds="[100,300][980,400]" />
-    <android.widget.EditText resource-id="com.phoenix.demo:id/password_input" text="" bounds="[100,420][980,520]" />
-    <android.widget.Button resource-id="com.phoenix.demo:id/login_button" text="Log In" bounds="[100,560][980,660]" />
+    <android.widget.EditText resource-id="com.testopsmobile.demo:id/username_input" text="" bounds="[100,300][980,400]" />
+    <android.widget.EditText resource-id="com.testopsmobile.demo:id/password_input" text="" bounds="[100,420][980,520]" />
+    <android.widget.Button resource-id="com.testopsmobile.demo:id/login_button" text="Log In" bounds="[100,560][980,660]" />
   </android.widget.FrameLayout>
 </hierarchy>`;
 
 const AFTER_LOGIN_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
 <hierarchy>
   <android.widget.FrameLayout bounds="[0,0][1080,2400]">
-    <android.widget.TextView resource-id="com.phoenix.demo:id/welcome_text" text="Welcome" bounds="[42,166][305,237]" />
+    <android.widget.TextView resource-id="com.testopsmobile.demo:id/welcome_text" text="Welcome" bounds="[42,166][305,237]" />
   </android.widget.FrameLayout>
 </hierarchy>`;
 
@@ -41,21 +41,21 @@ const AFTER_LOGIN_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes
 const STEPS = [
   {
     tapCoordinate: { x: 540, y: 350 },
-    resolvedElement: { strategy: "resource-id", value: "com.phoenix.demo:id/username_input", resourceId: "com.phoenix.demo:id/username_input" },
+    resolvedElement: { strategy: "resource-id", value: "com.testopsmobile.demo:id/username_input", resourceId: "com.testopsmobile.demo:id/username_input" },
     pageSourceBefore: LOGIN_SCREEN,
     pageSourceAfter: LOGIN_SCREEN,
     typedValue: "prabath@example.com",
   },
   {
     tapCoordinate: { x: 540, y: 470 },
-    resolvedElement: { strategy: "resource-id", value: "com.phoenix.demo:id/password_input", resourceId: "com.phoenix.demo:id/password_input" },
+    resolvedElement: { strategy: "resource-id", value: "com.testopsmobile.demo:id/password_input", resourceId: "com.testopsmobile.demo:id/password_input" },
     pageSourceBefore: LOGIN_SCREEN,
     pageSourceAfter: LOGIN_SCREEN,
     typedValue: "hunter2",
   },
   {
     tapCoordinate: { x: 540, y: 610 },
-    resolvedElement: { strategy: "resource-id", value: "com.phoenix.demo:id/login_button", resourceId: "com.phoenix.demo:id/login_button" },
+    resolvedElement: { strategy: "resource-id", value: "com.testopsmobile.demo:id/login_button", resourceId: "com.testopsmobile.demo:id/login_button" },
     pageSourceBefore: LOGIN_SCREEN,
     pageSourceAfter: AFTER_LOGIN_SCREEN,
   },
@@ -98,7 +98,7 @@ test("inferAssertions proposes an assertion for the label that appears after the
   assert.strictEqual(assertions.length, 1);
   assert.strictEqual(assertions[0].stepIndex, 2);
   assert.strictEqual(assertions[0].label, "Welcome");
-  assert.strictEqual(assertions[0].resourceId, "com.phoenix.demo:id/welcome_text");
+  assert.strictEqual(assertions[0].resourceId, "com.testopsmobile.demo:id/welcome_text");
 });
 
 test("inferAssertions still flags a newly-appeared element whose text coincidentally repeats from the previous screen", () => {
@@ -182,16 +182,16 @@ test("inferAssertions does not re-flag a screen's elements when back navigation 
   const SCREEN_A = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
 <hierarchy>
   <android.widget.FrameLayout bounds="[0,0][1080,2400]">
-    <android.widget.TextView resource-id="com.phoenix.demo:id/title_a" text="Screen A" bounds="[42,166][305,237]" />
-    <android.widget.Button resource-id="com.phoenix.demo:id/go_to_b" text="Go to B" bounds="[100,300][980,400]" />
+    <android.widget.TextView resource-id="com.testopsmobile.demo:id/title_a" text="Screen A" bounds="[42,166][305,237]" />
+    <android.widget.Button resource-id="com.testopsmobile.demo:id/go_to_b" text="Go to B" bounds="[100,300][980,400]" />
   </android.widget.FrameLayout>
 </hierarchy>`;
 
   const SCREEN_B = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
 <hierarchy>
   <android.widget.FrameLayout bounds="[0,0][1080,2400]">
-    <android.widget.TextView resource-id="com.phoenix.demo:id/title_b" text="Screen B" bounds="[42,166][305,237]" />
-    <android.widget.Button resource-id="com.phoenix.demo:id/back_button" text="Back" bounds="[100,300][980,400]" />
+    <android.widget.TextView resource-id="com.testopsmobile.demo:id/title_b" text="Screen B" bounds="[42,166][305,237]" />
+    <android.widget.Button resource-id="com.testopsmobile.demo:id/back_button" text="Back" bounds="[100,300][980,400]" />
   </android.widget.FrameLayout>
 </hierarchy>`;
 
@@ -199,14 +199,14 @@ test("inferAssertions does not re-flag a screen's elements when back navigation 
     // Step 0: on A, tap "Go to B" -> navigates to B.
     {
       tapCoordinate: { x: 540, y: 350 },
-      resolvedElement: { strategy: "resource-id", value: "com.phoenix.demo:id/go_to_b", resourceId: "com.phoenix.demo:id/go_to_b" },
+      resolvedElement: { strategy: "resource-id", value: "com.testopsmobile.demo:id/go_to_b", resourceId: "com.testopsmobile.demo:id/go_to_b" },
       pageSourceBefore: SCREEN_A,
       pageSourceAfter: SCREEN_B,
     },
     // Step 1: on B, tap "Back" -> returns to A (already seen once).
     {
       tapCoordinate: { x: 540, y: 350 },
-      resolvedElement: { strategy: "resource-id", value: "com.phoenix.demo:id/back_button", resourceId: "com.phoenix.demo:id/back_button" },
+      resolvedElement: { strategy: "resource-id", value: "com.testopsmobile.demo:id/back_button", resourceId: "com.testopsmobile.demo:id/back_button" },
       pageSourceBefore: SCREEN_B,
       pageSourceAfter: SCREEN_A,
     },
@@ -381,8 +381,8 @@ test("buildSelector combines resource-id with text for a resource-id match that 
 });
 
 test("buildSelector falls back to resource-id alone when no text is available", () => {
-  const selector = buildSelector({ strategy: "resource-id", value: "com.phoenix.demo:id/login_button" });
-  assert.strictEqual(selector, 'android=new UiSelector().resourceId("com.phoenix.demo:id/login_button")');
+  const selector = buildSelector({ strategy: "resource-id", value: "com.testopsmobile.demo:id/login_button" });
+  assert.strictEqual(selector, 'android=new UiSelector().resourceId("com.testopsmobile.demo:id/login_button")');
 });
 
 test("buildResourceIdSelector combines resource-id and label, and falls back gracefully", () => {
@@ -433,7 +433,7 @@ testAsync("generateScript produces a runnable script with parameters, selectors,
   assert.ok(src.includes('const username = "prabath@example.com";'));
   assert.ok(src.includes('const password = "hunter2";'));
   assert.ok(src.includes('describe("login"'));
-  assert.ok(src.includes("UiSelector().resourceId(\\\"com.phoenix.demo:id/login_button\\\")"));
+  assert.ok(src.includes("UiSelector().resourceId(\\\"com.testopsmobile.demo:id/login_button\\\")"));
   assert.ok(src.includes('await expect($('));
   assert.ok(src.includes('"Welcome" appeared'));
 });

@@ -1,5 +1,5 @@
 /**
- * Phase 3 — autonomous exploration (docs/PHOENIX_SPEC.md §6, "R&D
+ * Phase 3 — autonomous exploration (docs/TESTOPS_MOBILE_SPEC.md §6, "R&D
  * track, not customer-facing until proven"). First skeleton of the
  * autonomous loop: takes a goal in plain language, reads the grounded
  * snapshot, asks the local Ollama model to decide the next single
@@ -13,7 +13,7 @@
  * recording path, or run-session.js/session-manager.js. Per the spec's
  * own framing, this stays an R&D-only capability, exercised against
  * internal apps, until it's proven — it is not something a customer
- * or even a Phoenix tester triggers today. `run-semantic-loop.js` (if
+ * or even a TestOps Mobile tester triggers today. `run-semantic-loop.js` (if
  * and when that's built) would be its own separate CLI, mirroring how
  * run-semantic-action.js sits apart from run-session.js.
  *
@@ -317,7 +317,7 @@ async function runAutonomousLoop(driver, goal, options = {}) {
         kind: decision.kind,
         text: decision.text,
         platform,
-        useVisualGrounding: process.env.PHOENIX_ENABLE_VISUAL_GROUNDING === "1",
+        useVisualGrounding: process.env.TESTOPS_MOBILE_ENABLE_VISUAL_GROUNDING === "1",
         // Refuse to silently overwrite a field an earlier "type" step
         // in THIS run already set with different text -- see the
         // comment in semantic-act-executor.js for the real failure

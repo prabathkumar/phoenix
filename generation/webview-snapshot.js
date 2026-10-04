@@ -40,7 +40,7 @@
 // filtering): interactive tags, explicit roles, or anything with a click
 // handler/tabindex, capped at 300 so a large page doesn't blow out the
 // prompt the same way an uncapped native tree wouldn't either.
-const SERIALIZE_DOM_SCRIPT = function serializePhoenixWebviewDom() {
+const SERIALIZE_DOM_SCRIPT = function serializeTestOpsMobileWebviewDom() {
   var nodes = Array.prototype.slice.call(
     document.querySelectorAll(
       'a,button,input,select,textarea,[role],[onclick],[tabindex]'

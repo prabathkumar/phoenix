@@ -1,7 +1,7 @@
 /**
  * Standalone CLI entry point for proving engine/semantic-act-executor.js
  * against a REAL session — Android emulator/device, iOS Simulator, or
- * BrowserStack, same PHOENIX_APPIUM_PROVIDER/PHOENIX_PLATFORM env vars
+ * BrowserStack, same TESTOPS_MOBILE_APPIUM_PROVIDER/TESTOPS_MOBILE_PLATFORM env vars
  * every other entry point here uses (see docs/SETUP.md). Everything
  * upstream of this file (semantic-snapshot.js, semantic-act.js,
  * semantic-diff.js, semantic-act-executor.js) is unit-tested against
@@ -22,13 +22,13 @@
  *   node run-semantic-action.js "tap the Login button" --visual   # fused text+screenshot resolution
  *
  * Same app/provider env vars as run-session.js:
- *   PHOENIX_PLATFORM=android|ios (default android)
- *   PHOENIX_APPIUM_PROVIDER=local|browserstack (default local)
- *   PHOENIX_STAGE0_APP_PATH / PHOENIX_IOS_APP_PATH / PHOENIX_IOS_BUNDLE_ID
- *     (local provider) or PHOENIX_BROWSERSTACK_APP_URL (browserstack
+ *   TESTOPS_MOBILE_PLATFORM=android|ios (default android)
+ *   TESTOPS_MOBILE_APPIUM_PROVIDER=local|browserstack (default local)
+ *   TESTOPS_MOBILE_STAGE0_APP_PATH / TESTOPS_MOBILE_IOS_APP_PATH / TESTOPS_MOBILE_IOS_BUNDLE_ID
+ *     (local provider) or TESTOPS_MOBILE_BROWSERSTACK_APP_URL (browserstack
  *     provider) — see remote-provider.js / docs/SETUP.md.
  *
- * PHOENIX_STARTUP_DELAY_MS (default 5000): a freshly launched app is
+ * TESTOPS_MOBILE_STARTUP_DELAY_MS (default 5000): a freshly launched app is
  * typically still on a splash screen (a progress bar, no real controls
  * yet) the instant the session comes up. Found for real on this CLI's
  * first-ever run against a live BrowserStack session: it read the
@@ -42,7 +42,7 @@
 
 const { executeSemanticAction } = require("./engine/semantic-act-executor");
 
-const STARTUP_DELAY_MS = Number(process.env.PHOENIX_STARTUP_DELAY_MS) || 5000;
+const STARTUP_DELAY_MS = Number(process.env.TESTOPS_MOBILE_STARTUP_DELAY_MS) || 5000;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -80,7 +80,7 @@ async function main() {
     process.exit(1);
   }
 
-  const platform = process.env.PHOENIX_PLATFORM === "ios" ? "ios" : "android";
+  const platform = process.env.TESTOPS_MOBILE_PLATFORM === "ios" ? "ios" : "android";
   const { startSession } = require(platform === "ios" ? "./engine/ios-session" : "./engine/session");
 
   console.log(`[run-semantic-action] starting Appium session (platform: ${platform})...`);
@@ -88,7 +88,7 @@ async function main() {
   console.log("[run-semantic-action] session started:", driver.sessionId);
 
   try {
-    console.log(`[run-semantic-action] waiting ${STARTUP_DELAY_MS}ms for the app to get past its splash screen (set PHOENIX_STARTUP_DELAY_MS to change)...`);
+    console.log(`[run-semantic-action] waiting ${STARTUP_DELAY_MS}ms for the app to get past its splash screen (set TESTOPS_MOBILE_STARTUP_DELAY_MS to change)...`);
     await sleep(STARTUP_DELAY_MS);
 
     console.log(`[run-semantic-action] instruction: "${instruction}"${kind === "type" ? ` (typing: "${text}")` : ""}${useVisualGrounding ? " (fused text+screenshot resolution)" : ""}`);

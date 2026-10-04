@@ -3,7 +3,7 @@
  * (an id got renamed, a layout shifted, a resource-id got obfuscated
  * differently in a new build), fall back to the semantic layer instead
  * of failing outright. This is the natural fusion of the two acts —
- * see README's Act 1/Act 2 framing and docs/PHOENIX_SPEC.md §6: Act 1's
+ * see README's Act 1/Act 2 framing and docs/TESTOPS_MOBILE_SPEC.md §6: Act 1's
  * guided scripts get Act 2's resolution as a safety net, not a
  * replacement for their normal (fast, deterministic) selector.
  *

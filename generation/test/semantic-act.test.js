@@ -20,8 +20,8 @@ const os = require("os");
 // set before any module reads it (execution-log.js reads the env var
 // fresh on every call, not just at require time, but set this early
 // regardless for clarity).
-process.env.PHOENIX_TRAINING_LOG_PATH = path.join(
-  fs.mkdtempSync(path.join(os.tmpdir(), "phoenix-semantic-act-log-")),
+process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH = path.join(
+  fs.mkdtempSync(path.join(os.tmpdir(), "testops-mobile-semantic-act-log-")),
   "executions.jsonl"
 );
 const { logExecution } = require("../execution-log");
@@ -30,8 +30,8 @@ const ANDROID_LOGIN_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='y
 <hierarchy>
   <android.widget.FrameLayout bounds="[0,0][1080,2400]">
     <android.widget.TextView text="Login" bounds="[42,166][305,237]" />
-    <android.widget.EditText resource-id="com.phoenix.demo:id/username_input" text="" bounds="[100,300][980,400]" />
-    <android.widget.Button resource-id="com.phoenix.demo:id/login_button" text="Log In" bounds="[100,560][980,660]" />
+    <android.widget.EditText resource-id="com.testopsmobile.demo:id/username_input" text="" bounds="[100,300][980,400]" />
+    <android.widget.Button resource-id="com.testopsmobile.demo:id/login_button" text="Log In" bounds="[100,560][980,660]" />
   </android.widget.FrameLayout>
 </hierarchy>`;
 
@@ -80,7 +80,7 @@ async function test(name, fn) {
     try {
       const result = await semanticAct.resolveSemanticAction(ANDROID_LOGIN_SCREEN, "tap the Login button");
       assert.strictEqual(result.resolved, true);
-      assert.deepStrictEqual(result.selector, { strategy: "resource-id", value: "com.phoenix.demo:id/login_button" });
+      assert.deepStrictEqual(result.selector, { strategy: "resource-id", value: "com.testopsmobile.demo:id/login_button" });
       assert.strictEqual(result.element.ref, 3);
     } finally {
       restore();
@@ -620,7 +620,7 @@ async function test(name, fn) {
     const ONE_BUTTON_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
 <hierarchy>
   <android.widget.FrameLayout>
-    <android.widget.Button resource-id="com.phoenix.demo:id/only_button" text="Only" bounds="[100,560][980,660]" />
+    <android.widget.Button resource-id="com.testopsmobile.demo:id/only_button" text="Only" bounds="[100,560][980,660]" />
   </android.widget.FrameLayout>
 </hierarchy>`;
     const { semanticAct, restore } = loadWithFakeOllama(async () => {
@@ -683,14 +683,14 @@ async function test(name, fn) {
       kind: "tap",
       success: true,
       diffSummary: "No visible change.",
-      selector: { strategy: "resource-id", value: "com.phoenix.demo:id/login_button" },
+      selector: { strategy: "resource-id", value: "com.testopsmobile.demo:id/login_button" },
     });
 
     const DEAD_BUTTON_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
 <hierarchy>
   <android.widget.FrameLayout>
-    <android.widget.Button resource-id="com.phoenix.demo:id/login_button" text="Log In" bounds="[100,560][980,660]" />
-    <android.widget.Button resource-id="com.phoenix.demo:id/other_button" text="Other" bounds="[100,700][980,800]" />
+    <android.widget.Button resource-id="com.testopsmobile.demo:id/login_button" text="Log In" bounds="[100,560][980,660]" />
+    <android.widget.Button resource-id="com.testopsmobile.demo:id/other_button" text="Other" bounds="[100,700][980,800]" />
   </android.widget.FrameLayout>
 </hierarchy>`;
     const calls = [];
@@ -714,15 +714,15 @@ async function test(name, fn) {
       kind: "tap",
       success: true,
       selfHealedNoOp: true,
-      selector: { strategy: "resource-id", value: "com.phoenix.demo:id/other_button" }, // the HEALED, working selector -- must stay offered
-      deadSelector: { strategy: "resource-id", value: "com.phoenix.demo:id/login_button" }, // the ORIGINAL dead end -- must be excluded
+      selector: { strategy: "resource-id", value: "com.testopsmobile.demo:id/other_button" }, // the HEALED, working selector -- must stay offered
+      deadSelector: { strategy: "resource-id", value: "com.testopsmobile.demo:id/login_button" }, // the ORIGINAL dead end -- must be excluded
     });
 
     const DEAD_BUTTON_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
 <hierarchy>
   <android.widget.FrameLayout>
-    <android.widget.Button resource-id="com.phoenix.demo:id/login_button" text="Log In" bounds="[100,560][980,660]" />
-    <android.widget.Button resource-id="com.phoenix.demo:id/other_button" text="Other" bounds="[100,700][980,800]" />
+    <android.widget.Button resource-id="com.testopsmobile.demo:id/login_button" text="Log In" bounds="[100,560][980,660]" />
+    <android.widget.Button resource-id="com.testopsmobile.demo:id/other_button" text="Other" bounds="[100,700][980,800]" />
   </android.widget.FrameLayout>
 </hierarchy>`;
     const calls = [];
@@ -746,13 +746,13 @@ async function test(name, fn) {
       kind: "tap",
       success: true,
       diffSummary: "No visible change.",
-      selector: { strategy: "resource-id", value: "com.phoenix.demo:id/login_button" },
+      selector: { strategy: "resource-id", value: "com.testopsmobile.demo:id/login_button" },
     });
 
     const ONE_BUTTON_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
 <hierarchy>
   <android.widget.FrameLayout>
-    <android.widget.EditText resource-id="com.phoenix.demo:id/login_button" text="" bounds="[100,560][980,660]" />
+    <android.widget.EditText resource-id="com.testopsmobile.demo:id/login_button" text="" bounds="[100,560][980,660]" />
   </android.widget.FrameLayout>
 </hierarchy>`;
     const calls = [];
@@ -774,13 +774,13 @@ async function test(name, fn) {
       kind: "tap",
       success: true,
       diffSummary: "No visible change.",
-      selector: { strategy: "resource-id", value: "com.phoenix.demo:id/login_button" },
+      selector: { strategy: "resource-id", value: "com.testopsmobile.demo:id/login_button" },
     });
 
     const DEAD_BUTTON_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
 <hierarchy>
   <android.widget.FrameLayout>
-    <android.widget.Button resource-id="com.phoenix.demo:id/login_button" text="Log In" bounds="[100,560][980,660]" />
+    <android.widget.Button resource-id="com.testopsmobile.demo:id/login_button" text="Log In" bounds="[100,560][980,660]" />
   </android.widget.FrameLayout>
 </hierarchy>`;
     const calls = [];
@@ -808,15 +808,15 @@ async function test(name, fn) {
       kind: "tap",
       success: true,
       diffSummary: "Appeared: \"Add-On Details\".",
-      selector: { strategy: "resource-id", value: "com.phoenix.demo:id/login_button" },
+      selector: { strategy: "resource-id", value: "com.testopsmobile.demo:id/login_button" },
       expectFailed: true,
     });
 
     const WRONG_BUTTON_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
 <hierarchy>
   <android.widget.FrameLayout>
-    <android.widget.Button resource-id="com.phoenix.demo:id/login_button" text="Log In" bounds="[100,560][980,660]" />
-    <android.widget.Button resource-id="com.phoenix.demo:id/other_button" text="Other" bounds="[100,700][980,800]" />
+    <android.widget.Button resource-id="com.testopsmobile.demo:id/login_button" text="Log In" bounds="[100,560][980,660]" />
+    <android.widget.Button resource-id="com.testopsmobile.demo:id/other_button" text="Other" bounds="[100,700][980,800]" />
   </android.widget.FrameLayout>
 </hierarchy>`;
     const calls = [];
@@ -840,14 +840,14 @@ async function test(name, fn) {
       kind: "tap",
       success: true,
       diffSummary: "Appeared: \"X\".",
-      selector: { strategy: "resource-id", value: "com.phoenix.demo:id/login_button" },
+      selector: { strategy: "resource-id", value: "com.testopsmobile.demo:id/login_button" },
       expectFailed: true,
     });
 
     const ONE_BUTTON_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
 <hierarchy>
   <android.widget.FrameLayout>
-    <android.widget.EditText resource-id="com.phoenix.demo:id/login_button" text="" bounds="[100,560][980,660]" />
+    <android.widget.EditText resource-id="com.testopsmobile.demo:id/login_button" text="" bounds="[100,560][980,660]" />
   </android.widget.FrameLayout>
 </hierarchy>`;
     const calls = [];
@@ -869,14 +869,14 @@ async function test(name, fn) {
       kind: "tap",
       success: true,
       diffSummary: "Appeared: \"X\".",
-      selector: { strategy: "resource-id", value: "com.phoenix.demo:id/login_button" },
+      selector: { strategy: "resource-id", value: "com.testopsmobile.demo:id/login_button" },
       expectFailed: true,
     });
 
     const WRONG_BUTTON_SCREEN = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
 <hierarchy>
   <android.widget.FrameLayout>
-    <android.widget.Button resource-id="com.phoenix.demo:id/login_button" text="Log In" bounds="[100,560][980,660]" />
+    <android.widget.Button resource-id="com.testopsmobile.demo:id/login_button" text="Log In" bounds="[100,560][980,660]" />
   </android.widget.FrameLayout>
 </hierarchy>`;
     const calls = [];

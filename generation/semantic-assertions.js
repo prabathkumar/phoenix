@@ -1,5 +1,5 @@
 /**
- * Closes the last still-open item from docs/PHOENIX_SPEC.md §6's Phase
+ * Closes the last still-open item from docs/TESTOPS_MOBILE_SPEC.md §6's Phase
  * 2 bullets: "state-diff reporting... feeds the assertion-inference
  * step directly." semantic-diff.js already computes what
  * appeared/disappeared; this module turns that into the same

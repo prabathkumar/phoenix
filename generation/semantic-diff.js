@@ -1,5 +1,5 @@
 /**
- * State-diff reporting (docs/PHOENIX_SPEC.md §6, Phase 2 — "AI-native
+ * State-diff reporting (docs/TESTOPS_MOBILE_SPEC.md §6, Phase 2 — "AI-native
  * semantic layer", third bullet). Third and last of the three Phase 2
  * building blocks named in the spec (grounded snapshot →
  * semantic-snapshot.js, semantic action layer → semantic-act.js, state-

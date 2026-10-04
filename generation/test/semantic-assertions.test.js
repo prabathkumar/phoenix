@@ -44,12 +44,12 @@ test("turns each appeared element into a {label, resourceId} assertion", () => {
     changed: true,
     disappeared: [],
     appeared: [
-      { label: "Welcome", resourceId: "com.phoenix.demo:id/welcome_text" },
+      { label: "Welcome", resourceId: "com.testopsmobile.demo:id/welcome_text" },
       { label: "Settings" },
     ],
   };
   assert.deepStrictEqual(inferSemanticAssertions(diff), [
-    { label: "Welcome", resourceId: "com.phoenix.demo:id/welcome_text" },
+    { label: "Welcome", resourceId: "com.testopsmobile.demo:id/welcome_text" },
     { label: "Settings", resourceId: undefined },
   ]);
 });

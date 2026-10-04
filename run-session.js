@@ -1,8 +1,8 @@
 /**
  * Boot-once CLI entry point for the original env-var-configured
  * workflow (docs/SETUP.md, CI, live-view/test-client.js): starts one
- * recording session against whatever PHOENIX_STAGE0_APP_PATH /
- * PHOENIX_IOS_APP_PATH / PHOENIX_BROWSERSTACK_APP_URL already point at,
+ * recording session against whatever TESTOPS_MOBILE_STAGE0_APP_PATH /
+ * TESTOPS_MOBILE_IOS_APP_PATH / TESTOPS_MOBILE_BROWSERSTACK_APP_URL already point at,
  * then waits for a tester to connect and record.
  *
  * The actual session/live-view/recorder/generation wiring now lives in

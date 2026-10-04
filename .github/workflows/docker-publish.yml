@@ -13,7 +13,7 @@ name: Build and publish Docker image
 # first real tag push as the first real test of this workflow, and check
 # its Actions run before relying on the resulting image.
 #
-# Tagging scheme pushed to ghcr.io/<owner>/phoenix:
+# Tagging scheme pushed to ghcr.io/<owner>/testops-mobile:
 #   vX.Y.Z (git tag)  -> X.Y.Z, X.Y, X, latest, and the full vX.Y.Z ref
 #   any other push    -> this workflow does not run (see `on:` below)
 
@@ -61,7 +61,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/phoenix
+          images: ghcr.io/${{ github.repository_owner }}/testops-mobile
           tags: |
             type=semver,pattern={{version}},value=v${{ steps.version.outputs.version }}
             type=semver,pattern={{major}}.{{minor}},value=v${{ steps.version.outputs.version }}

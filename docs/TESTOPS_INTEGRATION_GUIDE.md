@@ -1,14 +1,14 @@
-# TestOps Integration Guide — Phoenix
+# TestOps Integration Guide — TestOps Mobile
 
 This is the step-by-step guide for the TestOps dev team (Hemant's team)
-to integrate Phoenix. It assumes no prior context beyond knowing
+to integrate TestOps Mobile. It assumes no prior context beyond knowing
 TestOps' own stack (Django 4.2.11 + DRF 3.14.0 backend, JS/React
 frontend). It covers three things, in order: (1) the data model / fields
 your UI needs to render — not how to design the screens, that's your
 team's call, just what data exists and what shape it's in; (2) how to
-point Phoenix's AI layer at frothAI instead of a local dev Ollama; (3)
+point TestOps Mobile's AI layer at frothAI instead of a local dev Ollama; (3)
 how to actually install this on a server. For *why* the architecture is
-built the way it is, see `docs/PHOENIX_SPEC.md` and the README.
+built the way it is, see `docs/TESTOPS_MOBILE_SPEC.md` and the README.
 
 **Status: the core engine (test-case execution, the semantic resolver,
 selector self-healing) is proven end to end on real BrowserStack
@@ -24,7 +24,7 @@ posture" at the end for what that does and doesn't mean for you.
 
 ## 0. Data model — the fields your UI needs
 
-Phoenix has no database and no user-facing API of its own for test cases
+TestOps Mobile has no database and no user-facing API of its own for test cases
 today — a test case is a JSON file, run by a Node script
 (`run-batch-executions.js` / `engine/test-case-runner.js`). This section
 is the exact shape of that data, so your team can design whatever
@@ -36,7 +36,7 @@ storage/UI you want around it without guessing at field names.
 {
   "name": "addons",
   "description": "free text, optional",
-  "requiredEnv": ["PHOENIX_BATCH_LOGIN_PHONE", "PHOENIX_BATCH_LOGIN_PASSWORD"],
+  "requiredEnv": ["TESTOPS_MOBILE_BATCH_LOGIN_PHONE", "TESTOPS_MOBILE_BATCH_LOGIN_PASSWORD"],
   "steps": [ /* Step objects, see below */ ]
 }
 ```
@@ -47,11 +47,11 @@ storage/UI you want around it without guessing at field names.
 |---|---|---|---|
 | `kind` | `"tap"` \| `"type"` \| `"scroll"` \| `"wait"` \| `"tapIfExists"` | yes | See table below for what each means and what else it needs. |
 | `instruction` | string | yes (all kinds except `wait`) | Plain language, e.g. `"tap the LOGIN button"`. This is what a tester types — never a selector. |
-| `text` | string | required when `kind` is `"type"` | Supports a literal value or a `"${ENV_VAR}"` placeholder (e.g. `"${PHOENIX_BATCH_LOGIN_PASSWORD}"`) resolved from the environment at run time — this is how credentials/test data stay out of the file itself. |
+| `text` | string | required when `kind` is `"type"` | Supports a literal value or a `"${ENV_VAR}"` placeholder (e.g. `"${TESTOPS_MOBILE_BATCH_LOGIN_PASSWORD}"`) resolved from the environment at run time — this is how credentials/test data stay out of the file itself. |
 | `optional` | boolean | no, default `false` | A failed optional step is skipped, not a run failure (a dialog that doesn't always appear). |
 | `durationMs` | number | only for `kind: "wait"` | Default 3000ms if omitted. |
 | `selector` | `{strategy, value}` | required when `kind` is `"tapIfExists"` | A hand-authored, evidence-backed exact locator (see `docs/STATUS.md`'s `tapIfExists` sections for why this exists — not every "maybe present" step can be trusted to an AI resolver). `strategy` is one of `"resource-id"`, `"accessibility-id"`, `"text"`, `"xpath"`. |
-| `resolvedSelector` | `{strategy, value}` | no — written BY Phoenix, not by a tester | A selector the engine proved correct on a prior real run; replayed directly (no AI call) until it misses. Your UI can show this read-only as "last known locator," but should never let a tester hand-edit it — it's machine-learned state, not authored content. |
+| `resolvedSelector` | `{strategy, value}` | no — written BY TestOps Mobile, not by a tester | A selector the engine proved correct on a prior real run; replayed directly (no AI call) until it misses. Your UI can show this read-only as "last known locator," but should never let a tester hand-edit it — it's machine-learned state, not authored content. |
 | `note` | string | no | Free-text engineering commentary (why a step exists/was changed) — present throughout `test-cases/*.json` in this repo for audit-trail purposes; optional for your own authored test cases. |
 
 ### B. Execution result (what a run produces)
@@ -124,26 +124,26 @@ badge should carry until that verification layer exists.
 
 ---
 
-## 1. Wiring Phoenix's AI layer to frothAI
+## 1. Wiring TestOps Mobile's AI layer to frothAI
 
 Confirmed: frothAI runs on Ollama, serving a Qwen 2.5 model (the "2.5
 7B" in frothAI's naming is the Qwen size/version, not a Gemma one).
-**This needs zero code changes** — every AI call in Phoenix (the
+**This needs zero code changes** — every AI call in TestOps Mobile (the
 semantic resolver used by every tap/type/tapIfExists-adjacent step, the
 live self-heal retry, and the optional script-naming/assertion-refinement
 pass) goes through one function, `generation/llm.js`'s `callOllamaJson`,
 configured entirely by two environment variables:
 
 ```bash
-PHOENIX_OLLAMA_HOST=https://<frothAI's Ollama endpoint>
-PHOENIX_OLLAMA_MODEL=qwen2.5:7b   # or qwen2.5-coder:7b -- confirm which of the two frothAI serves via `ollama list` on that host; both are the Qwen family FrothTestOps runs
-PHOENIX_LLM_TIMEOUT_MS=8000   # raise if frothAI's network hop is slower than a local instance -- this is a hard per-call timeout, not a suggestion
+TESTOPS_MOBILE_OLLAMA_HOST=https://<frothAI's Ollama endpoint>
+TESTOPS_MOBILE_OLLAMA_MODEL=qwen2.5:7b   # or qwen2.5-coder:7b -- confirm which of the two frothAI serves via `ollama list` on that host; both are the Qwen family FrothTestOps runs
+TESTOPS_MOBILE_LLM_TIMEOUT_MS=8000   # raise if frothAI's network hop is slower than a local instance -- this is a hard per-call timeout, not a suggestion
 ```
 
 Both are read by `generation/llm.js` at call time (not cached at
-startup), so the same Phoenix instance can be pointed at a different
+startup), so the same TestOps Mobile instance can be pointed at a different
 frothAI deployment per environment (dev/staging/prod) purely through
-config. `PHOENIX_USE_LLM=1` additionally gates the OPTIONAL
+config. `TESTOPS_MOBILE_USE_LLM=1` additionally gates the OPTIONAL
 script-naming/assertion-refinement pass used by guided recording (Act
 1) — leave it unset if you only care about the semantic/test-case layer
 (Act 2/3), which always calls the resolver regardless of that flag.
@@ -153,7 +153,7 @@ or slow frothAI call doesn't crash a step — `generation/llm.js` and
 `generation/semantic-act.js` are both built to fail soft (timeout/error
 → "unresolved," never a thrown exception) — but it does mean every tap
 step's latency now includes a network round trip to wherever frothAI
-runs. Keep it on the same network/region as whatever runs Phoenix if
+runs. Keep it on the same network/region as whatever runs TestOps Mobile if
 run-to-run latency matters for your batch sizes.
 
 ---
@@ -179,11 +179,11 @@ run-to-run latency matters for your batch sizes.
   interactively if a step-by-step is more useful than a flat reference.
 - **Network access the server needs, whichever path you choose:**
   outbound to frothAI's Ollama endpoint (always), and either a local
-  Appium server on the same network (`PHOENIX_APPIUM_HOST`/`PORT`) or
+  Appium server on the same network (`TESTOPS_MOBILE_APPIUM_HOST`/`PORT`) or
   outbound to `hub-cloud.browserstack.com` if running against
-  BrowserStack App Automate (`PHOENIX_APPIUM_PROVIDER=browserstack` +
-  the `PHOENIX_BROWSERSTACK_*` vars).
-- **Process management:** nothing Phoenix-specific is prescribed here —
+  BrowserStack App Automate (`TESTOPS_MOBILE_APPIUM_PROVIDER=browserstack` +
+  the `TESTOPS_MOBILE_BROWSERSTACK_*` vars).
+- **Process management:** nothing TestOps Mobile-specific is prescribed here —
   `node run-batch-executions.js` for the batch/test-case runner, `node
   frontend/server.js` for the upload/session API, under whatever
   supervisor (pm2, systemd, your own container orchestrator) your infra
@@ -193,10 +193,10 @@ run-to-run latency matters for your batch sizes.
 
 ## 1. What this API does, in one sentence
 
-Given a Phoenix session that's already recording (a tester opened
+Given a TestOps Mobile session that's already recording (a tester opened
 TestOps, uploaded an app, and the live view is up), `POST
 /api/semantic-action` lets your backend say *"tap the Login button"* in
-plain English and have Phoenix figure out which element that means, act
+plain English and have TestOps Mobile figure out which element that means, act
 on it, and report what changed — without your code ever touching a
 selector, an accessibility tree, or a screen coordinate.
 
@@ -207,10 +207,10 @@ upload/recording flow. It only acts on a session that's already active.
 
 ## 2. Turning it on
 
-The endpoint doesn't exist unless the Phoenix instance is started with:
+The endpoint doesn't exist unless the TestOps Mobile instance is started with:
 
 ```bash
-PHOENIX_ENABLE_SEMANTIC_API=1 node frontend/server.js
+TESTOPS_MOBILE_ENABLE_SEMANTIC_API=1 node frontend/server.js
 ```
 
 Without that env var, `POST /api/semantic-action` 404s like any
@@ -248,7 +248,7 @@ Example:
 
 ## 4. The response
 
-Phoenix's own status code tells you which of four outcomes happened —
+TestOps Mobile's own status code tells you which of four outcomes happened —
 don't collapse them into one shape on your side, they mean different
 things:
 
@@ -260,7 +260,7 @@ things:
 | `400` | Malformed request (missing/invalid `instruction`, bad `kind`, oversized body) | `{"error": "..."}` |
 | `500` | Unexpected server-side error (should be rare — `executeSemanticAction` is designed to never throw) | `{"error": "Unexpected error: ..."}` |
 
-`422` is a **normal, expected outcome** — Phoenix's semantic layer has a
+`422` is a **normal, expected outcome** — TestOps Mobile's semantic layer has a
 hard "refuse rather than guess" contract (see `generation/semantic-act.js`).
 Treat it as "couldn't do that," not as a bug to retry blindly.
 
@@ -273,11 +273,11 @@ with no new shape to handle.
 
 ## 5. Wiring it in — React frontend
 
-Plain `fetch`, nothing Phoenix-specific needed:
+Plain `fetch`, nothing TestOps Mobile-specific needed:
 
 ```js
-async function runSemanticAction(phoenixBaseUrl, instruction, opts = {}) {
-  const response = await fetch(`${phoenixBaseUrl}/api/semantic-action`, {
+async function runSemanticAction(testopsMobileBaseUrl, instruction, opts = {}) {
+  const response = await fetch(`${testopsMobileBaseUrl}/api/semantic-action`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ instruction, ...opts }),
@@ -299,27 +299,27 @@ starting points, not a package):
   same as a 200 body).
 - **`docs/examples/testops_drf_view_example.py`** — a DRF 3.14
   `APIView` (`SemanticActionView`) built on top of that client:
-  validates the request, reads `PHOENIX_BASE_URL` from Django settings,
-  and maps Phoenix's 200/422/409 onto the equivalent DRF response codes.
+  validates the request, reads `TESTOPS_MOBILE_BASE_URL` from Django settings,
+  and maps TestOps Mobile's 200/422/409 onto the equivalent DRF response codes.
 
 Minimum steps to adapt them:
 
 1. Copy both files into the Django app that should own this (e.g.
-   `testops/integrations/phoenix/`).
+   `testops/integrations/testops-mobile/`).
 2. Add to Django settings:
    ```python
-   PHOENIX_BASE_URL = env("PHOENIX_BASE_URL", default="http://localhost:8091")
+   TESTOPS_MOBILE_BASE_URL = env("TESTOPS_MOBILE_BASE_URL", default="http://localhost:8091")
    ```
 3. Wire the URL:
    ```python
-   path("phoenix/semantic-action/", SemanticActionView.as_view())
+   path("testops-mobile/semantic-action/", SemanticActionView.as_view())
    ```
 4. Swap `SemanticActionRequestSerializer` (a plain validation helper in
    the example) for a real `rest_framework.serializers.Serializer`
    subclass if that's TestOps' house convention — the validation rules
    are already written, just re-expressed.
-5. Point `PHOENIX_BASE_URL` at wherever the Phoenix instance with
-   `PHOENIX_ENABLE_SEMANTIC_API=1` is actually running (local dev,
+5. Point `TESTOPS_MOBILE_BASE_URL` at wherever the TestOps Mobile instance with
+   `TESTOPS_MOBILE_ENABLE_SEMANTIC_API=1` is actually running (local dev,
    staging, or the eventual device-host VM — see README's "still open"
    notes on the Android VM / planned AWS iOS VM).
 
@@ -331,17 +331,17 @@ Minimum steps to adapt them:
   recording session — surface it as "start a recording session first,"
   not as a transient failure.
 - **422 is not an exception on the Python client** — `SemanticActionError`
-  is only raised for actual transport failures (Phoenix unreachable, a
+  is only raised for actual transport failures (TestOps Mobile unreachable, a
   timeout, an unparseable response). A `{"success": false}` result is
   returned normally; check `result["success"]` like any other field.
-- **Timeouts should stay generous.** Phoenix's own LLM call has an
-  internal timeout (`PHOENIX_LLM_TIMEOUT_MS`, default 8s) plus real
+- **Timeouts should stay generous.** TestOps Mobile's own LLM call has an
+  internal timeout (`TESTOPS_MOBILE_LLM_TIMEOUT_MS`, default 8s) plus real
   device action time on top. The example client defaults to 15s —
   don't tighten this without checking real device latency first.
 - **This endpoint is single-session.** It acts on whichever session
   `engine/session-manager.js` considers active — there's no session ID
   in the request. If TestOps' model has multiple concurrent testers,
-  this only works today for one active Phoenix instance per tester (or
+  this only works today for one active TestOps Mobile instance per tester (or
   one at a time); a multi-session device pool is a known open item
   (README: "One session at a time... not started"), not something this
   endpoint already handles.
@@ -357,7 +357,7 @@ hardware yet** — only against faked WebDriver sessions in unit tests
 `engine/test/semantic-act-executor.test.js`). Recommended sequence:
 
 1. TestOps team builds the integration now using this guide, against a
-   **local** Phoenix instance with `PHOENIX_ENABLE_SEMANTIC_API=1` and a
+   **local** TestOps Mobile instance with `TESTOPS_MOBILE_ENABLE_SEMANTIC_API=1` and a
    local/emulator session — proves the plumbing (auth, request shaping,
    response handling) without needing real-device proof yet.
 2. In parallel, `run-batch-executions.js` (see repo root) gets run

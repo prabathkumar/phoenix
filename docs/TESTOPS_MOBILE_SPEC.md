@@ -1,19 +1,19 @@
-# Project Phoenix — TestOps Mobile
+# Project TestOps Mobile — TestOps Mobile
 
-**Codename:** Phoenix
+**Codename:** TestOps Mobile
 **Product name (external):** TestOps Mobile
 **Owner:** Prabath / FrothTestOps
 **Status:** Stage 0 — not yet started
 
 ---
 
-## 1. What Phoenix is
+## 1. What TestOps Mobile is
 
 A proprietary mobile test-recording and generation engine for TestOps. Testers never touch Appium Inspector, never install anything locally, never see BrowserStack directly. They open TestOps, pick an app, record a flow once inside the product, and get a working automated script out the other end.
 
-Underneath, Phoenix is built on a fork of Appium's core engine, extended with an AI-native layer that Appium doesn't have. Appium is Apache 2.0 licensed — forking, modifying, and closing the source of changes is legally clean.
+Underneath, TestOps Mobile is built on a fork of Appium's core engine, extended with an AI-native layer that Appium doesn't have. Appium is Apache 2.0 licensed — forking, modifying, and closing the source of changes is legally clean.
 
-**What Phoenix is not, yet:** a fully autonomous "upload the app and walk away" system. That's the eventual direction (see Section 6), not the v1 target. v1 is guided recording — a human still walks the flow once, same as today, but entirely inside TestOps instead of across three separate tools.
+**What TestOps Mobile is not, yet:** a fully autonomous "upload the app and walk away" system. That's the eventual direction (see Section 6), not the v1 target. v1 is guided recording — a human still walks the flow once, same as today, but entirely inside TestOps instead of across three separate tools.
 
 ---
 
@@ -25,7 +25,7 @@ An autonomous agent has to know when it's stuck and stop, rather than guess and 
 
 ## 3. Current state vs. target state
 
-| Step | Today | Phoenix v1 |
+| Step | Today | TestOps Mobile v1 |
 |---|---|---|
 | App upload | Manual, to BrowserStack | Already in TestOps |
 | Device session | Manual, via BrowserStack dashboard | Already in TestOps |
@@ -83,7 +83,7 @@ This split alone removes most of the friction testers feel today waiting on clou
 
 **Real-hardware proof, update:** `executeSemanticAction()`'s resolution path has now been run against a real Android app (`run-batch-executions.js`'s `semantic` mode, against a live emulator) and, as of the latest fixes, resolves and acts correctly on every run. Getting there found and fixed three genuine bugs no unit test had caught, because none of them were about the LLM picking the wrong ref — they were about the snapshot/selector layer misrepresenting what could safely be acted on: (1) a Compose-rendered input with no resource-id/label of its own was invisible to the snapshot entirely (`semantic-snapshot.js` now includes blank input-role elements with a `nearbyLabel`/`xpath` fallback); (2) two different fields on the same screen shared one resource-id, so a selector built from either one was genuinely ambiguous (`ambiguousResourceId` flag + xpath fallback); (3) a tap resolved to a non-clickable label whose click silently no-ops, when a clickable ancestor one level up actually handles it (`clickableAncestorXPath` + kind-aware redirect in `toSelector()`). See `docs/REAL_DEVICE_BATCH_TESTING.md` for the runbook and the git history on `generation/semantic-snapshot.js`/`generation/semantic-act.js` for the specifics.
 
-**`run-semantic-action.js` — now proven on real hardware.** A real run against `my.yes.yes4g` on BrowserStack (`node run-semantic-action.js "tap the LOGIN button"`) correctly resolved and tapped the real LOGIN button on the login screen, and correctly reported the resulting screen change. The one thing that first run surfaced: the CLI read the screen immediately on session start, while the app was still on its splash screen — correctly refused to guess rather than act on it, but is a gap `run-batch-executions.js` already had a fix for (a startup delay before the first read) that this standalone CLI hadn't gotten yet. Fixed by adding the same `PHOENIX_STARTUP_DELAY_MS`-configurable wait here; the very next run (same command, same account) resolved and tapped correctly. **`POST /api/semantic-action` — also now proven on real hardware.** With `PHOENIX_ENABLE_SEMANTIC_API=1` set and a real upload-flow recording session active (a dealer login screen, `com.ytlcomms.ymca`), `curl -X POST http://localhost:8091/api/semantic-action -d '{"instruction": "tap the LOGIN button", "kind": "tap"}'` correctly resolved to the real `btSignIn` button, tapped it, and correctly reported the result (a validation toast, "Please enter your User ID.", since the username field was empty — exactly right). Both Phase 2 entry points named as still-open in earlier revisions of this doc are now closed; all of Phase 2 has been proven on real hardware.
+**`run-semantic-action.js` — now proven on real hardware.** A real run against `my.yes.yes4g` on BrowserStack (`node run-semantic-action.js "tap the LOGIN button"`) correctly resolved and tapped the real LOGIN button on the login screen, and correctly reported the resulting screen change. The one thing that first run surfaced: the CLI read the screen immediately on session start, while the app was still on its splash screen — correctly refused to guess rather than act on it, but is a gap `run-batch-executions.js` already had a fix for (a startup delay before the first read) that this standalone CLI hadn't gotten yet. Fixed by adding the same `TESTOPS_MOBILE_STARTUP_DELAY_MS`-configurable wait here; the very next run (same command, same account) resolved and tapped correctly. **`POST /api/semantic-action` — also now proven on real hardware.** With `TESTOPS_MOBILE_ENABLE_SEMANTIC_API=1` set and a real upload-flow recording session active (a dealer login screen, `com.ytlcomms.ymca`), `curl -X POST http://localhost:8091/api/semantic-action -d '{"instruction": "tap the LOGIN button", "kind": "tap"}'` correctly resolved to the real `btSignIn` button, tapped it, and correctly reported the result (a validation toast, "Please enter your User ID.", since the username field was empty — exactly right). Both Phase 2 entry points named as still-open in earlier revisions of this doc are now closed; all of Phase 2 has been proven on real hardware.
 
 **Auto-heal (not in the original Phase 2 list — added because it's the natural fusion of Act 1 and Act 2):** `engine/auto-heal.js`'s `resolveElementWithHealing()` is where the guided path and the semantic layer actually meet. A guided script's recorded selector (a resource-id, an accessibility-id) is the normal, fast, deterministic path — unchanged. Healing triggers on two distinct failure modes, both explicitly requested: (1) the selector **stops resolving at all** (a build renamed an id), and (2) the selector **still resolves, but to the wrong element** because the structural path shifted (a reordered layout means the same xpath, or even the same reused resource-id, now points at a different control) — caught via an optional `expectedLabel` check: the found element's own visible text is compared against the label captured at recording time, and a mismatch is treated exactly like a miss. Either way, instead of the test just failing, `resolveElementWithHealing()` falls back to resolving the same human-readable description against the CURRENT screen via `resolveSemanticAction()`, and reports plainly whether healing was needed, whether it was a miss or a mismatch (`mismatchReason`), and what it found. **Opt-in, not wired into generated scripts** — `capture/recorder.js`, `generation/pipeline.js`, and every guided-path test are untouched; nothing about what ships Friday changes unless a script is deliberately written to call this instead of a plain `driver.$(selector)`. Unit-tested against fakes; not run against real hardware, same caveat as everything else here.
 
@@ -104,10 +104,10 @@ Screenshot fusion is now built: `buildFusedSnapshot()` (`generation/semantic-sna
 
 **Note on TestOps' own stack (confirmed: Django 4.2.11 + DRF 3.14.0
 backend, JS/React frontend):**
-Phoenix itself stays Node.js — that's not up for revisiting, it's what
+TestOps Mobile itself stays Node.js — that's not up for revisiting, it's what
 the Appium fork and the whole engine/capture/generation pipeline are
 built on. The integration surface is `POST /api/semantic-action`
-(§6, opt-in via `PHOENIX_ENABLE_SEMANTIC_API=1`), which is plain JSON
+(§6, opt-in via `TESTOPS_MOBILE_ENABLE_SEMANTIC_API=1`), which is plain JSON
 over HTTP — nothing Node-specific to bridge. TestOps' React frontend
 can call it with an ordinary `fetch()`. For the Django/DRF side,
 `docs/examples/` has two starting points:
@@ -115,14 +115,14 @@ can call it with an ordinary `fetch()`. For the Django/DRF side,
   only, no `requests` dependency assumed) for the request/response shape.
 - `testops_drf_view_example.py` — a DRF 3.14 `APIView` built on top of
   that client, matching TestOps' actual framework version, with request
-  validation, `PHOENIX_BASE_URL` read from Django settings, and
-  Phoenix's 200/422/409 responses passed through as the equivalent DRF
+  validation, `TESTOPS_MOBILE_BASE_URL` read from Django settings, and
+  TestOps Mobile's 200/422/409 responses passed through as the equivalent DRF
   status codes rather than collapsed into one shape.
 
 Neither file is meant as a drop-in final version — both are explicitly
 commented as starting points to adapt into TestOps' real app structure
 (its URLconf, permission classes, serializer conventions). No new
-service or language needs to be introduced on Phoenix's side for either
+service or language needs to be introduced on TestOps Mobile's side for either
 half of TestOps to reach it.
 
 ---

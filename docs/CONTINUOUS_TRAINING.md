@@ -13,12 +13,12 @@ actually allows, and the realistic pipeline given that.
 Once a training cycle (periodic fine-tune, or just the prompt-level
 feedback in §2(b) below) has consumed a batch of logged executions, the
 log itself doesn't need to be kept around indefinitely. `logExecution()`
-automatically prunes records older than `PHOENIX_TRAINING_LOG_RETENTION_DAYS`
+automatically prunes records older than `TESTOPS_MOBILE_TRAINING_LOG_RETENTION_DAYS`
 (default **15 days**) every time it's called — cheaply, via a sentinel
 file next to the log that tracks when cleanup last ran, so the real cost
 (rewriting the file) only happens roughly once per retention window, not
 on every single execution. No separate cron job, no manual "go delete the
-old logs" step — as long as Phoenix is being run at all, the log stays
+old logs" step — as long as TestOps Mobile is being run at all, the log stays
 bounded on its own. `pruneOldExecutions()` is also exported directly for
 an on-demand or externally-scheduled cleanup if a deployment prefers that
 instead.
@@ -73,7 +73,7 @@ corrections have piled up) on a machine that actually has GPU access →
 automatically replay the full regression set (every bug this repo has
 ever closed — `test-cases/addons.json`'s 18, `login.json`'s, the loop's
 nine) against the candidate model → only promote it to the model tag
-`PHOENIX_OLLAMA_MODEL` points at if the regression set still passes.
+`TESTOPS_MOBILE_OLLAMA_MODEL` points at if the regression set still passes.
 That gate is itself automatable (a pass/fail script, not a human), so
 "nothing manual" still holds for this path — it's just not *instant*.
 

@@ -4,17 +4,17 @@
  *
  * BrowserStack has no concept of "a file already on this machine" or
  * "a bundle id already installed on a device" the way a local Appium
- * server does — remote-provider.js's PHOENIX_BROWSERSTACK_APP_URL must
+ * server does — remote-provider.js's TESTOPS_MOBILE_BROWSERSTACK_APP_URL must
  * be a `bs://<id>` reference to an app BrowserStack already has, which
  * only exists after it's been uploaded through their REST API. This
  * script does that upload and prints the resulting bs:// URL to set as
- * PHOENIX_BROWSERSTACK_APP_URL.
+ * TESTOPS_MOBILE_BROWSERSTACK_APP_URL.
  *
  * Upload once per app build, not once per recording session — a bs://
  * id stays valid across many sessions until you upload a newer build.
  *
  * Usage:
- *   PHOENIX_BROWSERSTACK_USER=... PHOENIX_BROWSERSTACK_KEY=... \
+ *   TESTOPS_MOBILE_BROWSERSTACK_USER=... TESTOPS_MOBILE_BROWSERSTACK_KEY=... \
  *     node engine/browserstack-upload.js /path/to/app.ipa
  *
  * API reference: https://www.browserstack.com/docs/app-automate/api-reference/appium/apps
@@ -26,12 +26,12 @@ const path = require("path");
 const UPLOAD_URL = "https://api-cloud.browserstack.com/app-automate/upload";
 
 async function uploadApp(filePath, { user, key } = {}) {
-  const username = user || process.env.PHOENIX_BROWSERSTACK_USER;
-  const accessKey = key || process.env.PHOENIX_BROWSERSTACK_KEY;
+  const username = user || process.env.TESTOPS_MOBILE_BROWSERSTACK_USER;
+  const accessKey = key || process.env.TESTOPS_MOBILE_BROWSERSTACK_KEY;
 
   if (!username || !accessKey) {
     throw new Error(
-      "Set PHOENIX_BROWSERSTACK_USER and PHOENIX_BROWSERSTACK_KEY (an Automate access key " +
+      "Set TESTOPS_MOBILE_BROWSERSTACK_USER and TESTOPS_MOBILE_BROWSERSTACK_KEY (an Automate access key " +
         "from your BrowserStack account settings) before uploading."
     );
   }
@@ -73,7 +73,7 @@ async function main() {
   try {
     const appUrl = await uploadApp(filePath);
     console.log(appUrl);
-    console.error(`\nUploaded. Set this before starting a session:\n  export PHOENIX_BROWSERSTACK_APP_URL=${appUrl}`);
+    console.error(`\nUploaded. Set this before starting a session:\n  export TESTOPS_MOBILE_BROWSERSTACK_APP_URL=${appUrl}`);
   } catch (err) {
     console.error(`[browserstack-upload] ${err.message}`);
     process.exitCode = 1;

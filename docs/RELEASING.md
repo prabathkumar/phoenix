@@ -35,14 +35,14 @@ tag instead of a commit hash.
    `git tag -a v1.0.0 -m "v1.0.0" && git push origin v1.0.0`.
 2. Pushing a tag matching `v[0-9]+.[0-9]+.[0-9]+` triggers
    `.github/workflows/docker-publish.yml`, which builds the image from
-   that commit and pushes it to `ghcr.io/<owner>/phoenix` tagged:
+   that commit and pushes it to `ghcr.io/<owner>/testops-mobile` tagged:
    - the exact version (`1.0.0`)
    - the minor line (`1.0`)
    - the major line (`1`)
    - `latest`
 3. The same version string is baked into the image itself via the
    Dockerfile's `ARG VERSION` / `LABEL org.opencontainers.image.version`,
-   so `docker inspect ghcr.io/<owner>/phoenix:1.0.0` (or any running
+   so `docker inspect ghcr.io/<owner>/testops-mobile:1.0.0` (or any running
    container from it) reports exactly which release it is, independent of
    which tag someone pulled it by.
 4. A plain local `docker build .` with no `--build-arg VERSION=...` still
@@ -50,7 +50,7 @@ tag instead of a commit hash.
    non-release builds changed.
 5. `scripts/build-testops-mobile.sh` (the no-registry file-handoff path
    from `docs/TESTOPS_MOBILE_DOCKER.md`) is unaffected and still exists
-   for a team with no access to `ghcr.io/<owner>/phoenix` at all — the two
+   for a team with no access to `ghcr.io/<owner>/testops-mobile` at all — the two
    publish paths are independent, not a replacement of one by the other.
 
 ## Why GitHub Container Registry, and why this doesn't need a new secret

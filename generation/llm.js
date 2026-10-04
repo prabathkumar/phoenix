@@ -1,5 +1,5 @@
 /**
- * LLM refinement layer (docs/PHOENIX_SPEC.md §4.3's "stage 2 follow-up"
+ * LLM refinement layer (docs/TESTOPS_MOBILE_SPEC.md §4.3's "stage 2 follow-up"
  * TODOs in pipeline.js) — an optional, best-effort pass over the
  * rule-based output of inferTestName()/inferAssertions(), backed by a
  * local Ollama instance rather than a hosted API (Prabath runs Llama
@@ -19,9 +19,9 @@
  * value) do not change when this is wired in — see its call site.
  */
 
-const OLLAMA_HOST = process.env.PHOENIX_OLLAMA_HOST || "http://localhost:11434";
-const OLLAMA_MODEL = process.env.PHOENIX_OLLAMA_MODEL || "llama3";
-const TIMEOUT_MS = Number(process.env.PHOENIX_LLM_TIMEOUT_MS) || 8000;
+const OLLAMA_HOST = process.env.TESTOPS_MOBILE_OLLAMA_HOST || "http://localhost:11434";
+const OLLAMA_MODEL = process.env.TESTOPS_MOBILE_OLLAMA_MODEL || "llama3";
+const TIMEOUT_MS = Number(process.env.TESTOPS_MOBILE_LLM_TIMEOUT_MS) || 8000;
 
 /**
  * Calls Ollama's /api/generate with a prompt that asks for a single
@@ -36,12 +36,12 @@ const TIMEOUT_MS = Number(process.env.PHOENIX_LLM_TIMEOUT_MS) || 8000;
  *   data: URI prefix), passed through to Ollama's `images` field for a
  *   multimodal-capable model (e.g. llava, or a vision-tuned llama3.2
  *   build) — see generation/semantic-act.js's fused (text + screenshot)
- *   resolution, docs/PHOENIX_SPEC.md §6's "grounded screen snapshot:
+ *   resolution, docs/TESTOPS_MOBILE_SPEC.md §6's "grounded screen snapshot:
  *   merge accessibility tree + screenshot" bullet. Omitted entirely
  *   when not given, so a plain text-only model (the existing default)
  *   is unaffected either way — Ollama simply never sees an `images`
  *   key it wasn't sent. Passing images to a model that can't use them
- *   is between the caller and PHOENIX_OLLAMA_MODEL's configuration;
+ *   is between the caller and TESTOPS_MOBILE_OLLAMA_MODEL's configuration;
  *   this function doesn't validate model capability, it only sends
  *   what it was given.
  */

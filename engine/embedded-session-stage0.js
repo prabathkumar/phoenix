@@ -10,7 +10,7 @@
  * steps as proof that the embedded path is a real, working replacement,
  * not just an isolated code path.
  *
- * Run: PHOENIX_STAGE0_APP_PATH=/path/to/app.apk node engine/embedded-session-stage0.js
+ * Run: TESTOPS_MOBILE_STAGE0_APP_PATH=/path/to/app.apk node engine/embedded-session-stage0.js
  */
 
 const { startEmbeddedSession } = require("./embedded-session");

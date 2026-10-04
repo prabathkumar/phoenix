@@ -1,4 +1,4 @@
-# TestOps Mobile (Phoenix) -- reference compose file.
+# TestOps Mobile (TestOps Mobile) -- reference compose file.
 #
 # This is a convenience wrapper around `docker build`/`docker run`, not a
 # requirement -- the user explicitly left process management/deployment
@@ -13,8 +13,8 @@
 #
 # This does NOT start an Appium server, an emulator, or a real device --
 # see the Dockerfile's header comment and docs/TESTOPS_MOBILE_DOCKER.md for
-# why, and point PHOENIX_APPIUM_HOST/PORT (or the BrowserStack
-# PHOENIX_APPIUM_PROVIDER=browserstack vars) at wherever that already runs.
+# why, and point TESTOPS_MOBILE_APPIUM_HOST/PORT (or the BrowserStack
+# TESTOPS_MOBILE_APPIUM_PROVIDER=browserstack vars) at wherever that already runs.
 
 services:
   testops-mobile:

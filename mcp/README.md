@@ -1,15 +1,15 @@
-# Phoenix MCP connector
+# TestOps Mobile MCP connector
 
-A standard MCP server (stdio transport) exposing Phoenix's own data to
+A standard MCP server (stdio transport) exposing TestOps Mobile's own data to
 an external MCP client -- built for the user's TestOps MCP (ahead of
 its own Claude-marketplace integration) to pull from, but usable by
 any MCP client (Claude Code, Claude Desktop, etc).
 
-This does **not** touch or require Phoenix's internal Ollama resolver
+This does **not** touch or require TestOps Mobile's internal Ollama resolver
 to support tool-calling -- that's a separate, internal direction
 (`generation/llm.js` calling Ollama's plain `/api/generate`). This
 server is the other, external-facing direction: a client calls IN to
-Phoenix, not Phoenix calling out to a model via MCP.
+TestOps Mobile, not TestOps Mobile calling out to a model via MCP.
 
 ## Setup
 
@@ -31,11 +31,11 @@ not interactively in a terminal. Example client config entry:
 ```json
 {
   "mcpServers": {
-    "phoenix": {
+    "testops-mobile": {
       "command": "node",
-      "args": ["/absolute/path/to/phoenix/mcp/server.js"],
+      "args": ["/absolute/path/to/testops-mobile/mcp/server.js"],
       "env": {
-        "PHOENIX_MCP_ALLOW_RUN": "0"
+        "TESTOPS_MOBILE_MCP_ALLOW_RUN": "0"
       }
     }
   }
@@ -50,7 +50,7 @@ not interactively in a terminal. Example client config entry:
 - `get_test_case` -- one test case's full parsed steps
 - `get_recent_executions` -- recent training-log records (never includes typed secret values)
 - `run_test_case` -- **spends a real device session**. Disabled unless the server
-  process has `PHOENIX_MCP_ALLOW_RUN=1` set, and every call must also pass
+  process has `TESTOPS_MOBILE_MCP_ALLOW_RUN=1` set, and every call must also pass
   `confirm: true`. Never accepts a credential argument -- those must already be
   configured in the server's own environment (its `.env`), exactly like running
   `run-batch-executions.js` directly.

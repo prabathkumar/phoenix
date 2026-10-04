@@ -18,8 +18,8 @@ const path = require("path");
 // Point at an isolated temp file BEFORE requiring the module under
 // test, so this never touches a real training-data/ directory
 // (gitignored, but still shouldn't be written by a test run).
-const TMP_LOG_PATH = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "phoenix-exec-log-")), "executions.jsonl");
-process.env.PHOENIX_TRAINING_LOG_PATH = TMP_LOG_PATH;
+const TMP_LOG_PATH = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "testops-mobile-exec-log-")), "executions.jsonl");
+process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH = TMP_LOG_PATH;
 
 const { logExecution, buildExecutionRecord, logPath, getDeadSelectors, getExpectFailedSelectors, getPastSuccesses, pruneOldExecutions, retentionDays } = require("../execution-log");
 
@@ -43,7 +43,7 @@ function readLoggedLines() {
     .map((line) => JSON.parse(line));
 }
 
-test("logPath() honors PHOENIX_TRAINING_LOG_PATH", () => {
+test("logPath() honors TESTOPS_MOBILE_TRAINING_LOG_PATH", () => {
   assert.strictEqual(logPath(), TMP_LOG_PATH);
 });
 
@@ -58,9 +58,9 @@ test("logExecution appends a JSON line and returns true on success", () => {
 });
 
 test("logExecution creates the parent directory automatically (no manual setup step)", () => {
-  const nestedPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "phoenix-exec-log-nested-")), "a", "b", "c", "executions.jsonl");
-  const original = process.env.PHOENIX_TRAINING_LOG_PATH;
-  process.env.PHOENIX_TRAINING_LOG_PATH = nestedPath;
+  const nestedPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "testops-mobile-exec-log-nested-")), "a", "b", "c", "executions.jsonl");
+  const original = process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH;
+  process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH = nestedPath;
   try {
     // Re-require isn't needed -- logPath() reads the env var fresh
     // every call, so the module doesn't need reloading.
@@ -68,18 +68,18 @@ test("logExecution creates the parent directory automatically (no manual setup s
     assert.strictEqual(ok, true);
     assert.ok(fs.existsSync(nestedPath));
   } finally {
-    process.env.PHOENIX_TRAINING_LOG_PATH = original;
+    process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH = original;
   }
 });
 
 test("logExecution never throws, even when the path is unwritable", () => {
-  const original = process.env.PHOENIX_TRAINING_LOG_PATH;
+  const original = process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH;
   // A path through a file (not a directory) as a path segment is not
   // writable/mkdir-able -- a reliable way to force a real fs error
   // without mocking fs internals.
-  const blockerFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "phoenix-exec-log-blocked-")), "not-a-directory");
+  const blockerFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "testops-mobile-exec-log-blocked-")), "not-a-directory");
   fs.writeFileSync(blockerFile, "i am a file, not a directory");
-  process.env.PHOENIX_TRAINING_LOG_PATH = path.join(blockerFile, "executions.jsonl");
+  process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH = path.join(blockerFile, "executions.jsonl");
   try {
     let ok;
     assert.doesNotThrow(() => {
@@ -87,7 +87,7 @@ test("logExecution never throws, even when the path is unwritable", () => {
     });
     assert.strictEqual(ok, false);
   } finally {
-    process.env.PHOENIX_TRAINING_LOG_PATH = original;
+    process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH = original;
   }
 });
 
@@ -234,13 +234,13 @@ test("getDeadSelectors dedups repeated dead selectors and respects limit, most r
 });
 
 test("getDeadSelectors returns [] when there's no log file yet, and tolerates a corrupt line", () => {
-  const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), "phoenix-exec-log-empty-"));
-  const originalPath = process.env.PHOENIX_TRAINING_LOG_PATH;
-  process.env.PHOENIX_TRAINING_LOG_PATH = path.join(emptyDir, "executions.jsonl");
+  const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), "testops-mobile-exec-log-empty-"));
+  const originalPath = process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH;
+  process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH = path.join(emptyDir, "executions.jsonl");
   try {
     assert.deepStrictEqual(getDeadSelectors("tap anything"), []);
 
-    fs.writeFileSync(process.env.PHOENIX_TRAINING_LOG_PATH, "not valid json\n" + JSON.stringify({
+    fs.writeFileSync(process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH, "not valid json\n" + JSON.stringify({
       instruction: "tap anything",
       kind: "tap",
       success: true,
@@ -249,7 +249,7 @@ test("getDeadSelectors returns [] when there's no log file yet, and tolerates a 
     }) + "\n");
     assert.deepStrictEqual(getDeadSelectors("tap anything"), [{ strategy: "resource-id", value: "survives_the_corrupt_line" }]);
   } finally {
-    process.env.PHOENIX_TRAINING_LOG_PATH = originalPath;
+    process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH = originalPath;
   }
 });
 
@@ -349,13 +349,13 @@ test("getExpectFailedSelectors dedups repeated selectors and respects limit, mos
 });
 
 test("getExpectFailedSelectors returns [] when there's no log file yet, and tolerates a corrupt line", () => {
-  const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), "phoenix-exec-log-empty-2-"));
-  const originalPath = process.env.PHOENIX_TRAINING_LOG_PATH;
-  process.env.PHOENIX_TRAINING_LOG_PATH = path.join(emptyDir, "executions.jsonl");
+  const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), "testops-mobile-exec-log-empty-2-"));
+  const originalPath = process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH;
+  process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH = path.join(emptyDir, "executions.jsonl");
   try {
     assert.deepStrictEqual(getExpectFailedSelectors("tap anything"), []);
 
-    fs.writeFileSync(process.env.PHOENIX_TRAINING_LOG_PATH, "not valid json\n" + JSON.stringify({
+    fs.writeFileSync(process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH, "not valid json\n" + JSON.stringify({
       instruction: "tap anything",
       kind: "tap",
       success: true,
@@ -365,33 +365,33 @@ test("getExpectFailedSelectors returns [] when there's no log file yet, and tole
     }) + "\n");
     assert.deepStrictEqual(getExpectFailedSelectors("tap anything"), [{ strategy: "resource-id", value: "survives_the_corrupt_line" }]);
   } finally {
-    process.env.PHOENIX_TRAINING_LOG_PATH = originalPath;
+    process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH = originalPath;
   }
 });
 
-test("retentionDays() defaults to 15 and honors PHOENIX_TRAINING_LOG_RETENTION_DAYS", () => {
-  const original = process.env.PHOENIX_TRAINING_LOG_RETENTION_DAYS;
+test("retentionDays() defaults to 15 and honors TESTOPS_MOBILE_TRAINING_LOG_RETENTION_DAYS", () => {
+  const original = process.env.TESTOPS_MOBILE_TRAINING_LOG_RETENTION_DAYS;
   try {
-    delete process.env.PHOENIX_TRAINING_LOG_RETENTION_DAYS;
+    delete process.env.TESTOPS_MOBILE_TRAINING_LOG_RETENTION_DAYS;
     assert.strictEqual(retentionDays(), 15);
-    process.env.PHOENIX_TRAINING_LOG_RETENTION_DAYS = "30";
+    process.env.TESTOPS_MOBILE_TRAINING_LOG_RETENTION_DAYS = "30";
     assert.strictEqual(retentionDays(), 30);
     // Garbage/non-positive values fall back to the default rather than
     // silently disabling cleanup or pruning everything.
-    process.env.PHOENIX_TRAINING_LOG_RETENTION_DAYS = "not-a-number";
+    process.env.TESTOPS_MOBILE_TRAINING_LOG_RETENTION_DAYS = "not-a-number";
     assert.strictEqual(retentionDays(), 15);
-    process.env.PHOENIX_TRAINING_LOG_RETENTION_DAYS = "-5";
+    process.env.TESTOPS_MOBILE_TRAINING_LOG_RETENTION_DAYS = "-5";
     assert.strictEqual(retentionDays(), 15);
   } finally {
-    if (original === undefined) delete process.env.PHOENIX_TRAINING_LOG_RETENTION_DAYS;
-    else process.env.PHOENIX_TRAINING_LOG_RETENTION_DAYS = original;
+    if (original === undefined) delete process.env.TESTOPS_MOBILE_TRAINING_LOG_RETENTION_DAYS;
+    else process.env.TESTOPS_MOBILE_TRAINING_LOG_RETENTION_DAYS = original;
   }
 });
 
 test("pruneOldExecutions removes records past the retention window and keeps recent ones", () => {
-  const prunePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "phoenix-exec-log-prune-")), "executions.jsonl");
-  const original = process.env.PHOENIX_TRAINING_LOG_PATH;
-  process.env.PHOENIX_TRAINING_LOG_PATH = prunePath;
+  const prunePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "testops-mobile-exec-log-prune-")), "executions.jsonl");
+  const original = process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH;
+  process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH = prunePath;
   try {
     const now = Date.now();
     const old = new Date(now - 20 * 24 * 60 * 60 * 1000).toISOString(); // 20 days ago
@@ -413,43 +413,43 @@ test("pruneOldExecutions removes records past the retention window and keeps rec
     assert.strictEqual(remaining.length, 1);
     assert.strictEqual(remaining[0].instruction, "recent one");
   } finally {
-    process.env.PHOENIX_TRAINING_LOG_PATH = original;
+    process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH = original;
   }
 });
 
 test("pruneOldExecutions keeps a record with no parseable loggedAt rather than guessing it's stale", () => {
-  const prunePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "phoenix-exec-log-prune-noage-")), "executions.jsonl");
-  const original = process.env.PHOENIX_TRAINING_LOG_PATH;
-  process.env.PHOENIX_TRAINING_LOG_PATH = prunePath;
+  const prunePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "testops-mobile-exec-log-prune-noage-")), "executions.jsonl");
+  const original = process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH;
+  process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH = prunePath;
   try {
     fs.mkdirSync(path.dirname(prunePath), { recursive: true });
     fs.writeFileSync(prunePath, JSON.stringify({ instruction: "no timestamp" }) + "\n");
     const result = pruneOldExecutions();
     assert.deepStrictEqual(result, { kept: 1, removed: 0 });
   } finally {
-    process.env.PHOENIX_TRAINING_LOG_PATH = original;
+    process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH = original;
   }
 });
 
 test("pruneOldExecutions returns undefined (not an error) when there's no log file yet", () => {
-  const prunePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "phoenix-exec-log-prune-missing-")), "executions.jsonl");
-  const original = process.env.PHOENIX_TRAINING_LOG_PATH;
-  process.env.PHOENIX_TRAINING_LOG_PATH = prunePath;
+  const prunePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "testops-mobile-exec-log-prune-missing-")), "executions.jsonl");
+  const original = process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH;
+  process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH = prunePath;
   try {
     assert.strictEqual(pruneOldExecutions(), undefined);
   } finally {
-    process.env.PHOENIX_TRAINING_LOG_PATH = original;
+    process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH = original;
   }
 });
 
 test("logExecution automatically triggers cleanup once the retention window has elapsed, with no separate scheduling step", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "phoenix-exec-log-auto-prune-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "testops-mobile-exec-log-auto-prune-"));
   const autoPrunePath = path.join(dir, "executions.jsonl");
   const sentinelPath = `${autoPrunePath}.last-prune`;
-  const originalPath = process.env.PHOENIX_TRAINING_LOG_PATH;
-  const originalRetention = process.env.PHOENIX_TRAINING_LOG_RETENTION_DAYS;
-  process.env.PHOENIX_TRAINING_LOG_PATH = autoPrunePath;
-  process.env.PHOENIX_TRAINING_LOG_RETENTION_DAYS = "15";
+  const originalPath = process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH;
+  const originalRetention = process.env.TESTOPS_MOBILE_TRAINING_LOG_RETENTION_DAYS;
+  process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH = autoPrunePath;
+  process.env.TESTOPS_MOBILE_TRAINING_LOG_RETENTION_DAYS = "15";
   try {
     const old = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString();
     fs.writeFileSync(autoPrunePath, JSON.stringify({ instruction: "stale", loggedAt: old }) + "\n");
@@ -469,18 +469,18 @@ test("logExecution automatically triggers cleanup once the retention window has 
     const sentinelAfter = Date.parse(fs.readFileSync(sentinelPath, "utf8").trim());
     assert.ok(Date.now() - sentinelAfter < 5000, "sentinel should be refreshed to roughly now");
   } finally {
-    process.env.PHOENIX_TRAINING_LOG_PATH = originalPath;
-    if (originalRetention === undefined) delete process.env.PHOENIX_TRAINING_LOG_RETENTION_DAYS;
-    else process.env.PHOENIX_TRAINING_LOG_RETENTION_DAYS = originalRetention;
+    process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH = originalPath;
+    if (originalRetention === undefined) delete process.env.TESTOPS_MOBILE_TRAINING_LOG_RETENTION_DAYS;
+    else process.env.TESTOPS_MOBILE_TRAINING_LOG_RETENTION_DAYS = originalRetention;
   }
 });
 
 test("logExecution does NOT re-prune on every call once the sentinel is fresh (avoids rewriting the log on every single execution)", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "phoenix-exec-log-no-reprune-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "testops-mobile-exec-log-no-reprune-"));
   const freshPrunePath = path.join(dir, "executions.jsonl");
   const sentinelPath = `${freshPrunePath}.last-prune`;
-  const originalPath = process.env.PHOENIX_TRAINING_LOG_PATH;
-  process.env.PHOENIX_TRAINING_LOG_PATH = freshPrunePath;
+  const originalPath = process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH;
+  process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH = freshPrunePath;
   try {
     const old = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString();
     fs.writeFileSync(freshPrunePath, JSON.stringify({ instruction: "stale but protected by a fresh sentinel", loggedAt: old }) + "\n");
@@ -494,7 +494,7 @@ test("logExecution does NOT re-prune on every call once the sentinel is fresh (a
     assert.ok(remaining.some((r) => r.instruction === "stale but protected by a fresh sentinel"));
     assert.ok(remaining.some((r) => r.instruction === "another one"));
   } finally {
-    process.env.PHOENIX_TRAINING_LOG_PATH = originalPath;
+    process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH = originalPath;
   }
 });
 
@@ -557,10 +557,10 @@ test("getPastSuccesses dedups repeated selectors and respects limit, most recent
 });
 
 test("getPastSuccesses returns [] when there's no log file yet, and tolerates a corrupt line", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "phoenix-exec-log-successes-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "testops-mobile-exec-log-successes-"));
   const freshPath = path.join(dir, "executions.jsonl");
-  const originalPath = process.env.PHOENIX_TRAINING_LOG_PATH;
-  process.env.PHOENIX_TRAINING_LOG_PATH = freshPath;
+  const originalPath = process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH;
+  process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH = freshPath;
   try {
     assert.deepStrictEqual(getPastSuccesses("tap anything"), []);
     fs.writeFileSync(
@@ -572,7 +572,7 @@ test("getPastSuccesses returns [] when there's no log file yet, and tolerates a 
     const recovered = getPastSuccesses("tap anything");
     assert.deepStrictEqual(recovered.map((s) => s.selector), [{ strategy: "text", value: "survives_the_corrupt_line" }]);
   } finally {
-    process.env.PHOENIX_TRAINING_LOG_PATH = originalPath;
+    process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH = originalPath;
   }
 });
 

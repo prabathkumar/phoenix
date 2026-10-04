@@ -21,7 +21,7 @@
   <rect x="0" y="0" width="1240" height="1180" fill="url(#bgGrad)"/>
 
   <!-- ============ HEADER ============ -->
-  <text x="48" y="52" font-size="25" font-weight="700" fill="#0f172a" letter-spacing="-0.3">Phoenix architecture</text>
+  <text x="48" y="52" font-size="25" font-weight="700" fill="#0f172a" letter-spacing="-0.3">TestOps Mobile architecture</text>
   <text x="48" y="78" font-size="14" fill="#64748b">Four layers, one engine, one shared AI runtime — Guided recording → Semantic resolution → Vision fusion → Autonomous loop</text>
 
   <!-- ============ LAYER 1: GUIDED ============ -->
@@ -220,7 +220,7 @@
   <text x="846" y="1048" font-size="11.5" fill="#475569">execution log.</text>
   <text x="846" y="1068" font-size="11" fill="#be123c" font-weight="600">`run_test_case` spends a real device session —</text>
   <text x="846" y="1084" font-size="11" fill="#be123c" font-weight="600">gated behind confirm:true AND the server's own</text>
-  <text x="846" y="1098" font-size="11" fill="#be123c" font-weight="600">PHOENIX_MCP_ALLOW_RUN=1. No credential field.</text>
+  <text x="846" y="1098" font-size="11" fill="#be123c" font-weight="600">TESTOPS_MOBILE_MCP_ALLOW_RUN=1. No credential field.</text>
 
   <!-- Connectors: locator store reads/writes the same selector cache
        layers 1-2 use. Routed through the open left margin (x=24,
@@ -239,5 +239,5 @@
   <line x1="48" y1="1118" x2="1200" y2="1118" stroke="#e2e8f0" stroke-width="1"/>
   <text x="48" y="1138" font-size="11.5" fill="#94a3b8">Code map: capture/recorder.js + generation/pipeline.js (layer 1)  ·  generation/semantic-act.js + engine/semantic-act-executor.js (layer 2, incl. self-heal)  ·</text>
   <text x="48" y="1154" font-size="11.5" fill="#94a3b8">generation/llm.js + execution-log.js (shared runtime)  ·  engine/semantic-loop.js (layer 4)  ·  engine/auto-heal.js (bridges 1↔2)  ·  engine/locator-store.js, check-env.js, mcp/ (infra)</text>
-  <text x="48" y="1172" font-size="11.5" fill="#94a3b8">Full detail: docs/PHOENIX_SPEC.md (architecture) · docs/STATUS.md (every bug, real evidence) · docs/CONTINUOUS_TRAINING.md (the feedback loop)</text>
+  <text x="48" y="1172" font-size="11.5" fill="#94a3b8">Full detail: docs/TESTOPS_MOBILE_SPEC.md (architecture) · docs/STATUS.md (every bug, real evidence) · docs/CONTINUOUS_TRAINING.md (the feedback loop)</text>
 </svg>

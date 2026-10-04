@@ -11,14 +11,14 @@ dev team, and why they're kept separate:
 
 "TestOps Mobile" is a distribution name only. It does not rename any
 package, module, or code identifier in this repo — the code underneath is
-still Phoenix, and nothing in `engine/`, `generation/`, `capture/`,
+still TestOps Mobile, and nothing in `engine/`, `generation/`, `capture/`,
 `live-view/`, or `frontend/` changed for this. Internally, everyone working
-in this repo keeps calling it Phoenix; "TestOps Mobile" is what the image
+in this repo keeps calling it TestOps Mobile; "TestOps Mobile" is what the image
 is labeled as when it leaves this repo.
 
 ## 1. What the Docker image contains (and doesn't)
 
-Same scope as the plain Phoenix image described in the `Dockerfile`'s own
+Same scope as the plain TestOps Mobile image described in the `Dockerfile`'s own
 header comment: the Node-side pipeline only (`run-session.js`, the
 live-view WebSocket server, session recorder, script generator, and
 `frontend/server.js`). It deliberately does **not** contain:
@@ -73,7 +73,7 @@ node check-env.js test-cases/<your-test-case>.json
 
 `check-env.js` (repo root, zero dependencies, no Docker/Appium/BrowserStack
 involved) parses `.env` the same way Docker's `--env-file` does, so a line
-like `PHOENIX_BATCH_LOGIN_PASSWORD=` (present, but nothing after the `=`)
+like `TESTOPS_MOBILE_BATCH_LOGIN_PASSWORD=` (present, but nothing after the `=`)
 is correctly reported as `EMPTY`, never confused with `SET` or `MISSING` —
 the exact failure mode a quick `grep`/glance at `.env` can't catch. Exits
 non-zero on any problem, costs nothing, and never prints a credential's
@@ -85,8 +85,8 @@ Or, with the repo checked out (so `docker-compose.yml` is available):
 docker compose up --build
 ```
 
-Either way, `PHOENIX_APPIUM_HOST`/`PORT` (or the BrowserStack
-`PHOENIX_APPIUM_PROVIDER=browserstack` variables) must point at wherever
+Either way, `TESTOPS_MOBILE_APPIUM_HOST`/`PORT` (or the BrowserStack
+`TESTOPS_MOBILE_APPIUM_PROVIDER=browserstack` variables) must point at wherever
 an Appium server or device-farm connection already exists — this
 container does not provide one.
 
@@ -110,7 +110,7 @@ integration work.
 ### The `mcp/` connector is separate from this image, on purpose
 
 `mcp/server.js` (see `mcp/README.md`) is a standard MCP server exposing
-Phoenix's locator-confidence data, test cases, and execution log to an
+TestOps Mobile's locator-confidence data, test cases, and execution log to an
 external MCP client — built for the user's own TestOps MCP to pull from
 ahead of its Claude-marketplace integration. It is **not** built into the
 `testops-mobile` image above and doesn't need to be: it's a separate,
@@ -127,14 +127,14 @@ anyone ever runs the connector.
 - **Registry push and version-pinning are now implemented** — see
   [`docs/RELEASING.md`](RELEASING.md) for the full scheme: a `vX.Y.Z` git
   tag triggers `.github/workflows/docker-publish.yml`, which builds and
-  pushes to `ghcr.io/<owner>/phoenix` using the `GITHUB_TOKEN` Actions
+  pushes to `ghcr.io/<owner>/testops-mobile` using the `GITHUB_TOKEN` Actions
   already provides, and the base image is pinned to an exact
   `node:20.18.1-slim` version rather than the floating `20-slim` tag.
   **Stated plainly: this is unverified** — no real tag has been pushed
   from this sandbox (no outbound registry access here), so the push step
   itself hasn't actually run yet. `scripts/build-testops-mobile.sh`'s
   no-registry file-handoff path above is unaffected and still works
-  exactly as described for a team that can't reach `ghcr.io/<owner>/phoenix`.
+  exactly as described for a team that can't reach `ghcr.io/<owner>/testops-mobile`.
   If TestOps prefers their own registry (ECR, Harbor, Docker Hub, GCR)
   instead, swapping it in only touches `docker-publish.yml`'s login/push
   steps — see `docs/RELEASING.md`'s own notes on that.

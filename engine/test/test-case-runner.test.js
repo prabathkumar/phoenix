@@ -36,7 +36,7 @@ async function run(name, fn) {
 }
 
 function writeTempJson(content) {
-  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "phoenix-test-case-")), "case.json");
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "testops-mobile-test-case-")), "case.json");
   fs.writeFileSync(file, typeof content === "string" ? content : JSON.stringify(content), "utf8");
   return file;
 }
@@ -103,22 +103,22 @@ function writeTempJson(content) {
   });
 
   await run("resolveStepText resolves an \"${ENV_VAR}\" placeholder from process.env", async () => {
-    process.env.PHOENIX_TEST_CASE_RUNNER_FIXTURE_VAR = "resolved-value";
+    process.env.TESTOPS_MOBILE_TEST_CASE_RUNNER_FIXTURE_VAR = "resolved-value";
     try {
       assert.strictEqual(
-        resolveStepText({ kind: "type", text: "${PHOENIX_TEST_CASE_RUNNER_FIXTURE_VAR}" }),
+        resolveStepText({ kind: "type", text: "${TESTOPS_MOBILE_TEST_CASE_RUNNER_FIXTURE_VAR}" }),
         "resolved-value"
       );
     } finally {
-      delete process.env.PHOENIX_TEST_CASE_RUNNER_FIXTURE_VAR;
+      delete process.env.TESTOPS_MOBILE_TEST_CASE_RUNNER_FIXTURE_VAR;
     }
   });
 
   await run("resolveStepText throws a clear error when the referenced env var isn't set", async () => {
-    delete process.env.PHOENIX_TEST_CASE_RUNNER_FIXTURE_VAR;
+    delete process.env.TESTOPS_MOBILE_TEST_CASE_RUNNER_FIXTURE_VAR;
     assert.throws(
-      () => resolveStepText({ kind: "type", text: "${PHOENIX_TEST_CASE_RUNNER_FIXTURE_VAR}" }),
-      /PHOENIX_TEST_CASE_RUNNER_FIXTURE_VAR.*not set/
+      () => resolveStepText({ kind: "type", text: "${TESTOPS_MOBILE_TEST_CASE_RUNNER_FIXTURE_VAR}" }),
+      /TESTOPS_MOBILE_TEST_CASE_RUNNER_FIXTURE_VAR.*not set/
     );
   });
 
@@ -141,16 +141,16 @@ function writeTempJson(content) {
   });
 
   await run("resolveSteps resolves every step's text up front, returning literal values (no more placeholders)", async () => {
-    process.env.PHOENIX_TEST_CASE_RUNNER_FIXTURE_VAR = "typed-value";
+    process.env.TESTOPS_MOBILE_TEST_CASE_RUNNER_FIXTURE_VAR = "typed-value";
     try {
       const resolved = resolveSteps([
         { kind: "tap", instruction: "tap X" },
-        { kind: "type", instruction: "type Y", text: "${PHOENIX_TEST_CASE_RUNNER_FIXTURE_VAR}" },
+        { kind: "type", instruction: "type Y", text: "${TESTOPS_MOBILE_TEST_CASE_RUNNER_FIXTURE_VAR}" },
       ]);
       assert.strictEqual(resolved[1].text, "typed-value");
       assert.strictEqual(resolved[0].text, undefined);
     } finally {
-      delete process.env.PHOENIX_TEST_CASE_RUNNER_FIXTURE_VAR;
+      delete process.env.TESTOPS_MOBILE_TEST_CASE_RUNNER_FIXTURE_VAR;
     }
   });
 
@@ -555,9 +555,9 @@ function writeTempJson(content) {
   });
 
   await run("runScriptSteps logs an expectFailed execution-log record when a tap produces a real diff but never satisfies its declared expect", async () => {
-    const tmpLogPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "phoenix-runner-exec-log-")), "executions.jsonl");
-    const originalPath = process.env.PHOENIX_TRAINING_LOG_PATH;
-    process.env.PHOENIX_TRAINING_LOG_PATH = tmpLogPath;
+    const tmpLogPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "testops-mobile-runner-exec-log-")), "executions.jsonl");
+    const originalPath = process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH;
+    process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH = tmpLogPath;
     try {
       const steps = [{ kind: "tap", instruction: "tap Profile", expect: { appeared: ["Profile"] } }];
       const result = await runScriptSteps({}, steps, {
@@ -577,14 +577,14 @@ function writeTempJson(content) {
       assert.strictEqual(lines[0].expectFailed, true);
       assert.deepStrictEqual(lines[0].selector, { strategy: "resource-id", value: "wrong_but_real_button" });
     } finally {
-      process.env.PHOENIX_TRAINING_LOG_PATH = originalPath;
+      process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH = originalPath;
     }
   });
 
   await run("runScriptSteps does NOT log an expectFailed record for a dead (\"No visible change.\") tap -- that's the OTHER bug class, logged elsewhere", async () => {
-    const tmpLogPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "phoenix-runner-exec-log-")), "executions.jsonl");
-    const originalPath = process.env.PHOENIX_TRAINING_LOG_PATH;
-    process.env.PHOENIX_TRAINING_LOG_PATH = tmpLogPath;
+    const tmpLogPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "testops-mobile-runner-exec-log-")), "executions.jsonl");
+    const originalPath = process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH;
+    process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH = tmpLogPath;
     try {
       const steps = [{ kind: "tap", instruction: "tap Profile", expect: { appeared: ["Profile"] } }];
       const result = await runScriptSteps({}, steps, {
@@ -599,7 +599,7 @@ function writeTempJson(content) {
       assert.strictEqual(result.success, false);
       assert.ok(!fs.existsSync(tmpLogPath) || fs.readFileSync(tmpLogPath, "utf8").trim() === "", "a dead-tap verification failure must not also be logged as expectFailed");
     } finally {
-      process.env.PHOENIX_TRAINING_LOG_PATH = originalPath;
+      process.env.TESTOPS_MOBILE_TRAINING_LOG_PATH = originalPath;
     }
   });
 
@@ -654,16 +654,16 @@ function writeTempJson(content) {
 
   await run("runScriptSteps executes test-cases/addons.ios.json's steps end to end against a fake driver with platform: \"ios\" threaded through to every resolver call", async () => {
     const steps = loadTestCaseSteps(path.join(__dirname, "..", "..", "test-cases", "addons.ios.json"));
-    const originalPhone = process.env.PHOENIX_BATCH_LOGIN_PHONE;
-    const originalPassword = process.env.PHOENIX_BATCH_LOGIN_PASSWORD;
-    process.env.PHOENIX_BATCH_LOGIN_PHONE = "0123456789";
-    process.env.PHOENIX_BATCH_LOGIN_PASSWORD = "secret";
+    const originalPhone = process.env.TESTOPS_MOBILE_BATCH_LOGIN_PHONE;
+    const originalPassword = process.env.TESTOPS_MOBILE_BATCH_LOGIN_PASSWORD;
+    process.env.TESTOPS_MOBILE_BATCH_LOGIN_PHONE = "0123456789";
+    process.env.TESTOPS_MOBILE_BATCH_LOGIN_PASSWORD = "secret";
     let resolved;
     try {
       resolved = resolveSteps(steps);
     } finally {
-      process.env.PHOENIX_BATCH_LOGIN_PHONE = originalPhone;
-      process.env.PHOENIX_BATCH_LOGIN_PASSWORD = originalPassword;
+      process.env.TESTOPS_MOBILE_BATCH_LOGIN_PHONE = originalPhone;
+      process.env.TESTOPS_MOBILE_BATCH_LOGIN_PASSWORD = originalPassword;
     }
 
     const seenPlatforms = [];

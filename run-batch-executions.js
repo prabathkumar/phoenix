@@ -13,7 +13,7 @@
  * "semantic"/"loop" modes, a reachable Ollama instance.
  *
  * Three modes, run this many times each (default split: even thirds of
- * PHOENIX_BATCH_TOTAL, remainder to "guided"):
+ * TESTOPS_MOBILE_BATCH_TOTAL, remainder to "guided"):
  *
  *   guided  — starts a real session, takes a screenshot, reads the
  *             accessibility tree, tears down. This validates Act 1's
@@ -24,12 +24,12 @@
  *             into this repo to do that yet); it's a liveness/stability
  *             smoke test of the same session machinery Act 1 depends on.
  *   semantic — starts a session, runs ONE semantic action
- *             (executeSemanticAction) against PHOENIX_BATCH_INSTRUCTION,
+ *             (executeSemanticAction) against TESTOPS_MOBILE_BATCH_INSTRUCTION,
  *             tears down. Validates resolution accuracy and auto-heal
  *             behavior against real screens, not fakes.
  *   loop    — starts a session, runs engine/semantic-loop.js's
- *             runAutonomousLoop() toward PHOENIX_BATCH_GOAL (capped at a
- *             small step count per run — see PHOENIX_BATCH_LOOP_MAX_STEPS),
+ *             runAutonomousLoop() toward TESTOPS_MOBILE_BATCH_GOAL (capped at a
+ *             small step count per run — see TESTOPS_MOBILE_BATCH_LOOP_MAX_STEPS),
  *             tears down. The actual Phase 3 real-hardware proof.
  *
  * Every iteration is independent (its own session, start to teardown)
@@ -38,11 +38,11 @@
  * the ones that happened to work.
  *
  * Usage:
- *   PHOENIX_APPIUM_PROVIDER=browserstack \
- *   PHOENIX_BROWSERSTACK_APP_URL=bs://... \
- *   PHOENIX_BATCH_TOTAL=100 \
- *   PHOENIX_BATCH_INSTRUCTION="tap the Login button" \
- *   PHOENIX_BATCH_GOAL="log in and reach the account settings screen" \
+ *   TESTOPS_MOBILE_APPIUM_PROVIDER=browserstack \
+ *   TESTOPS_MOBILE_BROWSERSTACK_APP_URL=bs://... \
+ *   TESTOPS_MOBILE_BATCH_TOTAL=100 \
+ *   TESTOPS_MOBILE_BATCH_INSTRUCTION="tap the Login button" \
+ *   TESTOPS_MOBILE_BATCH_GOAL="log in and reach the account settings screen" \
  *   node run-batch-executions.js
  *
  * Writes a JSON report to batch-results/<timestamp>.json and prints a
@@ -69,8 +69,8 @@ const OUTPUT_DIR = path.join(__dirname, "batch-results");
 // a commit, or the repo. Used to let the "loop" mode actually complete
 // a real login instead of stopping at the login screen. If unset, loop
 // iterations behave exactly as before (goal text unchanged).
-const LOGIN_PHONE = process.env.PHOENIX_BATCH_LOGIN_PHONE;
-const LOGIN_PASSWORD = process.env.PHOENIX_BATCH_LOGIN_PASSWORD;
+const LOGIN_PHONE = process.env.TESTOPS_MOBILE_BATCH_LOGIN_PHONE;
+const LOGIN_PASSWORD = process.env.TESTOPS_MOBILE_BATCH_LOGIN_PASSWORD;
 const SECRETS = [LOGIN_PHONE, LOGIN_PASSWORD].filter((v) => typeof v === "string" && v.length > 0);
 
 /**
@@ -193,13 +193,13 @@ async function runOneGuidedIteration(platform) {
 // because the test suite needs to set these to 0 to run fast, and a real
 // deployment may legitimately want 0 for one of them (e.g. an app with
 // no splash screen at all). Same fix already applied to
-// PHOENIX_ACT_SETTLE_MS in engine/semantic-act-executor.js.
+// TESTOPS_MOBILE_ACT_SETTLE_MS in engine/semantic-act-executor.js.
 function envIntOrDefault(name, fallback) {
   const raw = Number(process.env[name]);
   return Number.isFinite(raw) ? raw : fallback;
 }
 
-const STARTUP_DELAY_MS = envIntOrDefault("PHOENIX_BATCH_STARTUP_DELAY_MS", 5000);
+const STARTUP_DELAY_MS = envIntOrDefault("TESTOPS_MOBILE_BATCH_STARTUP_DELAY_MS", 5000);
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -221,8 +221,8 @@ function sleep(ms) {
 // forever -- if the timeout is hit, proceed anyway and let the existing
 // dead-end check in generation/semantic-act.js refuse to guess, exactly
 // as it already does today, rather than silently waiting past the limit.
-const STARTUP_SETTLE_TIMEOUT_MS = envIntOrDefault("PHOENIX_BATCH_STARTUP_SETTLE_TIMEOUT_MS", 20000);
-const STARTUP_SETTLE_POLL_MS = envIntOrDefault("PHOENIX_BATCH_STARTUP_SETTLE_POLL_MS", 1500);
+const STARTUP_SETTLE_TIMEOUT_MS = envIntOrDefault("TESTOPS_MOBILE_BATCH_STARTUP_SETTLE_TIMEOUT_MS", 20000);
+const STARTUP_SETTLE_POLL_MS = envIntOrDefault("TESTOPS_MOBILE_BATCH_STARTUP_SETTLE_POLL_MS", 1500);
 
 /**
  * Waits past the app's launch splash screen before the first real step
@@ -266,7 +266,7 @@ async function runOneSemanticIteration(platform, instruction) {
     await waitForAppReady(driver);
     const result = await executeSemanticAction(driver, instruction, {
       platform,
-      useVisualGrounding: process.env.PHOENIX_ENABLE_VISUAL_GROUNDING === "1",
+      useVisualGrounding: process.env.TESTOPS_MOBILE_ENABLE_VISUAL_GROUNDING === "1",
     });
     return { success: result.success, detail: result.success ? result.diffSummary : result.reason };
   } finally {
@@ -280,7 +280,7 @@ async function runOneSemanticIteration(platform, instruction) {
  * dropped entirely (replaced with "[REDACTED]") regardless of whether
  * it matches a configured secret, since a type step's text is
  * arbitrary user input at execution time and may be sensitive even
- * when no PHOENIX_BATCH_LOGIN_* credentials are set. instruction/
+ * when no TESTOPS_MOBILE_BATCH_LOGIN_* credentials are set. instruction/
  * diffSummary still go through redactSecrets() as a second pass, in
  * case a credential shows up somewhere unexpected (a screen echoing a
  * typed value back, for instance). Found necessary after debugging a
@@ -337,7 +337,7 @@ async function runOneLoopIteration(platform, goal, maxSteps) {
 // for backward compatibility (existing docs/scripts/env-var habits all
 // still work unchanged) but is now just the one built-in test case that
 // happens to be requestable by a dedicated mode name; `test-case` mode
-// (below) runs any test case file at all via PHOENIX_TEST_CASE_FILE.
+// (below) runs any test case file at all via TESTOPS_MOBILE_TEST_CASE_FILE.
 const LOGIN_TEST_CASE_PATH = path.join(TEST_CASES_DIR, "login.json");
 // Loaded once at module scope (not per-iteration) so a malformed
 // test-cases/login.json fails fast at startup with a clear stack trace
@@ -423,14 +423,14 @@ function persistUpdatedSelectors(filePath, stepsToPersist) {
 
 /**
  * Runs any test-case JSON file (see engine/test-case-runner.js and
- * test-cases/login.json for the format) via PHOENIX_TEST_CASE_FILE --
+ * test-cases/login.json for the format) via TESTOPS_MOBILE_TEST_CASE_FILE --
  * the generalized counterpart to `login-script` above, for a flow that
  * isn't the built-in login one. Same fixed-sequence-over-fixed-
  * resolver approach, just not hardwired to a single named file.
  */
 async function runOneTestCaseIteration(platform, filePath) {
   if (!filePath) {
-    return { success: false, detail: "test-case mode requires PHOENIX_TEST_CASE_FILE to be set" };
+    return { success: false, detail: "test-case mode requires TESTOPS_MOBILE_TEST_CASE_FILE to be set" };
   }
   let steps;
   try {
@@ -454,13 +454,13 @@ async function runOneTestCaseIteration(platform, filePath) {
   try {
     await waitForAppReady(driver);
     // Opt-in: only touches anything (opens/creates a .db file) when
-    // PHOENIX_LOCATOR_DB_PATH or PHOENIX_ENABLE_LOCATOR_STORE is set --
+    // TESTOPS_MOBILE_LOCATOR_DB_PATH or TESTOPS_MOBILE_ENABLE_LOCATOR_STORE is set --
     // a deployment that never sets either sees zero behavior change
     // from before this store existed.
     let locatorStore;
-    if (process.env.PHOENIX_ENABLE_LOCATOR_STORE || process.env.PHOENIX_LOCATOR_DB_PATH) {
+    if (process.env.TESTOPS_MOBILE_ENABLE_LOCATOR_STORE || process.env.TESTOPS_MOBILE_LOCATOR_DB_PATH) {
       try {
-        const dbPath = process.env.PHOENIX_LOCATOR_DB_PATH || require("./engine/locator-store").dbPath();
+        const dbPath = process.env.TESTOPS_MOBILE_LOCATOR_DB_PATH || require("./engine/locator-store").dbPath();
         locatorStore = openLocatorStore();
         // Real gap found on a real run (addons-run-ios-docker-16.log):
         // with no confirmation either way, the store silently failed to
@@ -521,8 +521,8 @@ async function runIteration(mode, index, { platform, instruction, goal, maxSteps
   }
 }
 
-// Restricts which mode(s) actually run, e.g. PHOENIX_BATCH_MODES=loop
-// for a focused debug run. Without this, PHOENIX_BATCH_TOTAL=1 doesn't
+// Restricts which mode(s) actually run, e.g. TESTOPS_MOBILE_BATCH_MODES=loop
+// for a focused debug run. Without this, TESTOPS_MOBILE_BATCH_TOTAL=1 doesn't
 // reliably give you a loop iteration -- splitBatchCounts() puts any
 // remainder into "guided" (see its own doc comment), so a total of 1
 // silently ran one guided iteration instead of the loop iteration that
@@ -533,19 +533,19 @@ async function runIteration(mode, index, { platform, instruction, goal, maxSteps
 // ALL_MODES split (splitBatchCounts() keeps its existing guided/
 // semantic/loop ratio, untouched and still unit-tested the same way)
 // -- they only run when explicitly requested via
-// PHOENIX_BATCH_MODES=login-script or =test-case, matching how a 1-off
+// TESTOPS_MOBILE_BATCH_MODES=login-script or =test-case, matching how a 1-off
 // debug run already has to request "loop" explicitly to get one (see
 // the comment on parseBatchModes below).
 const ALL_MODES = ["guided", "semantic", "loop"];
 const REQUESTABLE_MODES = [...ALL_MODES, "login-script", "test-case"];
 function parseBatchModes() {
-  const raw = process.env.PHOENIX_BATCH_MODES;
+  const raw = process.env.TESTOPS_MOBILE_BATCH_MODES;
   if (!raw) return ALL_MODES;
   const requested = raw.split(",").map((m) => m.trim().toLowerCase()).filter(Boolean);
   const valid = requested.filter((m) => REQUESTABLE_MODES.includes(m));
   const invalid = requested.filter((m) => !REQUESTABLE_MODES.includes(m));
   if (invalid.length > 0) {
-    console.warn(`[run-batch-executions] ignoring unknown mode(s) in PHOENIX_BATCH_MODES: ${invalid.join(", ")}`);
+    console.warn(`[run-batch-executions] ignoring unknown mode(s) in TESTOPS_MOBILE_BATCH_MODES: ${invalid.join(", ")}`);
   }
   return valid.length > 0 ? valid : ALL_MODES;
 }
@@ -554,7 +554,7 @@ function parseBatchModes() {
  * Splits `total` across only the requested `modes`. When all three
  * modes are requested (the default), this is exactly
  * splitBatchCounts(total) -- unchanged behavior. When a subset is
- * requested (PHOENIX_BATCH_MODES=loop, say), the total is divided
+ * requested (TESTOPS_MOBILE_BATCH_MODES=loop, say), the total is divided
  * evenly across just those modes instead, with any remainder going to
  * the first requested mode -- simply zeroing out excluded modes from
  * splitBatchCounts()'s own ratio split would NOT redistribute the
@@ -585,17 +585,17 @@ function computeModeCounts(total, modes) {
 }
 
 async function main() {
-  const total = Number(process.env.PHOENIX_BATCH_TOTAL) || 100;
-  const platform = process.env.PHOENIX_PLATFORM === "ios" ? "ios" : "android";
-  const instruction = process.env.PHOENIX_BATCH_INSTRUCTION || "tap the first visible button";
-  const goal = process.env.PHOENIX_BATCH_GOAL || "explore the app's first screen";
-  const maxSteps = Number(process.env.PHOENIX_BATCH_LOOP_MAX_STEPS) || 3;
-  const testCaseFile = process.env.PHOENIX_TEST_CASE_FILE;
+  const total = Number(process.env.TESTOPS_MOBILE_BATCH_TOTAL) || 100;
+  const platform = process.env.TESTOPS_MOBILE_PLATFORM === "ios" ? "ios" : "android";
+  const instruction = process.env.TESTOPS_MOBILE_BATCH_INSTRUCTION || "tap the first visible button";
+  const goal = process.env.TESTOPS_MOBILE_BATCH_GOAL || "explore the app's first screen";
+  const maxSteps = Number(process.env.TESTOPS_MOBILE_BATCH_LOOP_MAX_STEPS) || 3;
+  const testCaseFile = process.env.TESTOPS_MOBILE_TEST_CASE_FILE;
   const modes = parseBatchModes();
 
-  if (process.env.PHOENIX_APPIUM_PROVIDER !== "browserstack") {
+  if (process.env.TESTOPS_MOBILE_APPIUM_PROVIDER !== "browserstack") {
     console.warn(
-      "[run-batch-executions] WARNING: PHOENIX_APPIUM_PROVIDER is not \"browserstack\" -- " +
+      "[run-batch-executions] WARNING: TESTOPS_MOBILE_APPIUM_PROVIDER is not \"browserstack\" -- " +
         "this will run against a local Appium server/emulator instead of real BrowserStack devices."
     );
   }
@@ -607,7 +607,7 @@ async function main() {
   );
   console.log(`[run-batch-executions] platform: ${platform}, instruction: "${instruction}", goal: "${goal}"`);
   if (counts["test-case"] > 0) {
-    console.log(`[run-batch-executions] test-case file: ${testCaseFile || "(none set -- PHOENIX_TEST_CASE_FILE is required)"}`);
+    console.log(`[run-batch-executions] test-case file: ${testCaseFile || "(none set -- TESTOPS_MOBILE_TEST_CASE_FILE is required)"}`);
   }
   // `loop` is R&D-only exploration (see this file's header and
   // docs/STATUS.md's "Data-driven test cases" section): it's for a goal
@@ -621,7 +621,7 @@ async function main() {
     console.log(
       "[run-batch-executions] NOTE: \"loop\" mode is R&D/exploration only -- a model decides each step live and has repeatedly " +
         "failed to reliably finish a known, fixed sequence (docs/STATUS.md bug 18). To write or run an actual test case, use " +
-        "\"test-case\" mode (PHOENIX_BATCH_MODES=test-case, PHOENIX_TEST_CASE_FILE=<path>) instead."
+        "\"test-case\" mode (TESTOPS_MOBILE_BATCH_MODES=test-case, TESTOPS_MOBILE_TEST_CASE_FILE=<path>) instead."
     );
   }
   if (SECRETS.length > 0) {
@@ -685,7 +685,7 @@ function writeReport(results, crashInfo) {
 // Real bug found on a live BrowserStack iOS run (ios6): a slow/flaky
 // BrowserStack response raced WebdriverIO's own HTTP client's request-
 // cancellation logic ("got"/"p-cancelable" -- an infra-level library
-// issue, not a Phoenix selector bug) and threw an unhandled rejection
+// issue, not a TestOps Mobile selector bug) and threw an unhandled rejection
 // well outside main()'s own await chain, which main().catch() below
 // can't see at all. Node's default behavior for an unhandled rejection
 // is to crash the process immediately -- which it did here, with a raw
@@ -701,7 +701,7 @@ function writeReport(results, crashInfo) {
 // and that the person running this sees a clear reason instead of a
 // raw library stack trace.
 function handleFatalCrash(err) {
-  console.error("[run-batch-executions] fatal error (likely an infra/network issue, not a Phoenix bug) -- salvaging results collected so far:", err);
+  console.error("[run-batch-executions] fatal error (likely an infra/network issue, not a TestOps Mobile bug) -- salvaging results collected so far:", err);
   if (resultsSoFar.length > 0) {
     const reportPath = writeReport(resultsSoFar, err);
     console.error(`[run-batch-executions] partial report (${resultsSoFar.length} iteration(s)) written to: ${reportPath}`);

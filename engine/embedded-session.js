@@ -41,7 +41,7 @@ const { buildCapabilities } = require("./session");
 
 /**
  * appium-uiautomator2-driver ships ESM-only (its package.json "exports"
- * has no CommonJS entry), while the rest of Phoenix's engine/ is
+ * has no CommonJS entry), while the rest of TestOps Mobile's engine/ is
  * CommonJS — so it's loaded via a dynamic import() rather than
  * require(), which is the standard way to consume an ESM-only package
  * from CJS. This is the one thing about embedding that a spawned

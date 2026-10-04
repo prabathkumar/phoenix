@@ -24,17 +24,17 @@ async function main() {
   console.log("engine/session-pool:");
 
   await run("defaults to capacity 1 and basePort 8090 with no options/env set", () => {
-    const previousCapacity = process.env.PHOENIX_SESSION_POOL_SIZE;
-    const previousPort = process.env.PHOENIX_LIVE_VIEW_PORT;
-    delete process.env.PHOENIX_SESSION_POOL_SIZE;
-    delete process.env.PHOENIX_LIVE_VIEW_PORT;
+    const previousCapacity = process.env.TESTOPS_MOBILE_SESSION_POOL_SIZE;
+    const previousPort = process.env.TESTOPS_MOBILE_LIVE_VIEW_PORT;
+    delete process.env.TESTOPS_MOBILE_SESSION_POOL_SIZE;
+    delete process.env.TESTOPS_MOBILE_LIVE_VIEW_PORT;
     try {
       const pool = new SessionPool();
       assert.strictEqual(pool.capacity, 1);
       assert.strictEqual(pool.basePort, 8090);
     } finally {
-      if (previousCapacity !== undefined) process.env.PHOENIX_SESSION_POOL_SIZE = previousCapacity;
-      if (previousPort !== undefined) process.env.PHOENIX_LIVE_VIEW_PORT = previousPort;
+      if (previousCapacity !== undefined) process.env.TESTOPS_MOBILE_SESSION_POOL_SIZE = previousCapacity;
+      if (previousPort !== undefined) process.env.TESTOPS_MOBILE_LIVE_VIEW_PORT = previousPort;
     }
   });
 

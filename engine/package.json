@@ -1,8 +1,8 @@
 {
-  "name": "@phoenix/engine",
+  "name": "@testops-mobile/engine",
   "version": "0.0.1",
   "private": true,
-  "description": "Phoenix engine — session and driver layer. Starts as a thin wrapper around Appium's core + uiautomator2/xcuitest drivers; the fork happens here once Stage 0's single-session milestone is proven.",
+  "description": "TestOps Mobile engine — session and driver layer. Starts as a thin wrapper around Appium's core + uiautomator2/xcuitest drivers; the fork happens here once Stage 0's single-session milestone is proven.",
   "comment_appium": "Two DIFFERENT ways to run Appium's driver live side by side here, each with its own rule about project dependencies — do not mix them up: (1) stage0-session.js / run-session.js SPAWN a separately-running `appium` CLI server and talk to it over HTTP via webdriverio. That CLI manages its own drivers via `appium driver install uiautomator2` and writes its own tracking block into THIS package.json — appium/appium-uiautomator2-driver must NOT be listed here as project dependencies for that path, or the CLI's peer requirement (appium@^3.0.0-rc.2) conflicts with a pinned older version (ERESOLVE). (2) embedded-session.js / embedded-session-stage0.js require appium-uiautomator2-driver DIRECTLY in-process — no separate `appium` server, no CLI, no driver-install step. That path needs appium + appium-uiautomator2-driver listed as normal dependencies below (`npm install` in this directory is enough; do not also run `appium driver install` for this path, there is no CLI server to install it into).",
   "dependencies": {
     "webdriverio": "^8.0.0",

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the Phoenix image under the "testops-mobile" name/tag and exports
+# Builds the TestOps Mobile image under the "testops-mobile" name/tag and exports
 # it to a single .tar.gz file, so it can be handed to a team that has no
 # shared container registry set up yet -- just a file to download and
 # `docker load`.

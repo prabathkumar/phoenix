@@ -1,13 +1,13 @@
 # Infra setup guide
 
-This is the one doc an infra engineer needs to stand Phoenix up from a
+This is the one doc an infra engineer needs to stand TestOps Mobile up from a
 fresh `git clone` — no prior context on the codebase required. It
 consolidates what's otherwise spread across the README's per-feature
 sections.
 
 ## What you're standing up
 
-Phoenix has two halves that live on different hardware:
+TestOps Mobile has two halves that live on different hardware:
 
 1. **A host with real Android access** — an emulator (needs
    hardware/GPU acceleration) or a real device (USB). This is where
@@ -15,15 +15,15 @@ Phoenix has two halves that live on different hardware:
    containerized in a general-purpose way (see the Dockerfile's header
    comment) — treat it like any Appium device-farm node you may
    already run.
-2. **The Phoenix Node services** — `run-session.js` (session + live-view
+2. **The TestOps Mobile Node services** — `run-session.js` (session + live-view
    + recorder + script generation) and `frontend/server.js` (the
    tester-facing UI, if not using the public GitHub Pages deploy).
    These can run anywhere with network access to (1) — bare metal, a
    VM, or the provided `Dockerfile`.
 
-They talk over two connections: Phoenix's Node process to the Appium
-server (`PHOENIX_APPIUM_HOST`/`PORT`), and a tester's browser to
-Phoenix's live-view WebSocket (`PHOENIX_LIVE_VIEW_PORT`).
+They talk over two connections: TestOps Mobile's Node process to the Appium
+server (`TESTOPS_MOBILE_APPIUM_HOST`/`PORT`), and a tester's browser to
+TestOps Mobile's live-view WebSocket (`TESTOPS_MOBILE_LIVE_VIEW_PORT`).
 
 ## 1. Prerequisites on the device host
 
@@ -50,7 +50,7 @@ adb devices   # should list your emulator/device as "device", not "unauthorized"
 
 ### iOS instead of (or alongside) Android
 
-Phoenix also supports iOS via `appium-xcuitest-driver`, using the same
+TestOps Mobile also supports iOS via `appium-xcuitest-driver`, using the same
 spawn-a-server model as Android — see `engine/ios-session.js` and
 `engine/ios-stage0-session.js`. Prerequisites:
 
@@ -67,10 +67,10 @@ appium driver install xcuitest
 
 Set in `.env`:
 ```
-PHOENIX_PLATFORM=ios
-PHOENIX_IOS_APP_PATH=/absolute/path/to/YourApp.app
-PHOENIX_IOS_DEVICE_NAME=iPhone 15      # must match an installed Simulator
-PHOENIX_IOS_PLATFORM_VERSION=17.5      # optional if only one iOS version of that device is installed
+TESTOPS_MOBILE_PLATFORM=ios
+TESTOPS_MOBILE_IOS_APP_PATH=/absolute/path/to/YourApp.app
+TESTOPS_MOBILE_IOS_DEVICE_NAME=iPhone 15      # must match an installed Simulator
+TESTOPS_MOBILE_IOS_PLATFORM_VERSION=17.5      # optional if only one iOS version of that device is installed
 ```
 
 Verify the iOS path in isolation first, the same way the Android
@@ -83,7 +83,7 @@ npm run ios-stage0   # needs appium running (step 2 below) + a booted Simulator
 ```
 
 Everything from step 2 onward (running Appium, `run-session.js`, the
-frontend) works identically for iOS — `PHOENIX_PLATFORM=ios` in `.env`
+frontend) works identically for iOS — `TESTOPS_MOBILE_PLATFORM=ios` in `.env`
 is what switches `run-session.js` to the iOS engine and selector syntax.
 No separate frontend or live-view server is needed for iOS.
 
@@ -94,7 +94,7 @@ appium   # binds 0.0.0.0:4723 by default — restrict this in production
          # (firewall / bind to a private network), it has no auth of its own
 ```
 
-Leave this running. If Phoenix's Node services run on a *different*
+Leave this running. If TestOps Mobile's Node services run on a *different*
 host than this one, make sure that host's IP:4723 is reachable across
 whatever network/VPN/firewall sits between them.
 
@@ -107,7 +107,7 @@ only run on macOS at all, and Apple's license rules out virtualizing
 macOS on non-Apple hardware, so there's no way to stand one up directly
 on a Linux host. Renting or racking dedicated Mac hardware works, but
 if your org already pays for BrowserStack App Automate, pointing
-Phoenix at that instead avoids the extra ongoing Mac cost.
+TestOps Mobile at that instead avoids the extra ongoing Mac cost.
 
 This needs no code changes to use — `engine/session.js` and
 `engine/ios-session.js` have always talked to Appium over a plain
@@ -121,35 +121,35 @@ already installed on a device you booted yourself).
 1. Upload your app build once (re-upload only when the build changes,
    not per session):
    ```bash
-   export PHOENIX_BROWSERSTACK_USER=<your BrowserStack username>
-   export PHOENIX_BROWSERSTACK_KEY=<your Automate access key, not your password>
+   export TESTOPS_MOBILE_BROWSERSTACK_USER=<your BrowserStack username>
+   export TESTOPS_MOBILE_BROWSERSTACK_KEY=<your Automate access key, not your password>
    node engine/browserstack-upload.js /path/to/app.ipa   # or .apk
    # prints a bs://<id> URL — set it below
    ```
-2. Point Phoenix at BrowserStack instead of a local Appium server:
+2. Point TestOps Mobile at BrowserStack instead of a local Appium server:
    ```bash
-   export PHOENIX_APPIUM_PROVIDER=browserstack
-   export PHOENIX_BROWSERSTACK_APP_URL=bs://<id from step 1>
-   # PHOENIX_APPIUM_HOST/PORT are ignored under this provider
+   export TESTOPS_MOBILE_APPIUM_PROVIDER=browserstack
+   export TESTOPS_MOBILE_BROWSERSTACK_APP_URL=bs://<id from step 1>
+   # TESTOPS_MOBILE_APPIUM_HOST/PORT are ignored under this provider
    ```
-3. `PHOENIX_IOS_DEVICE_NAME`/`PHOENIX_IOS_PLATFORM_VERSION` (or
+3. `TESTOPS_MOBILE_IOS_DEVICE_NAME`/`TESTOPS_MOBILE_IOS_PLATFORM_VERSION` (or
    Android's equivalent capabilities) now mean "which of BrowserStack's
    real-device catalog to request", not "which Simulator/emulator to
    boot" — BrowserStack App Automate runs real physical devices for
    iOS, not simulators.
 4. Skip steps 1-2 above entirely (no local emulator, no local Appium
-   server needed) and continue from step 3 ("Configure Phoenix") for
+   server needed) and continue from step 3 ("Configure TestOps Mobile") for
    everything else — `run-session.js`, the frontend, and the rest of
    the pipeline don't know or care where the session actually runs.
 
-Optional: `PHOENIX_BROWSERSTACK_PROJECT` / `_BUILD` / `_SESSION_NAME`
-label the session in BrowserStack's dashboard (defaults to "Phoenix" /
-"phoenix-recording" / "Phoenix recording session" if unset).
+Optional: `TESTOPS_MOBILE_BROWSERSTACK_PROJECT` / `_BUILD` / `_SESSION_NAME`
+label the session in BrowserStack's dashboard (defaults to "TestOps Mobile" /
+"testops-mobile-recording" / "TestOps Mobile recording session" if unset).
 
-## 3. Configure Phoenix
+## 3. Configure TestOps Mobile
 
 ```bash
-cd /path/to/phoenix    # the repo root — must contain run-session.js directly
+cd /path/to/testops-mobile    # the repo root — must contain run-session.js directly
 cp .env.example .env
 ```
 
@@ -157,12 +157,12 @@ cp .env.example .env
 `.env` and replace every placeholder value before going further. At
 minimum:
 
-- `PHOENIX_STAGE0_APP_PATH` — path to the `.apk`, **as seen by the
-  Appium server's host**, not by wherever Phoenix's Node services run
+- `TESTOPS_MOBILE_STAGE0_APP_PATH` — path to the `.apk`, **as seen by the
+  Appium server's host**, not by wherever TestOps Mobile's Node services run
   (Appium installs and launches it, not us). Still says
   `/absolute/path/to/your-app.apk`? It won't work — Appium will fail
   with "does not exist or is not accessible".
-- `PHOENIX_APPIUM_HOST` / `PHOENIX_APPIUM_PORT` — where step 2's
+- `TESTOPS_MOBILE_APPIUM_HOST` / `TESTOPS_MOBILE_APPIUM_PORT` — where step 2's
   server is listening, from the Node services' point of view (e.g. the
   device host's LAN IP if they're on separate machines; `127.0.0.1` if
   co-located)
@@ -170,13 +170,13 @@ minimum:
 You can edit `.env` in any text editor, or from the terminal:
 
 ```bash
-sed -i '' 's|PHOENIX_STAGE0_APP_PATH=/absolute/path/to/your-app.apk|PHOENIX_STAGE0_APP_PATH=/real/path/to/app.apk|' .env
+sed -i '' 's|TESTOPS_MOBILE_STAGE0_APP_PATH=/absolute/path/to/your-app.apk|TESTOPS_MOBILE_STAGE0_APP_PATH=/real/path/to/app.apk|' .env
 ```
 (macOS/BSD `sed` needs the empty `-i ''`; on Linux use `sed -i` with no argument after it.)
 
 See `.env.example` for every variable and what reads it.
 
-Phoenix's scripts don't auto-load `.env` — export it into your shell or
+TestOps Mobile's scripts don't auto-load `.env` — export it into your shell or
 process manager first, **from the same directory as `.env`**:
 
 ```bash
@@ -187,13 +187,13 @@ Sanity-check it actually loaded your real values, not leftover
 placeholders or a stale shell export:
 
 ```bash
-echo $PHOENIX_STAGE0_APP_PATH   # should print YOUR apk path, not a placeholder
+echo $TESTOPS_MOBILE_STAGE0_APP_PATH   # should print YOUR apk path, not a placeholder
 ```
 
 ## 4. (Optional) LLM refinement layer — Ollama
 
-Skip this section entirely if you're not using it — Phoenix's rule-based
-generation (step 5 below) works standalone with `PHOENIX_USE_LLM` unset
+Skip this section entirely if you're not using it — TestOps Mobile's rule-based
+generation (step 5 below) works standalone with `TESTOPS_MOBILE_USE_LLM` unset
 or `0`.
 
 To turn it on:
@@ -213,14 +213,14 @@ To turn it on:
    proceed.
 3. In `.env`, set:
    ```
-   PHOENIX_USE_LLM=1
-   PHOENIX_OLLAMA_HOST=http://localhost:11434
-   PHOENIX_OLLAMA_MODEL=llama3
+   TESTOPS_MOBILE_USE_LLM=1
+   TESTOPS_MOBILE_OLLAMA_HOST=http://localhost:11434
+   TESTOPS_MOBILE_OLLAMA_MODEL=llama3
    ```
    Re-run `export $(grep -v '^#' .env | xargs)` after editing.
 
 Any failure here (Ollama not running, wrong host/model, a timeout) is
-caught internally and Phoenix silently falls back to the rule-based
+caught internally and TestOps Mobile silently falls back to the rule-based
 result — see `generation/llm.js`. Turning this on can never break a
 recording session, only change how the generated script is named and
 which assertions it keeps.
@@ -237,7 +237,7 @@ cd live-view && npm install && cd ..
 cd frontend && npm install && cd ..
 ```
 
-**Option A — a tester uploads the app directly (no `PHOENIX_STAGE0_APP_PATH`/`PHOENIX_IOS_APP_PATH`/`PHOENIX_BROWSERSTACK_APP_URL` needed):**
+**Option A — a tester uploads the app directly (no `TESTOPS_MOBILE_STAGE0_APP_PATH`/`TESTOPS_MOBILE_IOS_APP_PATH`/`TESTOPS_MOBILE_BROWSERSTACK_APP_URL` needed):**
 
 ```bash
 node frontend/server.js
@@ -269,7 +269,7 @@ Then, **in a second terminal, from the same repo root**:
 node frontend/server.js    # only if not using the public GitHub Pages URL
 ```
 
-Open the frontend with `?port=8090` (or whatever `PHOENIX_LIVE_VIEW_PORT`
+Open the frontend with `?port=8090` (or whatever `TESTOPS_MOBILE_LIVE_VIEW_PORT`
 is) so it skips the upload screen and connects straight to the
 already-started session — e.g. `http://localhost:8091/?port=8090`.
 
@@ -291,15 +291,15 @@ only, see the Dockerfile's header comment for what's intentionally out
 of scope):
 
 ```bash
-docker build -t phoenix .
-docker run --rm -p 8090:8090 --env-file .env phoenix
+docker build -t testops-mobile .
+docker run --rm -p 8090:8090 --env-file .env testops-mobile
 # frontend, if needed, as a second container:
-docker run --rm -p 8091:8091 --env-file .env phoenix node frontend/server.js
+docker run --rm -p 8091:8091 --env-file .env testops-mobile node frontend/server.js
 ```
 
 ## 6. Verify
 
-- **Option A (upload flow):** open `http://localhost:<PHOENIX_FRONTEND_PORT>`,
+- **Option A (upload flow):** open `http://localhost:<TESTOPS_MOBILE_FRONTEND_PORT>`,
   drag in a `.apk`/`.ipa`, and click "Start recording session" — the
   terminal running `frontend/server.js` should log
   `[session-manager] session started: <id>` within a few seconds
@@ -310,15 +310,15 @@ docker run --rm -p 8091:8091 --env-file .env phoenix node frontend/server.js
   `[session-manager] session started: <id>` (or `[run-session]`'s own
   startup lines around it) — if it hangs or errors here, the problem is
   almost always steps 1-3 (device host unreachable, wrong `.apk` path,
-  or wrong `PHOENIX_APPIUM_HOST`/`PORT`), not Phoenix's own code. Then
-  open the frontend (either `http://localhost:<PHOENIX_FRONTEND_PORT>/?port=<PHOENIX_LIVE_VIEW_PORT>`
+  or wrong `TESTOPS_MOBILE_APPIUM_HOST`/`PORT`), not TestOps Mobile's own code. Then
+  open the frontend (either `http://localhost:<TESTOPS_MOBILE_FRONTEND_PORT>/?port=<TESTOPS_MOBILE_LIVE_VIEW_PORT>`
   from step 5, or the public URL at
-  https://prabathkumar.github.io/phoenix/ pointed at your live-view
+  https://prabathkumar.github.io/testops-mobile/ pointed at your live-view
   host via `?host=&port=`) and confirm the device mirror renders and
   taps register.
 - Alternatively, drive it headlessly with
   `node live-view/test-client.js` (see `.env.example` for
-  `PHOENIX_TAP_SEQUENCE`) and confirm a script lands in `generated/`.
+  `TESTOPS_MOBILE_TAP_SEQUENCE`) and confirm a script lands in `generated/`.
   This only exercises Option B's env-var-configured session (it
   connects to an already-running `run-session.js`), not the upload flow.
 

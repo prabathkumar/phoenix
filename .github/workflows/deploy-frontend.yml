@@ -5,7 +5,7 @@ name: Deploy frontend to GitHub Pages
 # public URL instead of "cd into the repo and run a local server".
 #
 # Important: this only publishes the STATIC page. It still connects, in
-# the tester's own browser, to a Phoenix backend (run-session.js's
+# the tester's own browser, to a TestOps Mobile backend (run-session.js's
 # live-view WebSocket) running locally on whatever machine has the
 # emulator/Appium/device — see README.md's "Public frontend URL" section.
 # ws://localhost:<port> from this https-hosted page works fine because

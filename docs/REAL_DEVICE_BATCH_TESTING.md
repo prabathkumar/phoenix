@@ -8,7 +8,7 @@ that found and fixed several resolver bugs — see the git log for
 `engine/semantic-loop.js` for the specifics. Use this doc instead of
 reconstructing the steps from scratch every time the machine restarts.
 
-For standing up Phoenix's services generally (not just this batch
+For standing up TestOps Mobile's services generally (not just this batch
 harness), see [`SETUP.md`](SETUP.md) — this doc assumes that's already
 done once and Node deps are installed.
 
@@ -29,8 +29,8 @@ curl http://127.0.0.1:4723/status
 
 ```bash
 # Terminal 2 — emulator
-emulator -list-avds        # confirm the AVD name (e.g. phoenix_stage0)
-emulator -avd phoenix_stage0
+emulator -list-avds        # confirm the AVD name (e.g. testops_mobile_stage0)
+emulator -avd testops_mobile_stage0
 ```
 
 Wait for it to fully boot, then confirm it's visible:
@@ -39,17 +39,17 @@ Wait for it to fully boot, then confirm it's visible:
 adb devices   # should list it as "device", not "offline"/"unauthorized"
 ```
 
-## 2. Point Phoenix at the app under test
+## 2. Point TestOps Mobile at the app under test
 
 ```bash
-export PHOENIX_STAGE0_APP_PATH="/Users/prabathkumar/Downloads/<the .apk>"
+export TESTOPS_MOBILE_STAGE0_APP_PATH="/Users/prabathkumar/Downloads/<the .apk>"
 ```
 
 Use an absolute path. If you're running two emulators/devices in
 parallel, also set a distinct device per terminal:
 
 ```bash
-export PHOENIX_APPIUM_DEVICE_NAME="emulator-5556"   # default is emulator-5554
+export TESTOPS_MOBILE_APPIUM_DEVICE_NAME="emulator-5556"   # default is emulator-5554
 ```
 
 ## 3. Reset app state before each run
@@ -79,26 +79,26 @@ node run-batch-executions.js
 
 | Var | Default | Purpose |
 |---|---|---|
-| `PHOENIX_BATCH_TOTAL` | `100` | how many iterations total |
-| `PHOENIX_BATCH_MODES` | all three | comma-separated subset of `guided,semantic,loop` — use this instead of `PHOENIX_BATCH_TOTAL=1` alone to force a single mode; with all three modes requested, `PHOENIX_BATCH_TOTAL=1` still runs `guided` only (see `computeModeCounts()`'s docstring for why). A fourth mode, `login-script`, is opt-in only — it's never included by `all three` and must be named explicitly. |
-| `PHOENIX_BATCH_INSTRUCTION` | `"tap the first visible button"` | the single instruction `semantic`/`guided` iterations act on |
-| `PHOENIX_BATCH_GOAL` | `"explore the app's first screen"` | the plain-language goal `loop` iterations pursue |
-| `PHOENIX_BATCH_LOOP_MAX_STEPS` | `3` | hard step cap per `loop` iteration |
-| `PHOENIX_BATCH_STARTUP_DELAY_MS` | `5000` | pause before the first action, so a cold-start splash screen doesn't get mistaken for the real first screen |
-| `PHOENIX_BATCH_LOGIN_PHONE` / `PHOENIX_BATCH_LOGIN_PASSWORD` | unset | opt-in credentials appended to the `loop` goal ("...use these exact credentials..."); typed text and any leaked credential value are unconditionally redacted from the JSON report — **never commit these to a shell script in the repo**, export them in your own shell session only |
-| `PHOENIX_PLATFORM` | `android` | set to `ios` to target the iOS path instead |
+| `TESTOPS_MOBILE_BATCH_TOTAL` | `100` | how many iterations total |
+| `TESTOPS_MOBILE_BATCH_MODES` | all three | comma-separated subset of `guided,semantic,loop` — use this instead of `TESTOPS_MOBILE_BATCH_TOTAL=1` alone to force a single mode; with all three modes requested, `TESTOPS_MOBILE_BATCH_TOTAL=1` still runs `guided` only (see `computeModeCounts()`'s docstring for why). A fourth mode, `login-script`, is opt-in only — it's never included by `all three` and must be named explicitly. |
+| `TESTOPS_MOBILE_BATCH_INSTRUCTION` | `"tap the first visible button"` | the single instruction `semantic`/`guided` iterations act on |
+| `TESTOPS_MOBILE_BATCH_GOAL` | `"explore the app's first screen"` | the plain-language goal `loop` iterations pursue |
+| `TESTOPS_MOBILE_BATCH_LOOP_MAX_STEPS` | `3` | hard step cap per `loop` iteration |
+| `TESTOPS_MOBILE_BATCH_STARTUP_DELAY_MS` | `5000` | pause before the first action, so a cold-start splash screen doesn't get mistaken for the real first screen |
+| `TESTOPS_MOBILE_BATCH_LOGIN_PHONE` / `TESTOPS_MOBILE_BATCH_LOGIN_PASSWORD` | unset | opt-in credentials appended to the `loop` goal ("...use these exact credentials..."); typed text and any leaked credential value are unconditionally redacted from the JSON report — **never commit these to a shell script in the repo**, export them in your own shell session only |
+| `TESTOPS_MOBILE_PLATFORM` | `android` | set to `ios` to target the iOS path instead |
 
 ### Example: a single, clean loop-only debug run
 
 ```bash
-export PHOENIX_BATCH_LOGIN_PHONE="<phone>"
-export PHOENIX_BATCH_LOGIN_PASSWORD="<password>"
+export TESTOPS_MOBILE_BATCH_LOGIN_PHONE="<phone>"
+export TESTOPS_MOBILE_BATCH_LOGIN_PASSWORD="<password>"
 
-PHOENIX_BATCH_TOTAL=1 \
-PHOENIX_BATCH_MODES=loop \
-PHOENIX_BATCH_LOOP_MAX_STEPS=12 \
-PHOENIX_BATCH_INSTRUCTION="tap the Login button" \
-PHOENIX_BATCH_GOAL="type the Yes Number, then tap the PASSWORD tab, then type the password into the field that appears, then tap Login" \
+TESTOPS_MOBILE_BATCH_TOTAL=1 \
+TESTOPS_MOBILE_BATCH_MODES=loop \
+TESTOPS_MOBILE_BATCH_LOOP_MAX_STEPS=12 \
+TESTOPS_MOBILE_BATCH_INSTRUCTION="tap the Login button" \
+TESTOPS_MOBILE_BATCH_GOAL="type the Yes Number, then tap the PASSWORD tab, then type the password into the field that appears, then tap Login" \
 node run-batch-executions.js
 ```
 
@@ -107,18 +107,18 @@ node run-batch-executions.js
 `loop`'s per-step model planning is a poor fit for a known, fixed sequence like login — it can get every step right and still fail to recognize "both fields are now correct, submit" as a terminal condition (see `docs/STATUS.md`, bug 18). `login-script` mode runs a hardcoded step order instead (dismiss an optional system dialog → tap LOGIN to open the form → type phone → tap the PASSWORD tab → tap the password field to focus it → type password → tap LOGIN to submit), with each individual step still going through the same proven per-instruction resolver. This is the mode that closed out login automation end to end on real hardware for both Android and iOS:
 
 ```bash
-export PHOENIX_BATCH_LOGIN_PHONE="<phone>"
-export PHOENIX_BATCH_LOGIN_PASSWORD="<password>"
+export TESTOPS_MOBILE_BATCH_LOGIN_PHONE="<phone>"
+export TESTOPS_MOBILE_BATCH_LOGIN_PASSWORD="<password>"
 
-PHOENIX_BATCH_TOTAL=1 \
-PHOENIX_BATCH_MODES=login-script \
-PHOENIX_PLATFORM=ios \
+TESTOPS_MOBILE_BATCH_TOTAL=1 \
+TESTOPS_MOBILE_BATCH_MODES=login-script \
+TESTOPS_MOBILE_PLATFORM=ios \
 node run-batch-executions.js
 ```
 
-Set `PHOENIX_PLATFORM=android` (or omit it, since `android` is the default) for the Android path. A successful run's report line reads `OK (...) - Appeared: "...", "Home", "Rewards", "Profile", ... Disappeared: "...", "LOGIN", "LOGIN", ...` — the login screen's own elements disappearing and the post-login home screen's elements appearing in the same diff is the confirmation the submit tap actually landed, not just that no WebDriver error was thrown.
+Set `TESTOPS_MOBILE_PLATFORM=android` (or omit it, since `android` is the default) for the Android path. A successful run's report line reads `OK (...) - Appeared: "...", "Home", "Rewards", "Profile", ... Disappeared: "...", "LOGIN", "LOGIN", ...` — the login screen's own elements disappearing and the post-login home screen's elements appearing in the same diff is the confirmation the submit tap actually landed, not just that no WebDriver error was thrown.
 
-### `test-case` mode: the same approach for ANY flow, as data instead of code (the recommended way to adopt Phoenix)
+### `test-case` mode: the same approach for ANY flow, as data instead of code (the recommended way to adopt TestOps Mobile)
 
 `login-script` mode's step sequence is hardcoded JS (`run-batch-executions.js`'s `LOGIN_SCRIPT_STEPS`) — a new flow meant a new array and a new commit. `test-case` mode generalizes it: a test case is a plain JSON file (`engine/test-case-runner.js` loads and runs it), run through the exact same per-instruction resolver. `test-cases/login.json` is the proven login sequence above, unchanged, now just data; `login-script` mode is kept as a convenience alias pointed at that one file.
 
@@ -131,7 +131,7 @@ Write a test case as a JSON file with a `steps` array:
   "name": "add-a-voucher",
   "steps": [
     { "kind": "tap", "instruction": "tap the Add-ons tab" },
-    { "kind": "type", "instruction": "type the promo code", "text": "${PHOENIX_PROMO_CODE}" },
+    { "kind": "type", "instruction": "type the promo code", "text": "${TESTOPS_MOBILE_PROMO_CODE}" },
     { "kind": "tap", "instruction": "tap the Apply button" }
   ]
 }
@@ -139,7 +139,7 @@ Write a test case as a JSON file with a `steps` array:
 
 - `kind`: `"tap"`, `"type"`, `"scroll"`, `"wait"`, or `"tapIfExists"`.
 - `instruction`: plain language, resolved exactly the way a standalone `executeSemanticAction` call already is — no selector, no element reference. For a `"scroll"` step this is still required (for readability/logging) but isn't resolved against anything on screen — a scroll has no single target element, it just moves the viewport.
-- `text` (type steps only): a literal string, or a whole-string `"${ENV_VAR_NAME}"` placeholder resolved from the environment at run time — never commit a real credential into a test-case file; reference it by env var name instead, the same way `test-cases/login.json` does for `PHOENIX_BATCH_LOGIN_PHONE`/`PHOENIX_BATCH_LOGIN_PASSWORD`. Partial interpolation (`"prefix-${VAR}"`) is deliberately not supported, to keep a half-written credential from ever looking like it belongs in a committed file.
+- `text` (type steps only): a literal string, or a whole-string `"${ENV_VAR_NAME}"` placeholder resolved from the environment at run time — never commit a real credential into a test-case file; reference it by env var name instead, the same way `test-cases/login.json` does for `TESTOPS_MOBILE_BATCH_LOGIN_PHONE`/`TESTOPS_MOBILE_BATCH_LOGIN_PASSWORD`. Partial interpolation (`"prefix-${VAR}"`) is deliberately not supported, to keep a half-written credential from ever looking like it belongs in a committed file.
 - `direction` (scroll steps only): `"down"` (default) or `"up"`. Issues a native `mobile: scrollGesture` (Android) / `mobile: scroll` (iOS) gesture — no element resolution involved. Added after a real run found an element (Logout, in `test-cases/addons.json`) sitting below the fold in a scrollable screen, which nothing in the engine could previously reach.
 - `durationMs` (wait steps only): milliseconds to pause, default `3000`. A `"wait"` step is a pure timing pause — no screen resolution, no device action, not even a call into `executeSemanticAction`. Added after a real run found that the post-login-submit notification-permission dialog appears at a variable delay: fast enough in one run for the following "tap Allow" steps to catch it, still not up by the next step in another (`addons.json`). No step-sequence rewording can fix a timing race; an explicit pause can.
 - `optional` (any kind): `true` if the step is allowed to not match/do anything without failing the run (a system dialog that doesn't always appear, or a scroll that's a no-op when the target is already on screen).
@@ -183,12 +183,12 @@ Caching and self-healing still only matter for a step that's supposed to run. A 
 Run it:
 
 ```bash
-export PHOENIX_PROMO_CODE="<value>"
+export TESTOPS_MOBILE_PROMO_CODE="<value>"
 
-PHOENIX_BATCH_TOTAL=1 \
-PHOENIX_BATCH_MODES=test-case \
-PHOENIX_TEST_CASE_FILE=test-cases/add-a-voucher.json \
-PHOENIX_PLATFORM=ios \
+TESTOPS_MOBILE_BATCH_TOTAL=1 \
+TESTOPS_MOBILE_BATCH_MODES=test-case \
+TESTOPS_MOBILE_TEST_CASE_FILE=test-cases/add-a-voucher.json \
+TESTOPS_MOBILE_PLATFORM=ios \
 node run-batch-executions.js
 ```
 
@@ -228,8 +228,8 @@ iOS batch runs need either:
 - a provisioned physical device.
 
 Relevant env vars once one of those is available:
-`PHOENIX_IOS_APP_PATH`, `PHOENIX_IOS_BUNDLE_ID`,
-`PHOENIX_IOS_DEVICE_NAME`, `PHOENIX_IOS_PLATFORM_VERSION` (must match
+`TESTOPS_MOBILE_IOS_APP_PATH`, `TESTOPS_MOBILE_IOS_BUNDLE_ID`,
+`TESTOPS_MOBILE_IOS_DEVICE_NAME`, `TESTOPS_MOBILE_IOS_PLATFORM_VERSION` (must match
 an installed runtime — `xcrun simctl list runtimes` to check).
 
 ## 6. Known non-bugs (don't re-report these as new issues)

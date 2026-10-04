@@ -1,7 +1,7 @@
 /**
  * Wires generation/semantic-act.js's resolution up to a live Appium
  * session — the piece explicitly called out as not-yet-built in
- * docs/PHOENIX_SPEC.md §6/README's Act 2 section: "actually issuing the
+ * docs/TESTOPS_MOBILE_SPEC.md §6/README's Act 2 section: "actually issuing the
  * resulting tap/setValue against a live Appium session." Everything
  * upstream of this file (buildGroundedSnapshot, resolveSemanticAction,
  * diffSnapshots) only reads an already-captured pageSourceXml string;
@@ -106,7 +106,7 @@ const DEFAULT_OUTCOME_SETTLE_POLL_MS = 1000;
  * @param {boolean} [options.useVisualGrounding] - when true, also
  *   captures a screenshot (`driver.takeScreenshot()`) and passes it to
  *   `resolveSemanticAction()` for fused (text + image) resolution --
- *   docs/PHOENIX_SPEC.md §6's "merge accessibility tree + screenshot"
+ *   docs/TESTOPS_MOBILE_SPEC.md §6's "merge accessibility tree + screenshot"
  *   bullet. Off by default: text-only resolution is cheaper, faster,
  *   and is what's been exercised so far; this is opt-in for whenever
  *   text alone proves ambiguous enough to be worth the extra cost. A
@@ -455,7 +455,7 @@ async function executeSemanticActionInner(driver, instruction, options = {}) {
  * @param {Object} [settleOptions]
  * @param {number} [settleOptions.settleMs] - delay before reading the
  *   post-action page source, "tap" only. Defaults to
- *   DEFAULT_ACT_SETTLE_DELAY_MS (env override: PHOENIX_ACT_SETTLE_MS).
+ *   DEFAULT_ACT_SETTLE_DELAY_MS (env override: TESTOPS_MOBILE_ACT_SETTLE_MS).
  *   0 disables it outright.
  * @param {(ms: number) => Promise<void>} [settleOptions.sleep] - real
  *   timer by default; tests inject a no-op/instant fake so the suite
@@ -469,10 +469,10 @@ async function executeSemanticActionInner(driver, instruction, options = {}) {
  * @param {number} [settleOptions.outcomeSettleTimeoutMs] - total extra
  *   time budget for that polling. Defaults to
  *   DEFAULT_OUTCOME_SETTLE_TIMEOUT_MS (env override:
- *   PHOENIX_OUTCOME_SETTLE_TIMEOUT_MS). 0 disables it outright.
+ *   TESTOPS_MOBILE_OUTCOME_SETTLE_TIMEOUT_MS). 0 disables it outright.
  * @param {number} [settleOptions.outcomeSettlePollMs] - interval between
  *   polls. Defaults to DEFAULT_OUTCOME_SETTLE_POLL_MS (env override:
- *   PHOENIX_OUTCOME_SETTLE_POLL_MS).
+ *   TESTOPS_MOBILE_OUTCOME_SETTLE_POLL_MS).
  * @returns {Promise<{success: boolean, reason?: string, diff?: object, diffSummary?: string, assertions?: Array}>}
  */
 
@@ -623,7 +623,7 @@ async function tryWebviewAction(driver, webviewContext, instruction, options, ki
 
 async function actAndDiff(driver, selectorString, kind, text, pageSourceBefore, settleOptions = {}) {
   const sleep = settleOptions.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
-  const envSettleMs = Number(process.env.PHOENIX_ACT_SETTLE_MS);
+  const envSettleMs = Number(process.env.TESTOPS_MOBILE_ACT_SETTLE_MS);
   const settleMs = settleOptions.settleMs ?? (Number.isFinite(envSettleMs) ? envSettleMs : DEFAULT_ACT_SETTLE_DELAY_MS);
   try {
     const element = await driver.$(selectorString);
@@ -697,8 +697,8 @@ async function actAndDiff(driver, selectorString, kind, text, pageSourceBefore, 
   // doesn't already hold; a step with no declared outcome, or one that
   // already matches, never pays this extra wait.
   if (kind === "tap" && settleOptions.expect && !verifyExpectedOutcome(diff, settleOptions.expect).ok) {
-    const envTimeoutMs = Number(process.env.PHOENIX_OUTCOME_SETTLE_TIMEOUT_MS);
-    const envPollMs = Number(process.env.PHOENIX_OUTCOME_SETTLE_POLL_MS);
+    const envTimeoutMs = Number(process.env.TESTOPS_MOBILE_OUTCOME_SETTLE_TIMEOUT_MS);
+    const envPollMs = Number(process.env.TESTOPS_MOBILE_OUTCOME_SETTLE_POLL_MS);
     const timeoutMs = settleOptions.outcomeSettleTimeoutMs ?? (Number.isFinite(envTimeoutMs) ? envTimeoutMs : DEFAULT_OUTCOME_SETTLE_TIMEOUT_MS);
     const pollMs = settleOptions.outcomeSettlePollMs ?? (Number.isFinite(envPollMs) ? envPollMs : DEFAULT_OUTCOME_SETTLE_POLL_MS);
     const deadline = Date.now() + timeoutMs;

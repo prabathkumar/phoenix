@@ -19,7 +19,7 @@
  *
  * A local iOS Simulator can only run on macOS at all (Apple's license
  * rules out virtualizing it on a Linux TestOps VM), so
- * PHOENIX_APPIUM_PROVIDER=browserstack is how a Linux-hosted Phoenix
+ * TESTOPS_MOBILE_APPIUM_PROVIDER=browserstack is how a Linux-hosted TestOps Mobile
  * points this same startSession() at BrowserStack App Automate's real
  * iOS devices instead of a Simulator on this machine — see
  * remote-provider.js. deviceName/platformVersion then mean "which of
@@ -34,21 +34,21 @@ function buildBaseCapabilities() {
   const base = {
     platformName: "iOS",
     "appium:automationName": "XCUITest",
-    "appium:deviceName": process.env.PHOENIX_IOS_DEVICE_NAME || "iPhone 15",
-    "appium:platformVersion": process.env.PHOENIX_IOS_PLATFORM_VERSION,
+    "appium:deviceName": process.env.TESTOPS_MOBILE_IOS_DEVICE_NAME || "iPhone 15",
+    "appium:platformVersion": process.env.TESTOPS_MOBILE_IOS_PLATFORM_VERSION,
   };
 
   // Either a path to a .app/.ipa to install and launch (the normal case
-  // — see PHOENIX_IOS_APP_PATH), or a bundle id of an app already on the
+  // — see TESTOPS_MOBILE_IOS_APP_PATH), or a bundle id of an app already on the
   // simulator (e.g. "com.apple.mobilesafari") when you want to smoke-test
   // the session/driver plumbing itself without building anything first.
-  // PHOENIX_IOS_BUNDLE_ID takes priority if both are set. Both are
+  // TESTOPS_MOBILE_IOS_BUNDLE_ID takes priority if both are set. Both are
   // local-only concepts — remote-provider.js replaces this entirely
-  // with PHOENIX_BROWSERSTACK_APP_URL when the provider is browserstack.
-  if (process.env.PHOENIX_IOS_BUNDLE_ID) {
-    base["appium:bundleId"] = process.env.PHOENIX_IOS_BUNDLE_ID;
+  // with TESTOPS_MOBILE_BROWSERSTACK_APP_URL when the provider is browserstack.
+  if (process.env.TESTOPS_MOBILE_IOS_BUNDLE_ID) {
+    base["appium:bundleId"] = process.env.TESTOPS_MOBILE_IOS_BUNDLE_ID;
   } else {
-    base["appium:app"] = process.env.PHOENIX_IOS_APP_PATH;
+    base["appium:app"] = process.env.TESTOPS_MOBILE_IOS_APP_PATH;
   }
 
   return base;

@@ -10,15 +10,15 @@
  * while one was active threw, and `frontend/upload-session.js` turned
  * that into a 409 for the tester. That matched the two real constraints
  * at the time: `live-view/server.js` bound one fixed port
- * (`PHOENIX_LIVE_VIEW_PORT`, default 8090) and nothing allocated a
+ * (`TESTOPS_MOBILE_LIVE_VIEW_PORT`, default 8090) and nothing allocated a
  * different one per session, and `capture/recorder.js`/session-manager
  * itself only ever tracked one driver/recorder/wss triple.
  *
  * This module generalizes that single slot into N slots (capacity
- * configurable via `PHOENIX_SESSION_POOL_SIZE`, default **1** — so an
+ * configurable via `TESTOPS_MOBILE_SESSION_POOL_SIZE`, default **1** — so an
  * un-configured deployment behaves identically to before this existed):
  * each slot gets its own live-view port (allocated sequentially from
- * `PHOENIX_LIVE_VIEW_PORT`, default 8090, skipping ports already
+ * `TESTOPS_MOBILE_LIVE_VIEW_PORT`, default 8090, skipping ports already
  * claimed by another live slot in this same process) so two concurrent
  * sessions never collide on the same WebSocket port. Rejecting when
  * full follows the same style `remote-provider.js`'s capability
@@ -41,7 +41,7 @@ class SessionPoolFullError extends Error {
   constructor(capacity) {
     super(
       `Session pool is full (capacity: ${capacity}). Stop an active session before starting another, ` +
-        `or raise PHOENIX_SESSION_POOL_SIZE if more devices/slots are actually available.`
+        `or raise TESTOPS_MOBILE_SESSION_POOL_SIZE if more devices/slots are actually available.`
     );
     this.name = "SessionPoolFullError";
     this.capacity = capacity;
@@ -52,21 +52,21 @@ class SessionPool {
   /**
    * @param {object} [options]
    * @param {number} [options.capacity] - max concurrent sessions. Falls
-   *   back to PHOENIX_SESSION_POOL_SIZE, then 1 (today's behavior).
+   *   back to TESTOPS_MOBILE_SESSION_POOL_SIZE, then 1 (today's behavior).
    * @param {number} [options.basePort] - first live-view port to hand
-   *   out. Falls back to PHOENIX_LIVE_VIEW_PORT, then 8090.
+   *   out. Falls back to TESTOPS_MOBILE_LIVE_VIEW_PORT, then 8090.
    */
   constructor(options = {}) {
     const configuredCapacity = options.capacity !== undefined
       ? options.capacity
-      : Number(process.env.PHOENIX_SESSION_POOL_SIZE);
+      : Number(process.env.TESTOPS_MOBILE_SESSION_POOL_SIZE);
     this.capacity = Number.isFinite(configuredCapacity) && configuredCapacity > 0
       ? Math.floor(configuredCapacity)
       : DEFAULT_CAPACITY;
 
     const configuredBasePort = options.basePort !== undefined
       ? options.basePort
-      : Number(process.env.PHOENIX_LIVE_VIEW_PORT);
+      : Number(process.env.TESTOPS_MOBILE_LIVE_VIEW_PORT);
     this.basePort = Number.isFinite(configuredBasePort) && configuredBasePort > 0
       ? Math.floor(configuredBasePort)
       : DEFAULT_BASE_PORT;

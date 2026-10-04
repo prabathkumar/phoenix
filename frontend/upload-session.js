@@ -1,6 +1,6 @@
 /**
  * POST /api/sessions — a tester uploads a .ipa/.apk directly through
- * frontend/index.html and Phoenix starts a recording session against
+ * frontend/index.html and TestOps Mobile starts a recording session against
  * it on demand, instead of the app being fixed by an env var before
  * run-session.js boots. See README's "Uploading an app directly"
  * section for the full flow and why cloud (BrowserStack) came first:
@@ -39,7 +39,7 @@ function handleUploadAndStart(req, res) {
   if (isSessionActive()) {
     respondJson(res, 409, {
       error: "The session pool is full. Stop an active session before starting another, " +
-        "or raise PHOENIX_SESSION_POOL_SIZE if more devices/slots are actually available.",
+        "or raise TESTOPS_MOBILE_SESSION_POOL_SIZE if more devices/slots are actually available.",
     });
     return;
   }
@@ -141,7 +141,7 @@ function handleUploadAndStart(req, res) {
 /**
  * Turns a saved upload into whatever capabilityOverrides engine/session.js
  * or engine/ios-session.js's startSession() needs, depending on the
- * active PHOENIX_APPIUM_PROVIDER.
+ * active TESTOPS_MOBILE_APPIUM_PROVIDER.
  */
 async function resolveAppCapability({ savedPath, platform }) {
   if (remoteProvider.provider() === remoteProvider.BROWSERSTACK) {
@@ -157,8 +157,8 @@ async function resolveAppCapability({ savedPath, platform }) {
   // Local provider: the app path must be readable by whatever host is
   // actually running the Appium server. That's this same machine only
   // when frontend/server.js and `appium` are co-located — the same
-  // constraint docs/SETUP.md already documents for PHOENIX_STAGE0_APP_PATH
-  // and PHOENIX_IOS_APP_PATH today; an uploaded file doesn't relax it.
+  // constraint docs/SETUP.md already documents for TESTOPS_MOBILE_STAGE0_APP_PATH
+  // and TESTOPS_MOBILE_IOS_APP_PATH today; an uploaded file doesn't relax it.
   const key = platform === "ios" ? "appium:app" : "appium:app";
   return { [key]: savedPath };
 }

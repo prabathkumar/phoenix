@@ -117,3 +117,40 @@ POST /api/execution-cycles/:id/run
 ```
 
 No new execution logic needed — this is packaging, not re-proving anything.
+
+---
+
+## The full end-to-end lifecycle (regression test cycle) — the complete picture
+
+The four screens above are Phoenix's execution slice. This section is the whole loop around it, as the product owner described it directly — who owns each stage, and what's actually built vs. still to build. This is the authoritative sequence; refer back here instead of re-describing it.
+
+1. **Test scenarios → test cases.** Test scenarios are derived from requirements (upstream of Phoenix entirely — a TestOps/analyst activity, not Phoenix's concern). Test cases are generated from those scenarios as plain-language step scripts (the JSON shape this repo already defines — `test-cases/*.json`). **Built**, for the shape itself; the generation-from-requirements step is outside Phoenix.
+
+2. **Script versioning.** The generated test-case JSON is pushed into Git, linked to TestOps, so test assets are version-controlled the same way code is. **Not built, not designed yet** — no repo, branch, or commit convention for tester/TestOps-authored test-case JSON exists today. This is a real gap: distinct from Phoenix's own repo, and distinct from `execution-log.js`'s in-run learning state.
+
+3. **Script also pushed to FrothAI.** The same test-case JSON is pushed into FrothAI (the LLM/resolution layer) alongside Git. **Not built** — today a test case is read straight off disk by `test-case-runner.js`; there's no push/sync step to a separate FrothAI store. Needs clarifying what FrothAI does with a script it hasn't executed yet (pre-analysis? Just storage for later correlation with results?).
+
+4. **Tester loads the app.** Upload `.apk`/`.ipa` via TestOps's existing upload flow. **Built, proven** (`engine/browserstack-upload.js`).
+
+5. **Tester selects test cases + provides test data.** For a regression cycle this is not one scenario at a time — it's hundreds of test cases/scenarios selected together, with test data parameterized across all of them and collected once via TestOps's UI (matches the existing "Execution Cycle" screen's "Variables: collected once per cycle, not per test case" design above). **Partially built**: the parameterization mechanism (`{{VARIABLE}}` tokens resolved from an execution cycle's variable set) already exists and is proven; the UI to collect hundreds of test cases' worth of data from a tester in one pass is **to build**.
+
+6. **TestOps calls BrowserStack to list devices; tester selects one or more.** TestOps's own call, using TestOps's own BrowserStack credentials — confirmed earlier in this engagement as TestOps's responsibility, not Phoenix's. **Outside Phoenix**, owned entirely by TestOps.
+
+7. **Execution starts — the loop process.** TestOps triggers execution against the selected device(s); Phoenix runs the autonomous/semantic loop per test case. **Built and proven on real hardware** for the resolution/execution mechanics themselves (`engine/semantic-loop.js`, `test-case-runner.js`) — though this session's real-device validation also found the loop's structural failure modes (max-steps, stuck-repeating, stale-resolution — see the iOS/Android log analysis above) are real and unresolved.
+
+8. **Loop failure → manual selector.** When a step fails to resolve, the tester is asked to go select the element manually to complete execution — this is the "Record this step" fallback (Act 1 guided recording, already shipped) that was the subject of the last exchange. **The recording capability is built; the wiring from "step failed" to "show Record-this-step, capture the selector, feed it back into the test case" is explicitly NOT built** (same gap flagged in the table above, line "Record this step fallback"). This is the most concrete, correctly-scoped "next thing for developers" to date — everything upstream and downstream of it is already proven or already scoped.
+
+9. **Execution against BrowserStack; results read back via BrowserStack's own API.** TestOps pulls results back from BrowserStack directly (not only from Phoenix's own pass/fail return value) — confirms step/session outcome against BrowserStack's own session record. **Partially built**: Phoenix's `runOneTestCaseIteration`/`runScriptSteps` already return a structured pass/fail + detail per test case; a separate TestOps→BrowserStack results-API call is TestOps's own integration, outside Phoenix.
+
+10. **Logs and execution results pushed back — to Git and to FrothAI.** Same dual-push pattern as the script itself (steps 2-3) — now for the *results* of running it. **Not built** — `execution-log.js` keeps this run's history in Phoenix's own state for cross-run resolution reuse (dead selectors, past failures/successes), but there is no push of logs/results to an external Git location or to FrothAI as a separate system today.
+
+11. **TestOps marks pass/fail and builds a test summary for test managers.** Aggregation and decision-support UI, entirely TestOps's own responsibility, consuming the structured per-test-case result Phoenix already returns. **Outside Phoenix**; Phoenix's job is only to supply a clean, structured, step-level pass/fail that TestOps can roll up without reinterpreting raw logs.
+
+12. **Logs/results pushed into FrothAI for prediction and support.** Beyond the regression cycle itself, the same execution history feeds FrothAI for whatever predictive/support use TestOps builds on top (e.g. surfacing "this step fails most months around release day" patterns). **Not built** — `execution-log.js`'s learning is local to a Phoenix run; there's no external push to a FrothAI prediction store yet. This is the same mechanism the Beta framing (failures-as-training-signal) from earlier in this engagement depends on, just now named as a concrete cross-system integration rather than an in-process log.
+
+### What this adds to the punch list
+
+Three genuinely new, previously-undocumented gaps, none of them resolver bugs:
+- **Test-case JSON → Git push/versioning** (stage 2) — no design yet.
+- **Script and results → FrothAI push** (stages 3, 10, 12) — no design yet; needs a decision on what FrothAI actually consumes (raw logs? structured summaries? both?).
+- **"Record this step" wiring** (stage 8) — already scoped in the table above, now confirmed as the single highest-leverage gap: it's the one piece that turns every resolver/loop failure this session found into a 30-second tester fix instead of a developer ticket.

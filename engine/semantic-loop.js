@@ -317,6 +317,7 @@ async function runAutonomousLoop(driver, goal, options = {}) {
         kind: decision.kind,
         text: decision.text,
         platform,
+        useVisualGrounding: process.env.PHOENIX_ENABLE_VISUAL_GROUNDING === "1",
         // Refuse to silently overwrite a field an earlier "type" step
         // in THIS run already set with different text -- see the
         // comment in semantic-act-executor.js for the real failure

@@ -264,7 +264,10 @@ async function runOneSemanticIteration(platform, instruction) {
   const driver = await startSession();
   try {
     await waitForAppReady(driver);
-    const result = await executeSemanticAction(driver, instruction, { platform });
+    const result = await executeSemanticAction(driver, instruction, {
+      platform,
+      useVisualGrounding: process.env.PHOENIX_ENABLE_VISUAL_GROUNDING === "1",
+    });
     return { success: result.success, detail: result.success ? result.diffSummary : result.reason };
   } finally {
     await driver.deleteSession();

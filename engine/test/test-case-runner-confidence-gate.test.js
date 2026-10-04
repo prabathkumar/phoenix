@@ -202,4 +202,45 @@ function tmpDbPath() {
     assert.strictEqual(result.success, true);
     assert.deepStrictEqual(result.updatedSteps[0].resolvedSelector, { strategy: "accessibility-id", value: "login_button" });
   });
+
+  await run("PHOENIX_ENABLE_VISUAL_GROUNDING=1 passes useVisualGrounding:true to executeSemanticAction (vision fusion can now actually be turned on from a real run)", async () => {
+    const previous = process.env.PHOENIX_ENABLE_VISUAL_GROUNDING;
+    process.env.PHOENIX_ENABLE_VISUAL_GROUNDING = "1";
+    try {
+      const steps = [{ kind: "tap", instruction: "tap LOGIN" }];
+      const calls = [];
+      await runScriptSteps({}, steps, {
+        platform: "android",
+        executeSemanticAction: async (driver, instruction, options) => {
+          calls.push(options);
+          return { success: true, diffSummary: "Login screen appeared.", selector: { strategy: "accessibility-id", value: "login_button" } };
+        },
+      });
+      assert.strictEqual(calls.length, 1);
+      assert.strictEqual(calls[0].useVisualGrounding, true);
+    } finally {
+      if (previous === undefined) delete process.env.PHOENIX_ENABLE_VISUAL_GROUNDING;
+      else process.env.PHOENIX_ENABLE_VISUAL_GROUNDING = previous;
+    }
+  });
+
+  await run("useVisualGrounding defaults to false when PHOENIX_ENABLE_VISUAL_GROUNDING isn't set to \"1\"", async () => {
+    const previous = process.env.PHOENIX_ENABLE_VISUAL_GROUNDING;
+    delete process.env.PHOENIX_ENABLE_VISUAL_GROUNDING;
+    try {
+      const steps = [{ kind: "tap", instruction: "tap LOGIN" }];
+      const calls = [];
+      await runScriptSteps({}, steps, {
+        platform: "android",
+        executeSemanticAction: async (driver, instruction, options) => {
+          calls.push(options);
+          return { success: true, diffSummary: "Login screen appeared.", selector: { strategy: "accessibility-id", value: "login_button" } };
+        },
+      });
+      assert.strictEqual(calls[0].useVisualGrounding, false);
+    } finally {
+      if (previous === undefined) delete process.env.PHOENIX_ENABLE_VISUAL_GROUNDING;
+      else process.env.PHOENIX_ENABLE_VISUAL_GROUNDING = previous;
+    }
+  });
 })();

@@ -280,6 +280,13 @@ async function runScriptSteps(driver, steps, options) {
       kind: step.kind,
       text: step.text,
       platform,
+      // Opt-in, off by default -- see semantic-act-executor.js's own doc
+      // comment on useVisualGrounding and docs/DEV_ONBOARDING_CHECKLIST.md's
+      // Layer 3 section for what this is for and why it's never been
+      // wired to anything real until now. A screenshot capture per step
+      // has a real cost (extra WebDriver round-trip, extra model-prompt
+      // size), so this stays opt-in rather than always-on.
+      useVisualGrounding: process.env.PHOENIX_ENABLE_VISUAL_GROUNDING === "1",
       direction: step.direction,
       // "tapIfExists" is given a literal, hand-authored selector and
       // never the AI-learned cache -- see loadTestCaseSteps' doc

@@ -124,14 +124,32 @@ Two different things, deliberately kept separate:
    for exactly how to add one (capture a real screenshot + page source,
    drop them in `generation/test/fixtures/`, register the expected ref).
 
+### How to actually turn this on for a real run
+
+Found while closing this gap: `useVisualGrounding` existed in
+`engine/semantic-act-executor.js` but nothing ever wired it to an env var —
+there was no way to turn vision fusion on from a real batch run at all
+before now. Fixed: set `PHOENIX_ENABLE_VISUAL_GROUNDING=1` and it flows
+through `test-case-runner.js` (test-case mode), `run-batch-executions.js`
+(semantic mode), and `semantic-loop.js` (loop mode) alike. Off by default —
+a screenshot capture per step has a real cost (extra WebDriver round-trip,
+larger model prompt), so this stays opt-in. Covered by 2 new tests in
+`engine/test/test-case-runner-confidence-gate.test.js`.
+
 ### Manual test case (real evidence)
 **Setup:** `test-cases/addons.json` step 24 (Android) — the LOGOUT control,
 which is an icon with content-desc `"Right Icon"`, no text relating it to
 "logout" anywhere in the accessibility tree.
 
 **Steps:**
-1. Run the Android batch test against the real app.
+1. Run the Android batch test with `PHOENIX_ENABLE_VISUAL_GROUNDING=1` set.
 2. Confirm the tap on the Profile screen's top-right icon.
+3. **Capture the real fixture while you're there:** save the step's
+   `getPageSource()` XML and its screenshot (base64) into
+   `generation/test/fixtures/android-right-icon-logout.{xml,b64}`, then
+   register the case in `generation/test/semantic-act-vision-integration.test.js`'s
+   `FIXTURES` array with the ref the real snapshot assigns that element —
+   this is the first real accuracy fixture for this whole layer.
 
 **Expected result (and the real bug this is for):** without vision fusion,
 a plain-language instruction has zero semantic signal to match "LOGOUT or

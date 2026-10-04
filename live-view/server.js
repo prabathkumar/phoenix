@@ -51,6 +51,34 @@ function startLiveView(driver, recorder, port = 8090, platform = "android") {
     }, SCREENSHOT_POLL_INTERVAL_MS);
 
     socket.on("message", async (raw) => {
+      try {
+        await handleMessage(raw);
+      } catch (err) {
+        // REAL BUG, found 2026-10-04 on the first real-device validation
+        // of the "Record this step" fallback: an uncaught rejection in
+        // here (e.g. driver.execute(tapExtension, ...) throwing because
+        // this specific device/driver build doesn't support the mobile
+        // extension used -- confirmed live, BrowserStack rejected
+        // "mobile: clickGesture" with "unknown command", listing a
+        // supported-commands set with no plain tap/click gesture at
+        // all) used to be a genuinely unhandled rejection inside an
+        // async WebSocket message handler, which crashed the ENTIRE
+        // Node process -- not just this one recording, every session
+        // this frontend server was managing, including Act 1's
+        // already-shipped recording flow (same tapExtension call, same
+        // crash exposure). Catching it here turns a process-wide outage
+        // into a clean per-tap error the client can show and recover
+        // from, same spirit as the existing type-error handling below.
+        console.error("[live-view] message handler failed:", err.message);
+        try {
+          socket.send(JSON.stringify({ type: "action-error", message: err.message }));
+        } catch {
+          // socket may already be closed -- nothing more to do
+        }
+      }
+    });
+
+    async function handleMessage(raw) {
       const message = JSON.parse(raw.toString());
 
       if (message.type === "tap") {
@@ -201,7 +229,7 @@ function startLiveView(driver, recorder, port = 8090, platform = "android") {
         const steps = recorder.finish();
         socket.send(JSON.stringify({ type: "session-finished", stepCount: steps.length }));
       }
-    });
+    }
 
     socket.on("close", () => {
       stopped = true;

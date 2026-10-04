@@ -296,6 +296,50 @@ async function main() {
     }
   });
 
+  await testAsync("a tap-injection failure (e.g. an unsupported mobile command) reports an error instead of crashing the whole server", async () => {
+    // Regression test for a real crash found 2026-10-04 on the first
+    // real-device validation of the "Record this step" fallback:
+    // BrowserStack rejected "mobile: clickGesture" with "unknown
+    // command" (this device/driver build's supported-commands list had
+    // no plain tap/click gesture at all) -- and since the WebSocket
+    // message handler had no try/catch, that rejection was a genuinely
+    // unhandled rejection inside an async handler, which crashed the
+    // ENTIRE Node process. Not just this one recording -- every session
+    // the frontend server was managing, including Act 1's own
+    // already-shipped recording flow (same driver.execute(tapExtension)
+    // call, same exposure). The fix wraps the whole handler so any
+    // failure here becomes a clean per-tap "action-error" event.
+    const driver = makeFakeDriver();
+    driver.execute = async () => {
+      throw new Error('unknown command: Unknown mobile command "clickGesture". Only shell,dragGesture,... commands are supported.');
+    };
+    const recorder = makeFakeRecorder();
+    const port = 18090 + Math.floor(Math.random() * 1000);
+    const wss = startLiveView(driver, recorder, port);
+    try {
+      const socket = await connect(port);
+      const errorPromise = nextMessageOfType(socket, "action-error");
+      socket.send(JSON.stringify({ type: "tap", xRatio: 0.5, yRatio: 0.5 }));
+      const error = await errorPromise;
+
+      assert.match(error.message, /clickGesture/);
+      assert.strictEqual(recorder.steps.length, 0, "a failed tap must not be recorded as a completed step");
+
+      // The process (and this WebSocket server) must still be alive --
+      // a second, successful tap after the failed one proves the
+      // connection and the server survived rather than having crashed.
+      driver.execute = async () => null;
+      const stepRecorded = nextMessageOfType(socket, "step-recorded");
+      socket.send(JSON.stringify({ type: "tap", xRatio: 0.3, yRatio: 0.3 }));
+      await stepRecorded;
+      assert.strictEqual(recorder.steps.length, 1);
+
+      socket.close();
+    } finally {
+      wss.close();
+    }
+  });
+
   if (process.exitCode) {
     console.error("\nlive-view/server tests FAILED");
     process.exit(1);

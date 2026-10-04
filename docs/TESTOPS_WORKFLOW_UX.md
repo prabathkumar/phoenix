@@ -124,6 +124,38 @@ No new execution logic needed — this is packaging, not re-proving anything.
 
 The four screens above are Phoenix's execution slice. This section is the whole loop around it, as the product owner described it directly — who owns each stage, and what's actually built vs. still to build. This is the authoritative sequence; refer back here instead of re-describing it.
 
+```mermaid
+flowchart TD
+    A["Requirements → test scenarios → test cases\n(JSON step scripts)"] --> B["Push test-case JSON to Git\n(linked to TestOps) — NOT BUILT"]
+    B --> C["Push same script to FrothAI\n— NOT BUILT"]
+    A --> D["Tester uploads app (.apk / .ipa)\n— BUILT"]
+    D --> E["Tester selects 100s of test cases\n+ provides test data (regression cycle)\n— PARTIALLY BUILT"]
+    E --> F["TestOps calls BrowserStack API\nto list devices; tester selects device(s)\n— OWNED BY TESTOPS"]
+    F --> G["Execution starts: the loop\n(Phoenix semantic/autonomous loop)\n— BUILT, proven on real hardware"]
+    G --> H{"Step resolves?"}
+    H -- "yes" --> I["Continue to next step"]
+    I --> G
+    H -- "no — loop fails" --> J["'Record this step' shown to tester\n(Act 1 guided recording, live view)\n— RECORDING ITSELF IS BUILT"]
+    J --> K["Tester physically taps the real\nelement on the live device screen"]
+    K --> L["Selector/instruction fed back\ninto the test case as a refinement\n— WIRING NOT BUILT (highest priority gap)"]
+    L --> G
+    I --> M["Test case run completes"]
+    M --> N["Results read back from\nBrowserStack's own API\n— OWNED BY TESTOPS"]
+    N --> O["Logs + results pushed to Git\n+ FrothAI — NOT BUILT"]
+    N --> P["TestOps marks pass/fail,\nbuilds test summary for test managers\n— OWNED BY TESTOPS"]
+    O --> Q["FrothAI: prediction + support\nacross future runs — NOT BUILT"]
+
+    style J fill:#fff3cd,stroke:#664d03
+    style K fill:#fff3cd,stroke:#664d03
+    style L fill:#ffcccb,stroke:#b91c1c
+    style B fill:#ffcccb,stroke:#b91c1c
+    style C fill:#ffcccb,stroke:#b91c1c
+    style O fill:#ffcccb,stroke:#b91c1c
+    style Q fill:#ffcccb,stroke:#b91c1c
+```
+
+Red = not built, no design yet. Yellow = the manual-fallback path itself (recording capability exists; the loop around it does not). Everything else is either built/proven or explicitly owned by TestOps outside Phoenix.
+
 1. **Test scenarios → test cases.** Test scenarios are derived from requirements (upstream of Phoenix entirely — a TestOps/analyst activity, not Phoenix's concern). Test cases are generated from those scenarios as plain-language step scripts (the JSON shape this repo already defines — `test-cases/*.json`). **Built**, for the shape itself; the generation-from-requirements step is outside Phoenix.
 
 2. **Script versioning.** The generated test-case JSON is pushed into Git, linked to TestOps, so test assets are version-controlled the same way code is. **Not built, not designed yet** — no repo, branch, or commit convention for tester/TestOps-authored test-case JSON exists today. This is a real gap: distinct from Phoenix's own repo, and distinct from `execution-log.js`'s in-run learning state.

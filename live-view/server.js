@@ -99,7 +99,7 @@ function startLiveView(driver, recorder, port = 8090, platform = "android") {
         // uiautomator2-driver 3.x nor xcuitest-driver implement (404 unknown
         // command — see Stage 0 fix in engine/stage0-session.js). Use each
         // platform's own execute-script tap extension instead.
-        await driver.execute(tapExtension, deviceCoordinate);
+        await injectTap(driver, platform, tapExtension, deviceCoordinate);
         const step = await recorder.completeStep(partialStep);
 
         // resolvedElement included so a UI can show the tester exactly
@@ -239,6 +239,36 @@ function startLiveView(driver, recorder, port = 8090, platform = "android") {
 
   console.log(`[live-view] listening on ws://localhost:${port}`);
   return wss;
+}
+
+/**
+ * Android taps go through W3C pointer actions (driver.performActions), not
+ * `mobile: clickGesture`: real BrowserStack Pixel 7 run (2026-10-04) rejected
+ * clickGesture as "Unknown mobile command" -- its supported list has no plain
+ * tap. W3C actions are the cross-driver standard, so they don't depend on
+ * which mobile: extensions a given device-farm build exposes. Falls back to
+ * the old execute-script path if performActions isn't available on the driver.
+ * iOS keeps `mobile: tap` (proven on real hardware).
+ */
+async function injectTap(driver, platform, tapExtension, { x, y }) {
+  if (platform !== "ios" && typeof driver.performActions === "function") {
+    await driver.performActions([
+      {
+        type: "pointer",
+        id: "finger1",
+        parameters: { pointerType: "touch" },
+        actions: [
+          { type: "pointerMove", duration: 0, x, y },
+          { type: "pointerDown", button: 0 },
+          { type: "pause", duration: 50 },
+          { type: "pointerUp", button: 0 },
+        ],
+      },
+    ]);
+    if (typeof driver.releaseActions === "function") await driver.releaseActions();
+    return;
+  }
+  await driver.execute(tapExtension, { x, y });
 }
 
 // Cached per driver instance so we don't hit the WebDriver endpoint on

@@ -84,11 +84,13 @@ COPY engine/package.json engine/package-lock.json ./engine/
 COPY capture/package.json capture/package-lock.json ./capture/
 COPY generation/package.json generation/package-lock.json ./generation/
 COPY live-view/package.json live-view/package-lock.json ./live-view/
+COPY frontend/package.json frontend/package-lock.json ./frontend/
 
 RUN npm install --prefix engine --omit=dev \
  && npm install --prefix capture --omit=dev \
  && npm install --prefix generation --omit=dev \
- && npm install --prefix live-view --omit=dev
+ && npm install --prefix live-view --omit=dev \
+ && npm install --prefix frontend --omit=dev
 
 # Now bring in the actual source.
 COPY engine/ ./engine/

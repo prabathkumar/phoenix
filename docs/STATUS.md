@@ -866,3 +866,19 @@ necessarily because the model was wrong; after fixing the test to read
 exercised this way — no evidence yet on a second ambiguous-icon case, a
 different model, or a case where the model *should* decline (expectRef:
 null).
+
+## 2026-10-05 — "Record this step" real-device findings
+
+First real BrowserStack validation of the "Record this step" endpoints
+(attach → live view → screenshot) worked end to end up to the tap:
+
+- **Real bug, fixed:** an unsupported `mobile:` command rejected inside the
+  async WebSocket handler crashed the whole frontend process. Now caught and
+  reported to the client as `action-error` (regression test added).
+- **Real incompatibility, fix pending real-device confirmation:** the
+  BrowserStack Pixel 7 driver rejects `mobile: clickGesture` ("Unknown mobile
+  command"; supported list has no plain tap). `live-view/server.js` now taps
+  Android via W3C pointer actions (`performActions`), falling back to the old
+  extension if unavailable. Unit-tested only — NOT yet proven on real hardware.
+- **CI:** frontend job needs `capture` deps installed (cross-require); fixed.
+- Dockerfile now installs frontend's own deps (`busboy`).

@@ -104,7 +104,7 @@ Either way, recording is never where a tester starts — it only ever appears as
 | Execution Cycle UI (select cases, devices, variables, schedule) | **To build** — UI only; underlying execution is `run-batch-executions.js`'s `test-case` mode, already callable per (test case, device) pair |
 | A real HTTP API wrapping `run-batch-executions.js` for one (test case, device) pair, returning a pass/fail + detail per call (today it's a CLI/env-var batch script) | **To build** — the one real backend gap; see below |
 | Results grid, live status | **To build** — UI only, polling or streaming the API above |
-| "Record this step" fallback + feedback into the test case | **To build** — wires existing Act 1 recording into the step editor as a repair action |
+| "Record this step" fallback + feedback into the test case | **Built (endpoints), real-device tap pending** — `/api/record-step`, `/api/apply-recorded-step`; UI button still to build |
 
 ### The one real backend gap: an API, not a CLI
 
@@ -137,7 +137,7 @@ flowchart TD
     I --> G
     H -- "no — loop fails" --> J["'Record this step' shown to tester\n(Act 1 guided recording, live view)\n— RECORDING ITSELF IS BUILT"]
     J --> K["Tester physically taps the real\nelement on the live device screen"]
-    K --> L["Selector/instruction fed back\ninto the test case as a refinement\n— WIRING NOT BUILT (highest priority gap)"]
+    K --> L["Selector/instruction fed back\ninto the test case as a refinement\n— WIRING BUILT (endpoints + tests; real-device tap pending)"]
     L --> G
     I --> M["Test case run completes"]
     M --> N["Results read back from\nBrowserStack's own API\n— OWNED BY TESTOPS"]
@@ -147,7 +147,7 @@ flowchart TD
 
     style J fill:#fff3cd,stroke:#664d03
     style K fill:#fff3cd,stroke:#664d03
-    style L fill:#ffcccb,stroke:#b91c1c
+    style L fill:#fff3cd,stroke:#664d03
     style B fill:#ffcccb,stroke:#b91c1c
     style C fill:#ffcccb,stroke:#b91c1c
     style O fill:#ffcccb,stroke:#b91c1c

@@ -296,6 +296,29 @@ async function main() {
     }
   });
 
+  await testAsync("android taps use W3C pointer actions (not mobile: clickGesture) when the driver supports performActions", async () => {
+    const driver = makeFakeDriver();
+    driver.performCalls = [];
+    driver.performActions = async (a) => { driver.performCalls.push(a); };
+    driver.releaseActions = async () => {};
+    const recorder = makeFakeRecorder();
+    const port = 18090 + Math.floor(Math.random() * 1000);
+    const wss = startLiveView(driver, recorder, port, "android");
+    try {
+      const socket = await connect(port);
+      const recorded = nextMessageOfType(socket, "step-recorded");
+      socket.send(JSON.stringify({ type: "tap", xRatio: 0.5, yRatio: 0.25 }));
+      await recorded;
+      assert.strictEqual(driver.performCalls.length, 1);
+      const moveAction = driver.performCalls[0][0].actions[0];
+      assert.deepStrictEqual([moveAction.x, moveAction.y], [540, 600]);
+      assert.strictEqual(driver.executeCalls.filter(([s]) => s === "mobile: clickGesture").length, 0);
+      socket.close();
+    } finally {
+      wss.close();
+    }
+  });
+
   await testAsync("a tap-injection failure (e.g. an unsupported mobile command) reports an error instead of crashing the whole server", async () => {
     // Regression test for a real crash found 2026-10-04 on the first
     // real-device validation of the "Record this step" fallback:

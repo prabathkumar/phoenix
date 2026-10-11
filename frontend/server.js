@@ -64,6 +64,7 @@ const PORT = Number(process.env.TESTOPS_MOBILE_FRONTEND_PORT) || 8091;
 const INDEX_PATH = path.join(__dirname, "index.html");
 const MOCK_TESTOPS_PATH = path.join(__dirname, "mock-testops.html");
 const SEMANTIC_API_ENABLED = process.env.TESTOPS_MOBILE_ENABLE_SEMANTIC_API === "1";
+const GIT_SYNC_API_ENABLED = process.env.TESTOPS_MOBILE_ENABLE_GIT_SYNC === "1";
 const WEB_API_ENABLED = process.env.TESTOPS_MOBILE_ENABLE_WEB_API === "1";
 const EXECUTE_API_ENABLED = process.env.TESTOPS_MOBILE_ENABLE_EXECUTE_API === "1";
 const RECORD_STEP_API_ENABLED = process.env.TESTOPS_MOBILE_ENABLE_RECORD_STEP_API === "1";
@@ -82,6 +83,14 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (GIT_SYNC_API_ENABLED && req.method === "POST" && req.url === "/api/sync-test-cases") {
+    require("./sync-test-cases-endpoint").handleSyncTestCases(req, res);
+    return;
+  }
+  if (GIT_SYNC_API_ENABLED && req.method === "GET" && req.url.startsWith("/api/test-case-history")) {
+    require("./sync-test-cases-endpoint").handleTestCaseHistory(req, res);
+    return;
+  }
   if (WEB_API_ENABLED && req.method === "POST" && req.url === "/api/execute-web-test-case") {
     require("./execute-web-test-case-endpoint").handleExecuteWebTestCase(req, res);
     return;

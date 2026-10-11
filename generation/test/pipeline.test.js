@@ -85,6 +85,18 @@ async function testAsync(name, fn) {
 
 console.log("generation/pipeline:");
 
+test("an icon labelled only by content-desc is asserted with .description(), not .text() (which would never match on replay)", () => {
+  const xml = `<hierarchy><android.widget.ImageView text="" content-desc="tick" bounds="[0,0][10,10]"/>
+    <android.widget.TextView text="English" content-desc="" bounds="[0,20][10,30]"/></hierarchy>`;
+  const labels = extractLabels(xml);
+  assert.deepStrictEqual(labels.map((l) => [l.label, l.source]), [["tick", "content-desc"], ["English", "text"]]);
+  assert.strictEqual(
+    buildResourceIdSelector(undefined, "tick", "android", "content-desc"),
+    'android=new UiSelector().description("tick")'
+  );
+  assert.strictEqual(buildResourceIdSelector(undefined, "English", "android", "text"), 'android=new UiSelector().text("English")');
+});
+
 test("inferTestName derives a snake_case name from the first screen's title", () => {
   assert.strictEqual(inferTestName(STEPS), "login");
 });

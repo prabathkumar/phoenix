@@ -120,8 +120,12 @@ function extractLabels(pageSourceXml) {
       const width = node.getAttribute("width");
       const height = node.getAttribute("height");
       const bounds = androidBounds || (x && y && width && height ? `${x},${y},${width},${height}` : undefined);
-      const label = (!isBlank(text) && cleanLabel(text)) || (!isBlank(contentDesc) && cleanLabel(contentDesc));
-      if (label) labels.push({ label, resourceId: resourceId || undefined, bounds: bounds || undefined });
+      const textLabel = !isBlank(text) && cleanLabel(text);
+      const label = textLabel || (!isBlank(contentDesc) && cleanLabel(contentDesc));
+      // Remember WHERE the label came from: an icon's content-desc is not its
+      // text, and a UiSelector .text() never matches it (replay would fail).
+      const source = textLabel ? "text" : "content-desc";
+      if (label) labels.push({ label, source, resourceId: resourceId || undefined, bounds: bounds || undefined });
     }
     const children = node.childNodes || [];
     for (let i = 0; i < children.length; i += 1) walk(children[i]);
@@ -235,7 +239,7 @@ function inferAssertions(steps) {
       if (labelsAssertedThisStep.has(item.label)) continue;
       labelsAssertedThisStep.add(item.label);
 
-      assertions.push({ stepIndex: index, label: item.label, resourceId: item.resourceId });
+      assertions.push({ stepIndex: index, label: item.label, source: item.source, resourceId: item.resourceId });
     }
 
     // Everything visible after this step — not just what was flagged as
@@ -353,7 +357,7 @@ function escapeForSelector(value) {
  *
  * Falls back to whichever identifying piece is available.
  */
-function buildResourceIdSelector(resourceId, label, platform = "android") {
+function buildResourceIdSelector(resourceId, label, platform = "android", labelSource = "text") {
   if (platform === "ios") {
     if (!label) return null;
     return `-ios predicate string:label == "${escapeForSelector(label)}" OR value == "${escapeForSelector(label)}"`;
@@ -361,7 +365,10 @@ function buildResourceIdSelector(resourceId, label, platform = "android") {
 
   const clauses = [];
   if (resourceId) clauses.push(`.resourceId("${escapeForSelector(resourceId)}")`);
-  if (label) clauses.push(`.text("${escapeForSelector(label)}")`);
+  if (label) {
+    const attr = labelSource === "content-desc" ? "description" : "text";
+    clauses.push(`.${attr}("${escapeForSelector(label)}")`);
+  }
   if (clauses.length === 0) return null;
   return `android=new UiSelector()${clauses.join("")}`;
 }
@@ -381,7 +388,7 @@ function buildSelector(resolvedElement, platform = "android") {
       // Combine with text/content-desc when available — see
       // buildResourceIdSelector's note on why resource-id alone can be
       // ambiguous inside a list.
-      return buildResourceIdSelector(resolvedElement.value, resolvedElement.text || resolvedElement.contentDesc, platform);
+      return buildResourceIdSelector(resolvedElement.value, resolvedElement.text || resolvedElement.contentDesc, platform, resolvedElement.text ? "text" : "content-desc");
     case "accessibility-id":
       return `~${resolvedElement.value}`;
     case "text":
@@ -520,7 +527,7 @@ function synthesizeCode(steps, meta) {
       // buildResourceIdSelector's note: a shared list-row resource-id
       // (e.g. "android:id/text1") isn't unique on its own, so asserting
       // by resource-id alone can't tell "Custom View" from any other row.
-      const assertSelector = buildResourceIdSelector(assertion.resourceId, assertion.label, platform);
+      const assertSelector = buildResourceIdSelector(assertion.resourceId, assertion.label, platform, assertion.source);
       lines.push(`    await expect($(${JSON.stringify(assertSelector)})).toBeDisplayed(); // "${assertion.label}" appeared`);
     }
 

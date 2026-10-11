@@ -245,3 +245,13 @@ function makeFakeDriverForRecorder(pageSourceXml) {
     console.log("\nresolveElementAtCoordinate tests passed");
   }
 })();
+
+test("a tap on a bare layout wrapper resolves to its identifiable ancestor, not an absolute xpath", () => {
+  const xml = `<hierarchy><node class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node class="com.google.android.material.textfield.TextInputLayout" resource-id="app:id/userIdLayout" clickable="true" bounds="[84,400][996,560]">
+      <node class="android.widget.FrameLayout" bounds="[84,400][996,560]"/>
+    </node></node></hierarchy>`;
+  const r = resolveElementAtCoordinate({ x: 500, y: 480 }, xml);
+  assert.equal(r.strategy, "resource-id");
+  assert.equal(r.value, "app:id/userIdLayout");
+});

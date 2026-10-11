@@ -278,7 +278,23 @@ function resolveElementAtCoordinate(coordinate, pageSourceXml) {
   }
 
   candidates.sort((a, b) => rectArea(a.rect) - rectArea(b.rect));
-  const { node: element, rect } = candidates[0];
+  // Prefer the smallest element a tap could actually land on or that we can
+  // name stably (id / content-desc / text / label / clickable). A bare layout
+  // wrapper (e.g. the FrameLayout inside a TextInputLayout) only yields an
+  // absolute xpath that breaks on any layout change; its identifiable
+  // ancestor is a far better locator. Falls back to the smallest candidate.
+  const attr = (n, name) => {
+    const v = n.getAttribute && n.getAttribute(name);
+    return typeof v === "string" ? v.replace(INVISIBLE_CHARS_RE, "").trim() : "";
+  };
+  const isUseful = ({ node }) =>
+    attr(node, "resource-id") || attr(node, "content-desc") || attr(node, "name") ||
+    attr(node, "text") || attr(node, "label") || attr(node, "value") ||
+    attr(node, "clickable") === "true";
+  // Never climb to a screen-sized container (the app root also carries a name).
+  const largestArea = rectArea(candidates[candidates.length - 1].rect);
+  const { node: element, rect } =
+    candidates.find((c) => isUseful(c) && rectArea(c.rect) <= largestArea / 2) || candidates[0];
 
   // Trims and treats a whitespace-only value the same as a missing one --
   // seen for real against a BrowserStack-recorded iOS app (BitBar Sample

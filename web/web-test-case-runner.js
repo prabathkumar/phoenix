@@ -203,7 +203,14 @@ async function runWebSteps(page, steps, options = {}) {
 
         const locator = locatorFor(page, selector);
         if (step.kind === "tapIfExists" && (await locator.count()) === 0) { record("skipped", { reason: "element not present" }); continue; }
-        if ((await locator.count()) === 0) {
+        // Pages render after navigation/clicks: give the element time to appear
+        // before declaring it missing (an instant count() failed a real run
+        // whose next control was still loading).
+        let present = (await locator.count()) > 0;
+        if (!present && step.kind !== "tapIfExists") {
+          try { await locator.first().waitFor({ state: "attached", timeout: ACTION_TIMEOUT_MS }); present = true; } catch { /* still absent */ }
+        }
+        if (!present) {
           if (step.optional) { record("skipped", { reason: "element not present" }); continue; }
           record("fail", { selector, reason: `element not found (${selector.strategy}: ${selector.value})` });
           break;

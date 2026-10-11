@@ -26,6 +26,7 @@ function makeFakePage({ lines = ["Home"], onClick = {}, elements = ["#login"], u
       const exists = elements.includes(sel);
       return {
         async count() { return exists ? 1 : 0; },
+        async waitFor() { if (!exists) throw new Error("timeout"); },
         first() { return this; },
         async click() { page.clicks.push(sel); if (onClick[sel]) page._lines = onClick[sel]; },
         async fill(t) { page.fills.push([sel, t]); },

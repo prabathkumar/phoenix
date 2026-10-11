@@ -1,7 +1,7 @@
 # Releasing — version scheme and registry publish
 
 This covers the two backlog items this doc closes: a real version-tag
-scheme for the "TestOps Mobile" Docker image, and an automated build+push
+scheme for the "TestOps ai-automate" Docker image, and an automated build+push
 to a container registry. **Status, stated plainly: implemented, but
 unverified until the first real tag push runs it** — this sandbox has no
 outbound registry access (confirmed elsewhere in this repo, e.g.

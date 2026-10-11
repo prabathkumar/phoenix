@@ -1,6 +1,6 @@
 name: Build and publish Docker image
 
-# Builds the "TestOps Mobile" image (see Dockerfile / docs/TESTOPS_MOBILE_DOCKER.md)
+# Builds the "TestOps ai-automate" image (see Dockerfile / docs/TESTOPS_MOBILE_DOCKER.md)
 # and pushes it to GitHub Container Registry (ghcr.io) whenever a version
 # tag is pushed. Uses GITHUB_TOKEN, which Actions already provides -- no
 # registry credentials had to be fabricated or stored as a repo secret.

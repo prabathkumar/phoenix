@@ -1,18 +1,18 @@
 """
-Example client for TestOps Mobile's experimental semantic-action endpoint,
+Example client for TestOps ai-automate's experimental semantic-action endpoint,
 for whichever side of TestOps ends up calling it (TestOps' backend is
 Python; its frontend is JS/React — this file is for the Python side,
 since a React caller just does a plain `fetch()`, no example needed).
 
 This talks to POST /api/semantic-action (frontend/semantic-action-
 endpoint.js), which is:
-  - Off by default. The TestOps Mobile instance must be started with
+  - Off by default. The TestOps ai-automate instance must be started with
     TESTOPS_MOBILE_ENABLE_SEMANTIC_API=1 for this endpoint to exist at all
     (see docs/TESTOPS_MOBILE_SPEC.md §6 and README's Act 2 section for why —
     it has never been run against real hardware yet, and dev-team
     adoption is deliberately being held until it's proven, not just
     complete).
-  - Stateless from TestOps' side: it acts on whatever TestOps Mobile recording
+  - Stateless from TestOps' side: it acts on whatever TestOps ai-automate recording
     session is already active (started via the normal upload flow),
     it does not start one itself.
   - Plain JSON over HTTP — nothing Node-specific. This example exists
@@ -54,7 +54,7 @@ from typing import Any, Optional
 
 
 class SemanticActionError(Exception):
-    """Raised for a transport-level failure (TestOps Mobile unreachable, etc.) —
+    """Raised for a transport-level failure (TestOps ai-automate unreachable, etc.) —
     NOT raised for an ordinary {"success": false, "reason": "..."}
     response, which is a normal, expected outcome (the instruction just
     couldn't be resolved) and is returned to the caller like any other
@@ -72,7 +72,7 @@ def run_semantic_action(
     timeout_seconds: float = 15.0,
 ) -> dict[str, Any]:
     """
-    Runs one semantic action against whatever TestOps Mobile recording session
+    Runs one semantic action against whatever TestOps ai-automate recording session
     is currently active.
 
     :param testops_mobile_base_url: e.g. "http://localhost:8091" — wherever
@@ -83,7 +83,7 @@ def run_semantic_action(
     :param use_visual_grounding: opt into fused text+screenshot
         resolution (see generation/semantic-snapshot.js's
         buildFusedSnapshot) — off by default, same as the Node side.
-    :param timeout_seconds: request timeout; TestOps Mobile's own Ollama call
+    :param timeout_seconds: request timeout; TestOps ai-automate's own Ollama call
         has its own internal timeout (TESTOPS_MOBILE_LLM_TIMEOUT_MS, default
         8s) plus a real device action, so this should stay generous.
     :raises SemanticActionError: on a network/transport failure only —
@@ -116,7 +116,7 @@ def run_semantic_action(
             return json.loads(err.read().decode("utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError) as parse_err:
             raise SemanticActionError(
-                f"TestOps Mobile returned HTTP {err.code} with an unparseable body"
+                f"TestOps ai-automate returned HTTP {err.code} with an unparseable body"
             ) from parse_err
     except urllib.error.URLError as err:
-        raise SemanticActionError(f"Could not reach TestOps Mobile at {url}: {err.reason}") from err
+        raise SemanticActionError(f"Could not reach TestOps ai-automate at {url}: {err.reason}") from err

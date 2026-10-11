@@ -1,4 +1,4 @@
-# TestOps Mobile (TestOps Mobile) -- reference compose file.
+# TestOps ai-automate (TestOps ai-automate) -- reference compose file.
 #
 # This is a convenience wrapper around `docker build`/`docker run`, not a
 # requirement -- the user explicitly left process management/deployment

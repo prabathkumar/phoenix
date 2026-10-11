@@ -2,7 +2,7 @@
   "name": "@testops-mobile/generation",
   "version": "0.0.1",
   "private": true,
-  "description": "TestOps Mobile generation pipeline — turns a captured session into a named, asserted, parameterized script.",
+  "description": "TestOps ai-automate generation pipeline — turns a captured session into a named, asserted, parameterized script.",
   "dependencies": {
     "@xmldom/xmldom": "^0.8.10"
   },

@@ -1,24 +1,24 @@
-# TestOps Mobile — Docker handoff
+# TestOps ai-automate — Docker handoff
 
 This doc covers the two separate things being handed to Hemant's TestOps
 dev team, and why they're kept separate:
 
-1. **A downloadable Docker image** ("TestOps Mobile") they can run
+1. **A downloadable Docker image** ("TestOps ai-automate") they can run
    immediately to see the pipeline work, with no build toolchain of their
    own required.
 2. **The source code itself**, via a direct GitHub pull into their own
    company TestOps org, for the actual integration work.
 
-"TestOps Mobile" is a distribution name only. It does not rename any
+"TestOps ai-automate" is a distribution name only. It does not rename any
 package, module, or code identifier in this repo — the code underneath is
-still TestOps Mobile, and nothing in `engine/`, `generation/`, `capture/`,
+still TestOps ai-automate, and nothing in `engine/`, `generation/`, `capture/`,
 `live-view/`, or `frontend/` changed for this. Internally, everyone working
-in this repo keeps calling it TestOps Mobile; "TestOps Mobile" is what the image
+in this repo keeps calling it TestOps ai-automate; "TestOps ai-automate" is what the image
 is labeled as when it leaves this repo.
 
 ## 1. What the Docker image contains (and doesn't)
 
-Same scope as the plain TestOps Mobile image described in the `Dockerfile`'s own
+Same scope as the plain TestOps ai-automate image described in the `Dockerfile`'s own
 header comment: the Node-side pipeline only (`run-session.js`, the
 live-view WebSocket server, session recorder, script generator, and
 `frontend/server.js`). It deliberately does **not** contain:
@@ -110,7 +110,7 @@ integration work.
 ### The `mcp/` connector is separate from this image, on purpose
 
 `mcp/server.js` (see `mcp/README.md`) is a standard MCP server exposing
-TestOps Mobile's locator-confidence data, test cases, and execution log to an
+TestOps ai-automate's locator-confidence data, test cases, and execution log to an
 external MCP client — built for the user's own TestOps MCP to pull from
 ahead of its Claude-marketplace integration. It is **not** built into the
 `testops-mobile` image above and doesn't need to be: it's a separate,

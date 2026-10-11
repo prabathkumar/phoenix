@@ -687,7 +687,7 @@ function writeReport(results, crashInfo) {
 // Real bug found on a live BrowserStack iOS run (ios6): a slow/flaky
 // BrowserStack response raced WebdriverIO's own HTTP client's request-
 // cancellation logic ("got"/"p-cancelable" -- an infra-level library
-// issue, not a TestOps Mobile selector bug) and threw an unhandled rejection
+// issue, not a TestOps ai-automate selector bug) and threw an unhandled rejection
 // well outside main()'s own await chain, which main().catch() below
 // can't see at all. Node's default behavior for an unhandled rejection
 // is to crash the process immediately -- which it did here, with a raw
@@ -703,7 +703,7 @@ function writeReport(results, crashInfo) {
 // and that the person running this sees a clear reason instead of a
 // raw library stack trace.
 function handleFatalCrash(err) {
-  console.error("[run-batch-executions] fatal error (likely an infra/network issue, not a TestOps Mobile bug) -- salvaging results collected so far:", err);
+  console.error("[run-batch-executions] fatal error (likely an infra/network issue, not a TestOps ai-automate bug) -- salvaging results collected so far:", err);
   if (resultsSoFar.length > 0) {
     const reportPath = writeReport(resultsSoFar, err);
     console.error(`[run-batch-executions] partial report (${resultsSoFar.length} iteration(s)) written to: ${reportPath}`);

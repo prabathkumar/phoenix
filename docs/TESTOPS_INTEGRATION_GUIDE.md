@@ -1,12 +1,12 @@
-# TestOps Integration Guide — TestOps Mobile
+# TestOps Integration Guide — TestOps ai-automate
 
 This is the step-by-step guide for the TestOps dev team (Hemant's team)
-to integrate TestOps Mobile. It assumes no prior context beyond knowing
+to integrate TestOps ai-automate. It assumes no prior context beyond knowing
 TestOps' own stack (Django 4.2.11 + DRF 3.14.0 backend, JS/React
 frontend). It covers three things, in order: (1) the data model / fields
 your UI needs to render — not how to design the screens, that's your
 team's call, just what data exists and what shape it's in; (2) how to
-point TestOps Mobile's AI layer at frothAI instead of a local dev Ollama; (3)
+point TestOps ai-automate's AI layer at frothAI instead of a local dev Ollama; (3)
 how to actually install this on a server. For *why* the architecture is
 built the way it is, see `docs/TESTOPS_MOBILE_SPEC.md` and the README.
 
@@ -24,7 +24,7 @@ posture" at the end for what that does and doesn't mean for you.
 
 ## 0. Data model — the fields your UI needs
 
-TestOps Mobile has no database and no user-facing API of its own for test cases
+TestOps ai-automate has no database and no user-facing API of its own for test cases
 today — a test case is a JSON file, run by a Node script
 (`run-batch-executions.js` / `engine/test-case-runner.js`). This section
 is the exact shape of that data, so your team can design whatever
@@ -51,7 +51,7 @@ storage/UI you want around it without guessing at field names.
 | `optional` | boolean | no, default `false` | A failed optional step is skipped, not a run failure (a dialog that doesn't always appear). |
 | `durationMs` | number | only for `kind: "wait"` | Default 3000ms if omitted. |
 | `selector` | `{strategy, value}` | required when `kind` is `"tapIfExists"` | A hand-authored, evidence-backed exact locator (see `docs/STATUS.md`'s `tapIfExists` sections for why this exists — not every "maybe present" step can be trusted to an AI resolver). `strategy` is one of `"resource-id"`, `"accessibility-id"`, `"text"`, `"xpath"`. |
-| `resolvedSelector` | `{strategy, value}` | no — written BY TestOps Mobile, not by a tester | A selector the engine proved correct on a prior real run; replayed directly (no AI call) until it misses. Your UI can show this read-only as "last known locator," but should never let a tester hand-edit it — it's machine-learned state, not authored content. |
+| `resolvedSelector` | `{strategy, value}` | no — written BY TestOps ai-automate, not by a tester | A selector the engine proved correct on a prior real run; replayed directly (no AI call) until it misses. Your UI can show this read-only as "last known locator," but should never let a tester hand-edit it — it's machine-learned state, not authored content. |
 | `note` | string | no | Free-text engineering commentary (why a step exists/was changed) — present throughout `test-cases/*.json` in this repo for audit-trail purposes; optional for your own authored test cases. |
 
 ### B. Execution result (what a run produces)
@@ -124,11 +124,11 @@ badge should carry until that verification layer exists.
 
 ---
 
-## 1. Wiring TestOps Mobile's AI layer to frothAI
+## 1. Wiring TestOps ai-automate's AI layer to frothAI
 
 Confirmed: frothAI runs on Ollama, serving a Qwen 2.5 model (the "2.5
 7B" in frothAI's naming is the Qwen size/version, not a Gemma one).
-**This needs zero code changes** — every AI call in TestOps Mobile (the
+**This needs zero code changes** — every AI call in TestOps ai-automate (the
 semantic resolver used by every tap/type/tapIfExists-adjacent step, the
 live self-heal retry, and the optional script-naming/assertion-refinement
 pass) goes through one function, `generation/llm.js`'s `callOllamaJson`,
@@ -141,7 +141,7 @@ TESTOPS_MOBILE_LLM_TIMEOUT_MS=8000   # raise if frothAI's network hop is slower 
 ```
 
 Both are read by `generation/llm.js` at call time (not cached at
-startup), so the same TestOps Mobile instance can be pointed at a different
+startup), so the same TestOps ai-automate instance can be pointed at a different
 frothAI deployment per environment (dev/staging/prod) purely through
 config. `TESTOPS_MOBILE_USE_LLM=1` additionally gates the OPTIONAL
 script-naming/assertion-refinement pass used by guided recording (Act
@@ -153,7 +153,7 @@ or slow frothAI call doesn't crash a step — `generation/llm.js` and
 `generation/semantic-act.js` are both built to fail soft (timeout/error
 → "unresolved," never a thrown exception) — but it does mean every tap
 step's latency now includes a network round trip to wherever frothAI
-runs. Keep it on the same network/region as whatever runs TestOps Mobile if
+runs. Keep it on the same network/region as whatever runs TestOps ai-automate if
 run-to-run latency matters for your batch sizes.
 
 ---
@@ -183,7 +183,7 @@ run-to-run latency matters for your batch sizes.
   outbound to `hub-cloud.browserstack.com` if running against
   BrowserStack App Automate (`TESTOPS_MOBILE_APPIUM_PROVIDER=browserstack` +
   the `TESTOPS_MOBILE_BROWSERSTACK_*` vars).
-- **Process management:** nothing TestOps Mobile-specific is prescribed here —
+- **Process management:** nothing TestOps ai-automate-specific is prescribed here —
   `node run-batch-executions.js` for the batch/test-case runner, `node
   frontend/server.js` for the upload/session API, under whatever
   supervisor (pm2, systemd, your own container orchestrator) your infra
@@ -193,10 +193,10 @@ run-to-run latency matters for your batch sizes.
 
 ## 1. What this API does, in one sentence
 
-Given a TestOps Mobile session that's already recording (a tester opened
+Given a TestOps ai-automate session that's already recording (a tester opened
 TestOps, uploaded an app, and the live view is up), `POST
 /api/semantic-action` lets your backend say *"tap the Login button"* in
-plain English and have TestOps Mobile figure out which element that means, act
+plain English and have TestOps ai-automate figure out which element that means, act
 on it, and report what changed — without your code ever touching a
 selector, an accessibility tree, or a screen coordinate.
 
@@ -207,7 +207,7 @@ upload/recording flow. It only acts on a session that's already active.
 
 ## 2. Turning it on
 
-The endpoint doesn't exist unless the TestOps Mobile instance is started with:
+The endpoint doesn't exist unless the TestOps ai-automate instance is started with:
 
 ```bash
 TESTOPS_MOBILE_ENABLE_SEMANTIC_API=1 node frontend/server.js
@@ -248,7 +248,7 @@ Example:
 
 ## 4. The response
 
-TestOps Mobile's own status code tells you which of four outcomes happened —
+TestOps ai-automate's own status code tells you which of four outcomes happened —
 don't collapse them into one shape on your side, they mean different
 things:
 
@@ -260,7 +260,7 @@ things:
 | `400` | Malformed request (missing/invalid `instruction`, bad `kind`, oversized body) | `{"error": "..."}` |
 | `500` | Unexpected server-side error (should be rare — `executeSemanticAction` is designed to never throw) | `{"error": "Unexpected error: ..."}` |
 
-`422` is a **normal, expected outcome** — TestOps Mobile's semantic layer has a
+`422` is a **normal, expected outcome** — TestOps ai-automate's semantic layer has a
 hard "refuse rather than guess" contract (see `generation/semantic-act.js`).
 Treat it as "couldn't do that," not as a bug to retry blindly.
 
@@ -273,7 +273,7 @@ with no new shape to handle.
 
 ## 5. Wiring it in — React frontend
 
-Plain `fetch`, nothing TestOps Mobile-specific needed:
+Plain `fetch`, nothing TestOps ai-automate-specific needed:
 
 ```js
 async function runSemanticAction(testopsMobileBaseUrl, instruction, opts = {}) {
@@ -300,7 +300,7 @@ starting points, not a package):
 - **`docs/examples/testops_drf_view_example.py`** — a DRF 3.14
   `APIView` (`SemanticActionView`) built on top of that client:
   validates the request, reads `TESTOPS_MOBILE_BASE_URL` from Django settings,
-  and maps TestOps Mobile's 200/422/409 onto the equivalent DRF response codes.
+  and maps TestOps ai-automate's 200/422/409 onto the equivalent DRF response codes.
 
 Minimum steps to adapt them:
 
@@ -318,7 +318,7 @@ Minimum steps to adapt them:
    the example) for a real `rest_framework.serializers.Serializer`
    subclass if that's TestOps' house convention — the validation rules
    are already written, just re-expressed.
-5. Point `TESTOPS_MOBILE_BASE_URL` at wherever the TestOps Mobile instance with
+5. Point `TESTOPS_MOBILE_BASE_URL` at wherever the TestOps ai-automate instance with
    `TESTOPS_MOBILE_ENABLE_SEMANTIC_API=1` is actually running (local dev,
    staging, or the eventual device-host VM — see README's "still open"
    notes on the Android VM / planned AWS iOS VM).
@@ -331,17 +331,17 @@ Minimum steps to adapt them:
   recording session — surface it as "start a recording session first,"
   not as a transient failure.
 - **422 is not an exception on the Python client** — `SemanticActionError`
-  is only raised for actual transport failures (TestOps Mobile unreachable, a
+  is only raised for actual transport failures (TestOps ai-automate unreachable, a
   timeout, an unparseable response). A `{"success": false}` result is
   returned normally; check `result["success"]` like any other field.
-- **Timeouts should stay generous.** TestOps Mobile's own LLM call has an
+- **Timeouts should stay generous.** TestOps ai-automate's own LLM call has an
   internal timeout (`TESTOPS_MOBILE_LLM_TIMEOUT_MS`, default 8s) plus real
   device action time on top. The example client defaults to 15s —
   don't tighten this without checking real device latency first.
 - **This endpoint is single-session.** It acts on whichever session
   `engine/session-manager.js` considers active — there's no session ID
   in the request. If TestOps' model has multiple concurrent testers,
-  this only works today for one active TestOps Mobile instance per tester (or
+  this only works today for one active TestOps ai-automate instance per tester (or
   one at a time); a multi-session device pool is a known open item
   (README: "One session at a time... not started"), not something this
   endpoint already handles.
@@ -357,7 +357,7 @@ hardware yet** — only against faked WebDriver sessions in unit tests
 `engine/test/semantic-act-executor.test.js`). Recommended sequence:
 
 1. TestOps team builds the integration now using this guide, against a
-   **local** TestOps Mobile instance with `TESTOPS_MOBILE_ENABLE_SEMANTIC_API=1` and a
+   **local** TestOps ai-automate instance with `TESTOPS_MOBILE_ENABLE_SEMANTIC_API=1` and a
    local/emulator session — proves the plumbing (auth, request shaping,
    response handling) without needing real-device proof yet.
 2. In parallel, `run-batch-executions.js` (see repo root) gets run

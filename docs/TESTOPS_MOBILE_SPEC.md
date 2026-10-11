@@ -1,19 +1,19 @@
-# Project TestOps Mobile — TestOps Mobile
+# Project TestOps ai-automate — TestOps ai-automate
 
-**Codename:** TestOps Mobile
-**Product name (external):** TestOps Mobile
+**Codename:** TestOps ai-automate
+**Product name (external):** TestOps ai-automate
 **Owner:** Prabath / FrothTestOps
 **Status:** Stage 0 — not yet started
 
 ---
 
-## 1. What TestOps Mobile is
+## 1. What TestOps ai-automate is
 
 A proprietary mobile test-recording and generation engine for TestOps. Testers never touch Appium Inspector, never install anything locally, never see BrowserStack directly. They open TestOps, pick an app, record a flow once inside the product, and get a working automated script out the other end.
 
-Underneath, TestOps Mobile is built on a fork of Appium's core engine, extended with an AI-native layer that Appium doesn't have. Appium is Apache 2.0 licensed — forking, modifying, and closing the source of changes is legally clean.
+Underneath, TestOps ai-automate is built on a fork of Appium's core engine, extended with an AI-native layer that Appium doesn't have. Appium is Apache 2.0 licensed — forking, modifying, and closing the source of changes is legally clean.
 
-**What TestOps Mobile is not, yet:** a fully autonomous "upload the app and walk away" system. That's the eventual direction (see Section 6), not the v1 target. v1 is guided recording — a human still walks the flow once, same as today, but entirely inside TestOps instead of across three separate tools.
+**What TestOps ai-automate is not, yet:** a fully autonomous "upload the app and walk away" system. That's the eventual direction (see Section 6), not the v1 target. v1 is guided recording — a human still walks the flow once, same as today, but entirely inside TestOps instead of across three separate tools.
 
 ---
 
@@ -25,7 +25,7 @@ An autonomous agent has to know when it's stuck and stop, rather than guess and 
 
 ## 3. Current state vs. target state
 
-| Step | Today | TestOps Mobile v1 |
+| Step | Today | TestOps ai-automate v1 |
 |---|---|---|
 | App upload | Manual, to BrowserStack | Already in TestOps |
 | Device session | Manual, via BrowserStack dashboard | Already in TestOps |
@@ -104,7 +104,7 @@ Screenshot fusion is now built: `buildFusedSnapshot()` (`generation/semantic-sna
 
 **Note on TestOps' own stack (confirmed: Django 4.2.11 + DRF 3.14.0
 backend, JS/React frontend):**
-TestOps Mobile itself stays Node.js — that's not up for revisiting, it's what
+TestOps ai-automate itself stays Node.js — that's not up for revisiting, it's what
 the Appium fork and the whole engine/capture/generation pipeline are
 built on. The integration surface is `POST /api/semantic-action`
 (§6, opt-in via `TESTOPS_MOBILE_ENABLE_SEMANTIC_API=1`), which is plain JSON
@@ -116,13 +116,13 @@ can call it with an ordinary `fetch()`. For the Django/DRF side,
 - `testops_drf_view_example.py` — a DRF 3.14 `APIView` built on top of
   that client, matching TestOps' actual framework version, with request
   validation, `TESTOPS_MOBILE_BASE_URL` read from Django settings, and
-  TestOps Mobile's 200/422/409 responses passed through as the equivalent DRF
+  TestOps ai-automate's 200/422/409 responses passed through as the equivalent DRF
   status codes rather than collapsed into one shape.
 
 Neither file is meant as a drop-in final version — both are explicitly
 commented as starting points to adapt into TestOps' real app structure
 (its URLconf, permission classes, serializer conventions). No new
-service or language needs to be introduced on TestOps Mobile's side for either
+service or language needs to be introduced on TestOps ai-automate's side for either
 half of TestOps to reach it.
 
 ---

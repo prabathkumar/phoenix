@@ -578,7 +578,7 @@ test("runOneTestCaseIteration fails fast, before starting a session, when a refe
 
 // Real bug found on a live BrowserStack iOS run (ios6): an infra-level
 // library crash (an unhandled rejection from WebdriverIO's own HTTP
-// client, raced by a slow/flaky BrowserStack response -- not a TestOps Mobile
+// client, raced by a slow/flaky BrowserStack response -- not a TestOps ai-automate
 // selector bug) killed the whole process with no "FAILED" line, no
 // summary, and NO REPORT FILE WRITTEN AT ALL, silently losing every
 // iteration's result that had already completed. writeReport() is the

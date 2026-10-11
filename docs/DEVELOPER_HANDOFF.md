@@ -1,4 +1,4 @@
-# TestOps Mobile — developer handoff
+# TestOps ai-automate — developer handoff
 
 One framework runs the same test-case JSON on **Android, iOS (Appium / BrowserStack) and web (Playwright)** and reports every run through **one pass/fail contract**. This page is the starting point; deeper history is in `docs/STATUS.md`.
 

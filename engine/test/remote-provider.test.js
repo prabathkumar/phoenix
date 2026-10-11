@@ -185,9 +185,9 @@ test("browserstack capabilities replace the local app reference with the uploade
       assert.deepStrictEqual(result["bstack:options"], {
         userName: "someuser",
         accessKey: "somekey",
-        projectName: "TestOps Mobile",
+        projectName: "TestOps ai-automate",
         buildName: "testops-mobile-recording",
-        sessionName: "TestOps Mobile recording session",
+        sessionName: "TestOps ai-automate recording session",
         idleTimeout: 300,
       });
     }

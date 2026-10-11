@@ -1,7 +1,7 @@
 # Developer guide — recording and generating a test
 
 This is for a tester or developer who wants to **record a flow and get
-a runnable script out**, on a TestOps Mobile instance someone else has already
+a runnable script out**, on a TestOps ai-automate instance someone else has already
 stood up (see `docs/SETUP.md` if that's not the case yet — you need at
 minimum a reachable live-view WebSocket and a frontend URL).
 
@@ -11,7 +11,7 @@ minimum a reachable live-view WebSocket and a frontend URL).
   `http://localhost:<TESTOPS_MOBILE_FRONTEND_PORT>` (or wherever your team
   hosts `frontend/server.js`) — the page opens on an upload screen.
   Drag in your build, or click to choose it, then click **"Start
-  recording session."** TestOps Mobile uploads it (to BrowserStack, or passes
+  recording session."** TestOps ai-automate uploads it (to BrowserStack, or passes
   it straight to a local Appium host — whichever your instance is
   configured for) and starts a session against it automatically; no
   one needs to have pre-started anything for your specific app, and no
@@ -35,7 +35,7 @@ minimum a reachable live-view WebSocket and a frontend URL).
   static page auto-deployed from `frontend/index.html`, no local setup
   needed on your machine, but it can only connect to an
   already-running session, never accept an upload itself.
-- **If you're running everything locally** (developing TestOps Mobile itself,
+- **If you're running everything locally** (developing TestOps ai-automate itself,
   or testing against your own emulator), see `docs/SETUP.md` steps 1-5
   to get an Appium server or BrowserStack credentials set up first,
   then either option above works.
@@ -45,17 +45,17 @@ minimum a reachable live-view WebSocket and a frontend URL).
 Once the page loads, you'll see a live mirror of the device screen.
 
 - **Tap** anywhere on the mirrored screen to tap the same spot on the
-  real device — TestOps Mobile converts your click position into the device's
+  real device — TestOps ai-automate converts your click position into the device's
   actual coordinates automatically, so it works the same regardless of
   your browser window size.
-- **Type** into a focused field using the text input TestOps Mobile shows
+- **Type** into a focused field using the text input TestOps ai-automate shows
   alongside the mirror.
 - Every action you take appears in the **recorded steps** list as it
   happens, so you can see exactly what's been captured so far.
 - When your flow is complete, click **"Stop & Generate Script"**.
 
 There's no need to plan the whole flow in advance — record naturally,
-the way an actual tester would use the app. TestOps Mobile resolves a stable
+the way an actual tester would use the app. TestOps ai-automate resolves a stable
 locator for each tap (preferring resource-id, then accessibility-id,
 then visible text, then a structural path, falling back to a raw
 coordinate only when nothing else is available) and infers assertions
@@ -107,7 +107,7 @@ needed, and run it the same way you'd run any WebdriverIO Android test.
   page and start a new recording; nothing from the broken attempt is
   saved.
 - **List rows with repeated labels** (a settings list where every row
-  looks structurally similar) are still handled correctly — TestOps Mobile
+  looks structurally similar) are still handled correctly — TestOps ai-automate
   combines the row's resource-id with its own text to pick out the
   exact row you tapped, not just "some row with this shared id".
 - **Screens with no accessible labels** (custom-drawn canvas UI, some
@@ -134,9 +134,9 @@ needed, and run it the same way you'd run any WebdriverIO Android test.
   accessibility identifiers — confirmed live against a real SwiftUI
   app where every tap resolved to the same top-level `~Orders` locator
   because that was the *only* accessible element XCUITest could see on
-  screen. This isn't a TestOps Mobile bug: without `.accessibilityIdentifier`
+  screen. This isn't a TestOps ai-automate bug: without `.accessibilityIdentifier`
   (SwiftUI) or `accessibilityIdentifier` (UIKit) set on the app's
-  buttons/rows/fields, no tool built on XCUITest — TestOps Mobile included —
+  buttons/rows/fields, no tool built on XCUITest — TestOps ai-automate included —
   can tell them apart. Check with Xcode's Accessibility Inspector
   (Open Developer Tool → Accessibility Inspector, hover the app on the
   booted Simulator) before recording; if it only ever reports the

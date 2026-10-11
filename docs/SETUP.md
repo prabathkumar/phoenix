@@ -1,13 +1,13 @@
 # Infra setup guide
 
-This is the one doc an infra engineer needs to stand TestOps Mobile up from a
+This is the one doc an infra engineer needs to stand TestOps ai-automate up from a
 fresh `git clone` — no prior context on the codebase required. It
 consolidates what's otherwise spread across the README's per-feature
 sections.
 
 ## What you're standing up
 
-TestOps Mobile has two halves that live on different hardware:
+TestOps ai-automate has two halves that live on different hardware:
 
 1. **A host with real Android access** — an emulator (needs
    hardware/GPU acceleration) or a real device (USB). This is where
@@ -15,15 +15,15 @@ TestOps Mobile has two halves that live on different hardware:
    containerized in a general-purpose way (see the Dockerfile's header
    comment) — treat it like any Appium device-farm node you may
    already run.
-2. **The TestOps Mobile Node services** — `run-session.js` (session + live-view
+2. **The TestOps ai-automate Node services** — `run-session.js` (session + live-view
    + recorder + script generation) and `frontend/server.js` (the
    tester-facing UI, if not using the public GitHub Pages deploy).
    These can run anywhere with network access to (1) — bare metal, a
    VM, or the provided `Dockerfile`.
 
-They talk over two connections: TestOps Mobile's Node process to the Appium
+They talk over two connections: TestOps ai-automate's Node process to the Appium
 server (`TESTOPS_MOBILE_APPIUM_HOST`/`PORT`), and a tester's browser to
-TestOps Mobile's live-view WebSocket (`TESTOPS_MOBILE_LIVE_VIEW_PORT`).
+TestOps ai-automate's live-view WebSocket (`TESTOPS_MOBILE_LIVE_VIEW_PORT`).
 
 ## 1. Prerequisites on the device host
 
@@ -50,7 +50,7 @@ adb devices   # should list your emulator/device as "device", not "unauthorized"
 
 ### iOS instead of (or alongside) Android
 
-TestOps Mobile also supports iOS via `appium-xcuitest-driver`, using the same
+TestOps ai-automate also supports iOS via `appium-xcuitest-driver`, using the same
 spawn-a-server model as Android — see `engine/ios-session.js` and
 `engine/ios-stage0-session.js`. Prerequisites:
 
@@ -94,7 +94,7 @@ appium   # binds 0.0.0.0:4723 by default — restrict this in production
          # (firewall / bind to a private network), it has no auth of its own
 ```
 
-Leave this running. If TestOps Mobile's Node services run on a *different*
+Leave this running. If TestOps ai-automate's Node services run on a *different*
 host than this one, make sure that host's IP:4723 is reachable across
 whatever network/VPN/firewall sits between them.
 
@@ -107,7 +107,7 @@ only run on macOS at all, and Apple's license rules out virtualizing
 macOS on non-Apple hardware, so there's no way to stand one up directly
 on a Linux host. Renting or racking dedicated Mac hardware works, but
 if your org already pays for BrowserStack App Automate, pointing
-TestOps Mobile at that instead avoids the extra ongoing Mac cost.
+TestOps ai-automate at that instead avoids the extra ongoing Mac cost.
 
 This needs no code changes to use — `engine/session.js` and
 `engine/ios-session.js` have always talked to Appium over a plain
@@ -126,7 +126,7 @@ already installed on a device you booted yourself).
    node engine/browserstack-upload.js /path/to/app.ipa   # or .apk
    # prints a bs://<id> URL — set it below
    ```
-2. Point TestOps Mobile at BrowserStack instead of a local Appium server:
+2. Point TestOps ai-automate at BrowserStack instead of a local Appium server:
    ```bash
    export TESTOPS_MOBILE_APPIUM_PROVIDER=browserstack
    export TESTOPS_MOBILE_BROWSERSTACK_APP_URL=bs://<id from step 1>
@@ -138,15 +138,15 @@ already installed on a device you booted yourself).
    boot" — BrowserStack App Automate runs real physical devices for
    iOS, not simulators.
 4. Skip steps 1-2 above entirely (no local emulator, no local Appium
-   server needed) and continue from step 3 ("Configure TestOps Mobile") for
+   server needed) and continue from step 3 ("Configure TestOps ai-automate") for
    everything else — `run-session.js`, the frontend, and the rest of
    the pipeline don't know or care where the session actually runs.
 
 Optional: `TESTOPS_MOBILE_BROWSERSTACK_PROJECT` / `_BUILD` / `_SESSION_NAME`
-label the session in BrowserStack's dashboard (defaults to "TestOps Mobile" /
-"testops-mobile-recording" / "TestOps Mobile recording session" if unset).
+label the session in BrowserStack's dashboard (defaults to "TestOps ai-automate" /
+"testops-mobile-recording" / "TestOps ai-automate recording session" if unset).
 
-## 3. Configure TestOps Mobile
+## 3. Configure TestOps ai-automate
 
 ```bash
 cd /path/to/testops-mobile    # the repo root — must contain run-session.js directly
@@ -158,7 +158,7 @@ cp .env.example .env
 minimum:
 
 - `TESTOPS_MOBILE_STAGE0_APP_PATH` — path to the `.apk`, **as seen by the
-  Appium server's host**, not by wherever TestOps Mobile's Node services run
+  Appium server's host**, not by wherever TestOps ai-automate's Node services run
   (Appium installs and launches it, not us). Still says
   `/absolute/path/to/your-app.apk`? It won't work — Appium will fail
   with "does not exist or is not accessible".
@@ -176,7 +176,7 @@ sed -i '' 's|TESTOPS_MOBILE_STAGE0_APP_PATH=/absolute/path/to/your-app.apk|TESTO
 
 See `.env.example` for every variable and what reads it.
 
-TestOps Mobile's scripts don't auto-load `.env` — export it into your shell or
+TestOps ai-automate's scripts don't auto-load `.env` — export it into your shell or
 process manager first, **from the same directory as `.env`**:
 
 ```bash
@@ -192,7 +192,7 @@ echo $TESTOPS_MOBILE_STAGE0_APP_PATH   # should print YOUR apk path, not a place
 
 ## 4. (Optional) LLM refinement layer — Ollama
 
-Skip this section entirely if you're not using it — TestOps Mobile's rule-based
+Skip this section entirely if you're not using it — TestOps ai-automate's rule-based
 generation (step 5 below) works standalone with `TESTOPS_MOBILE_USE_LLM` unset
 or `0`.
 
@@ -220,7 +220,7 @@ To turn it on:
    Re-run `export $(grep -v '^#' .env | xargs)` after editing.
 
 Any failure here (Ollama not running, wrong host/model, a timeout) is
-caught internally and TestOps Mobile silently falls back to the rule-based
+caught internally and TestOps ai-automate silently falls back to the rule-based
 result — see `generation/llm.js`. Turning this on can never break a
 recording session, only change how the generated script is named and
 which assertions it keeps.
@@ -310,7 +310,7 @@ docker run --rm -p 8091:8091 --env-file .env testops-mobile node frontend/server
   `[session-manager] session started: <id>` (or `[run-session]`'s own
   startup lines around it) — if it hangs or errors here, the problem is
   almost always steps 1-3 (device host unreachable, wrong `.apk` path,
-  or wrong `TESTOPS_MOBILE_APPIUM_HOST`/`PORT`), not TestOps Mobile's own code. Then
+  or wrong `TESTOPS_MOBILE_APPIUM_HOST`/`PORT`), not TestOps ai-automate's own code. Then
   open the frontend (either `http://localhost:<TESTOPS_MOBILE_FRONTEND_PORT>/?port=<TESTOPS_MOBILE_LIVE_VIEW_PORT>`
   from step 5, or the public URL at
   https://prabathkumar.github.io/phoenix/ pointed at your live-view

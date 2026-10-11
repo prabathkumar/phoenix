@@ -139,7 +139,7 @@ function main() {
   const args = parseArgs(process.argv.slice(2));
   const envPath = path.resolve(process.cwd(), args.envFile);
 
-  console.log(`TestOps Mobile env check`);
+  console.log(`TestOps ai-automate env check`);
   console.log(`==================`);
   console.log(`Reading: ${envPath}`);
 

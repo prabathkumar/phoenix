@@ -1,6 +1,6 @@
 """
 Example Django REST Framework view for TestOps' backend (confirmed
-stack: Django 4.2.11, DRF 3.14.0) to call TestOps Mobile's experimental
+stack: Django 4.2.11, DRF 3.14.0) to call TestOps ai-automate's experimental
 semantic-action endpoint. This wraps testops_semantic_action_client.py
 (same directory) — read that file's header first for the full contract
 (response shapes, when TESTOPS_MOBILE_ENABLE_SEMANTIC_API is required, why a
@@ -15,7 +15,7 @@ Suggested urls.py wiring:
     path("testops-mobile/semantic-action/", SemanticActionView.as_view())
 
 Settings (add to TestOps' Django settings, not hardcoded here — a
-running TestOps Mobile instance's URL is deployment-specific and will differ
+running TestOps ai-automate instance's URL is deployment-specific and will differ
 between local dev, staging, and wherever the device host actually is):
     TESTOPS_MOBILE_BASE_URL = env("TESTOPS_MOBILE_BASE_URL", default="http://localhost:8091")
 """
@@ -35,14 +35,14 @@ from .testops_semantic_action_client import SemanticActionError, run_semantic_ac
 class SemanticActionRequestSerializer:
     """
     Plain validation helper rather than a full DRF Serializer, since
-    this is a pass-through to TestOps Mobile's own JSON contract (see
+    this is a pass-through to TestOps ai-automate's own JSON contract (see
     engine/semantic-act-executor.js) and there's no model behind it in
     TestOps to serialize against. Swap for a real
     `rest_framework.serializers.Serializer` subclass if TestOps'
     conventions prefer that everywhere — the validation rules are the
     same ones frontend/semantic-action-endpoint.js already enforces on
-    the TestOps Mobile side, duplicated here only so a bad request fails fast
-    with a TestOps-shaped 400 instead of round-tripping to TestOps Mobile first.
+    the TestOps ai-automate side, duplicated here only so a bad request fails fast
+    with a TestOps-shaped 400 instead of round-tripping to TestOps ai-automate first.
     """
 
     ALLOWED_KINDS = {"tap", "type"}
@@ -74,15 +74,15 @@ class SemanticActionView(APIView):
     """
     POST /testops-mobile/semantic-action/
 
-    Runs one semantic action against whatever TestOps Mobile recording session
+    Runs one semantic action against whatever TestOps ai-automate recording session
     is currently active, on behalf of a TestOps user/test run. This is
-    a thin proxy — TestOps Mobile owns the actual resolution/execution logic
+    a thin proxy — TestOps ai-automate owns the actual resolution/execution logic
     (engine/semantic-act-executor.js); this view's job is auth, request
-    shaping, and turning TestOps Mobile's response into a TestOps-shaped one.
+    shaping, and turning TestOps ai-automate's response into a TestOps-shaped one.
 
-    Requires TESTOPS_MOBILE_ENABLE_SEMANTIC_API=1 on the target TestOps Mobile
+    Requires TESTOPS_MOBILE_ENABLE_SEMANTIC_API=1 on the target TestOps ai-automate
     instance, and a recording session already started there (via
-    TestOps Mobile's own upload flow) — this view does not start one.
+    TestOps ai-automate's own upload flow) — this view does not start one.
     """
 
     permission_classes = [IsAuthenticated]
@@ -110,13 +110,13 @@ class SemanticActionView(APIView):
                 use_visual_grounding=cleaned["use_visual_grounding"],
             )
         except SemanticActionError as err:
-            # TestOps Mobile itself was unreachable -- a transport failure, not
+            # TestOps ai-automate itself was unreachable -- a transport failure, not
             # "the instruction couldn't be resolved" (that comes back as
             # an ordinary {"success": False} result below, not this
             # branch).
             return Response({"error": str(err)}, status=status.HTTP_502_BAD_GATEWAY)
 
-        # TestOps Mobile's own status code distinguishes success (200) from an
+        # TestOps ai-automate's own status code distinguishes success (200) from an
         # unresolved/failed action (422) from no active session (409) --
         # pass that through as-is rather than collapsing everything to
         # 200 with a success flag buried in the body.

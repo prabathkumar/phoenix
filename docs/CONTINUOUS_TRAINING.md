@@ -18,7 +18,7 @@ automatically prunes records older than `TESTOPS_MOBILE_TRAINING_LOG_RETENTION_D
 file next to the log that tracks when cleanup last ran, so the real cost
 (rewriting the file) only happens roughly once per retention window, not
 on every single execution. No separate cron job, no manual "go delete the
-old logs" step — as long as TestOps Mobile is being run at all, the log stays
+old logs" step — as long as TestOps ai-automate is being run at all, the log stays
 bounded on its own. `pruneOldExecutions()` is also exported directly for
 an on-demand or externally-scheduled cleanup if a deployment prefers that
 instead.

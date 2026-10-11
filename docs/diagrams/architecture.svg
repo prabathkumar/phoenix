@@ -21,7 +21,7 @@
   <rect x="0" y="0" width="1240" height="1180" fill="url(#bgGrad)"/>
 
   <!-- ============ HEADER ============ -->
-  <text x="48" y="52" font-size="25" font-weight="700" fill="#0f172a" letter-spacing="-0.3">TestOps Mobile architecture</text>
+  <text x="48" y="52" font-size="25" font-weight="700" fill="#0f172a" letter-spacing="-0.3">TestOps ai-automate architecture</text>
   <text x="48" y="78" font-size="14" fill="#64748b">Four layers, one engine, one shared AI runtime — Guided recording → Semantic resolution → Vision fusion → Autonomous loop</text>
 
   <!-- ============ LAYER 1: GUIDED ============ -->

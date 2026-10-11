@@ -3,7 +3,7 @@
  * TestOps integration (decided 2026-10-04): TestOps already owns
  * BrowserStack credentials, device selection, app upload, and test-case/
  * test-data selection, and already opens the BrowserStack/Appium
- * session itself. TestOps Mobile's only job here is: attach to that already-
+ * session itself. TestOps ai-automate's only job here is: attach to that already-
  * live session and drive the given test case against it -- never start
  * a session, never hold a BrowserStack credential, never close the
  * session when done (see engine/attach-session.js's header comment on
@@ -42,7 +42,7 @@
  *     own network boundary, same assumption upload-session.js makes)
  *   - no concurrency guard across multiple simultaneous TestOps calls
  *     (session-manager.js's isSessionActive() guard doesn't apply here,
- *     since TestOps Mobile isn't the one managing the device/session lifecycle)
+ *     since TestOps ai-automate isn't the one managing the device/session lifecycle)
  *   - testData is applied via process.env for the duration of the call
  *     (matching how resolveStepText already reads secrets) and restored
  *     after -- fine for one request at a time, NOT safe for two

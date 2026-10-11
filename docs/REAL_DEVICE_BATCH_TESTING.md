@@ -8,7 +8,7 @@ that found and fixed several resolver bugs — see the git log for
 `engine/semantic-loop.js` for the specifics. Use this doc instead of
 reconstructing the steps from scratch every time the machine restarts.
 
-For standing up TestOps Mobile's services generally (not just this batch
+For standing up TestOps ai-automate's services generally (not just this batch
 harness), see [`SETUP.md`](SETUP.md) — this doc assumes that's already
 done once and Node deps are installed.
 
@@ -39,7 +39,7 @@ Wait for it to fully boot, then confirm it's visible:
 adb devices   # should list it as "device", not "offline"/"unauthorized"
 ```
 
-## 2. Point TestOps Mobile at the app under test
+## 2. Point TestOps ai-automate at the app under test
 
 ```bash
 export TESTOPS_MOBILE_STAGE0_APP_PATH="/Users/prabathkumar/Downloads/<the .apk>"
@@ -118,7 +118,7 @@ node run-batch-executions.js
 
 Set `TESTOPS_MOBILE_PLATFORM=android` (or omit it, since `android` is the default) for the Android path. A successful run's report line reads `OK (...) - Appeared: "...", "Home", "Rewards", "Profile", ... Disappeared: "...", "LOGIN", "LOGIN", ...` — the login screen's own elements disappearing and the post-login home screen's elements appearing in the same diff is the confirmation the submit tap actually landed, not just that no WebDriver error was thrown.
 
-### `test-case` mode: the same approach for ANY flow, as data instead of code (the recommended way to adopt TestOps Mobile)
+### `test-case` mode: the same approach for ANY flow, as data instead of code (the recommended way to adopt TestOps ai-automate)
 
 `login-script` mode's step sequence is hardcoded JS (`run-batch-executions.js`'s `LOGIN_SCRIPT_STEPS`) — a new flow meant a new array and a new commit. `test-case` mode generalizes it: a test case is a plain JSON file (`engine/test-case-runner.js` loads and runs it), run through the exact same per-instruction resolver. `test-cases/login.json` is the proven login sequence above, unchanged, now just data; `login-script` mode is kept as a convenience alias pointed at that one file.
 

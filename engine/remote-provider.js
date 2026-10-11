@@ -1,7 +1,7 @@
 /**
  * Shared connection-config builder for both platforms' startSession().
  *
- * TestOps Mobile's engine has always talked to Appium over a plain
+ * TestOps ai-automate's engine has always talked to Appium over a plain
  * hostname/port (TESTOPS_MOBILE_APPIUM_HOST/PORT) rather than assuming
  * localhost, so pointing it at a *remote* Appium server was already
  * possible with zero code changes — see session.js's and
@@ -20,7 +20,7 @@
  * directly on the same Linux VM. BrowserStack App Automate is an
  * already-licensed way to get a real Appium session against real
  * hardware without operating a Mac at all; this module is what lets
- * `TESTOPS_MOBILE_APPIUM_PROVIDER=browserstack` redirect an existing TestOps Mobile
+ * `TESTOPS_MOBILE_APPIUM_PROVIDER=browserstack` redirect an existing TestOps ai-automate
  * session there instead of a local Appium server, with no changes
  * needed anywhere else in the pipeline (capture/generation/live-view
  * only ever see a normal WebdriverIO `Browser`, regardless of where
@@ -112,9 +112,9 @@ function buildCapabilities(baseCapabilities, overrides = {}) {
     "bstack:options": {
       userName: process.env.TESTOPS_MOBILE_BROWSERSTACK_USER,
       accessKey: process.env.TESTOPS_MOBILE_BROWSERSTACK_KEY,
-      projectName: process.env.TESTOPS_MOBILE_BROWSERSTACK_PROJECT || "TestOps Mobile",
+      projectName: process.env.TESTOPS_MOBILE_BROWSERSTACK_PROJECT || "TestOps ai-automate",
       buildName: process.env.TESTOPS_MOBILE_BROWSERSTACK_BUILD || "testops-mobile-recording",
-      sessionName: process.env.TESTOPS_MOBILE_BROWSERSTACK_SESSION_NAME || "TestOps Mobile recording session",
+      sessionName: process.env.TESTOPS_MOBILE_BROWSERSTACK_SESSION_NAME || "TestOps ai-automate recording session",
       // BrowserStack closes a session after this many idle seconds (default
       // 90, max 300). A tester reading the screen or hunting for the right
       // element easily exceeds 90s -- a real session ended before a tester's

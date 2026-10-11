@@ -19,7 +19,7 @@
  *
  * A local iOS Simulator can only run on macOS at all (Apple's license
  * rules out virtualizing it on a Linux TestOps VM), so
- * TESTOPS_MOBILE_APPIUM_PROVIDER=browserstack is how a Linux-hosted TestOps Mobile
+ * TESTOPS_MOBILE_APPIUM_PROVIDER=browserstack is how a Linux-hosted TestOps ai-automate
  * points this same startSession() at BrowserStack App Automate's real
  * iOS devices instead of a Simulator on this machine — see
  * remote-provider.js. deviceName/platformVersion then mean "which of

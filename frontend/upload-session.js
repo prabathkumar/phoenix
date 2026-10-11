@@ -1,6 +1,6 @@
 /**
  * POST /api/sessions — a tester uploads a .ipa/.apk directly through
- * frontend/index.html and TestOps Mobile starts a recording session against
+ * frontend/index.html and TestOps ai-automate starts a recording session against
  * it on demand, instead of the app being fixed by an env var before
  * run-session.js boots. See README's "Uploading an app directly"
  * section for the full flow and why cloud (BrowserStack) came first:

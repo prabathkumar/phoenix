@@ -2,7 +2,7 @@
   "name": "@testops-mobile/web",
   "version": "0.0.1",
   "private": true,
-  "description": "TestOps Mobile web adapter -- runs the SAME test-case JSON on a browser via Playwright and reports through the SAME pass/fail contract (engine/test-result.js) as android/ios.",
+  "description": "TestOps ai-automate web adapter -- runs the SAME test-case JSON on a browser via Playwright and reports through the SAME pass/fail contract (engine/test-result.js) as android/ios.",
   "dependencies": {
     "playwright": "^1.48.0",
     "ws": "^8.18.0"

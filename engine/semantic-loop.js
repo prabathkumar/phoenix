@@ -13,7 +13,7 @@
  * recording path, or run-session.js/session-manager.js. Per the spec's
  * own framing, this stays an R&D-only capability, exercised against
  * internal apps, until it's proven — it is not something a customer
- * or even a TestOps Mobile tester triggers today. `run-semantic-loop.js` (if
+ * or even a TestOps ai-automate tester triggers today. `run-semantic-loop.js` (if
  * and when that's built) would be its own separate CLI, mirroring how
  * run-semantic-action.js sits apart from run-session.js.
  *

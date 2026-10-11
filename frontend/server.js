@@ -30,7 +30,7 @@
  * is the TestOps integration contract decided 2026-10-04: TestOps opens
  * its own BrowserStack session (it already owns the credentials, device
  * selection, and app upload) and calls this endpoint with that session's
- * id plus a test case + test data for TestOps Mobile to drive against it.
+ * id plus a test case + test data for TestOps ai-automate to drive against it.
  * Gated behind TESTOPS_MOBILE_ENABLE_EXECUTE_API=1, off by default -- brand
  * new, never yet exercised against a real TestOps call.
  *

@@ -2,7 +2,7 @@
   "name": "@testops-mobile/capture",
   "version": "0.0.1",
   "private": true,
-  "description": "TestOps Mobile capture layer — resolves taps against the accessibility tree and records session steps.",
+  "description": "TestOps ai-automate capture layer — resolves taps against the accessibility tree and records session steps.",
   "dependencies": {
     "@xmldom/xmldom": "^0.8.10"
   },

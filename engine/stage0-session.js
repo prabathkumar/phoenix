@@ -9,7 +9,7 @@
  *
  * Once this runs reliably against a local emulator, the actual Appium
  * fork work starts: vendor appium-uiautomator2-driver and
- * appium-xcuitest-driver into this directory, strip what TestOps Mobile
+ * appium-xcuitest-driver into this directory, strip what TestOps ai-automate
  * doesn't need, and replace these raw calls with the fork's internals.
  */
 
@@ -33,7 +33,7 @@ async function stage0() {
   // JSONWP touch-actions endpoint, which Appium 3 + uiautomator2-driver 3.x
   // no longer implement (404 unknown command). The current UiAutomator2
   // driver exposes taps via the `mobile: clickGesture` execute-script
-  // extension instead, so TestOps Mobile uses that going forward.
+  // extension instead, so TestOps ai-automate uses that going forward.
   await driver.execute("mobile: clickGesture", { x: 200, y: 400 });
   console.log("[stage0] tap injected");
 

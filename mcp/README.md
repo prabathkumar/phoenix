@@ -1,15 +1,15 @@
-# TestOps Mobile MCP connector
+# TestOps ai-automate MCP connector
 
-A standard MCP server (stdio transport) exposing TestOps Mobile's own data to
+A standard MCP server (stdio transport) exposing TestOps ai-automate's own data to
 an external MCP client -- built for the user's TestOps MCP (ahead of
 its own Claude-marketplace integration) to pull from, but usable by
 any MCP client (Claude Code, Claude Desktop, etc).
 
-This does **not** touch or require TestOps Mobile's internal Ollama resolver
+This does **not** touch or require TestOps ai-automate's internal Ollama resolver
 to support tool-calling -- that's a separate, internal direction
 (`generation/llm.js` calling Ollama's plain `/api/generate`). This
 server is the other, external-facing direction: a client calls IN to
-TestOps Mobile, not TestOps Mobile calling out to a model via MCP.
+TestOps ai-automate, not TestOps ai-automate calling out to a model via MCP.
 
 ## Setup
 

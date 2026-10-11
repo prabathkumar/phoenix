@@ -1,22 +1,22 @@
 #!/usr/bin/env node
 /**
- * mcp/server.js -- the TestOps Mobile side MCP connector.
+ * mcp/server.js -- the TestOps ai-automate side MCP connector.
  *
  * What this is: a standard MCP server (stdio transport, the Model
- * Context Protocol's local-process convention) exposing TestOps Mobile's own
+ * Context Protocol's local-process convention) exposing TestOps ai-automate's own
  * data -- the locator confidence store, the execution-training log,
  * and the test-case files themselves -- as tools an MCP CLIENT can
  * call. The user's own TestOps product already has its own MCP,
  * headed for the Claude marketplace later; this is NOT that server,
- * and doesn't try to be. This is TestOps Mobile's side of the wire: something
+ * and doesn't try to be. This is TestOps ai-automate's side of the wire: something
  * TestOps's MCP (or Claude Code, or any other MCP client) can launch
- * as a subprocess and query for data that only TestOps Mobile actually has.
+ * as a subprocess and query for data that only TestOps ai-automate actually has.
  *
- * Why this doesn't require Ollama (TestOps Mobile's own local resolver model)
+ * Why this doesn't require Ollama (TestOps ai-automate's own local resolver model)
  * to support tool-calling: it doesn't touch Ollama at all. MCP here is
  * a completely separate, external-facing channel -- an MCP CLIENT
  * (TestOps, Claude, anything speaking the protocol) calls INTO this
- * server; TestOps Mobile's own internal `generation/llm.js` resolver keeps
+ * server; TestOps ai-automate's own internal `generation/llm.js` resolver keeps
  * calling Ollama's plain /api/generate exactly as before, completely
  * decoupled from this file. Two different directions, two different
  * models, zero interaction between them.

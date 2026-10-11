@@ -1,7 +1,7 @@
 /**
  * Mock TestOps endpoints -- a stand-in for the real TestOps backend, so
  * the full sequence Prabath described (upload app -> pick a BrowserStack
- * device -> pick a test case -> trigger -> TestOps Mobile executes) can be
+ * device -> pick a test case -> trigger -> TestOps ai-automate executes) can be
  * clicked through end-to-end without spending a real BrowserStack
  * session or needing TestOps actually built yet.
  *
@@ -153,7 +153,7 @@ async function handleRun(req, res) {
   emit({ type: "session-started", sessionId: fakeSessionId, appName, device, note: "TestOps would open this via a real BrowserStack App Automate call here -- mocked." });
   await new Promise((r) => setTimeout(r, 400));
 
-  emit({ type: "attached", sessionId: fakeSessionId, note: "TestOps Mobile's /api/execute-test-case would attach to this session id here -- mocked, no real device." });
+  emit({ type: "attached", sessionId: fakeSessionId, note: "TestOps ai-automate's /api/execute-test-case would attach to this session id here -- mocked, no real device." });
   await new Promise((r) => setTimeout(r, 300));
 
   let allPassed = true;

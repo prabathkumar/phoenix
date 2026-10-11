@@ -7,7 +7,7 @@
  * against fakes only; this is what actually runs it.
  *
  * Per docs/TESTOPS_MOBILE_SPEC.md §6, Phase 3 is R&D-only and not customer-
- * facing until proven — point this at one of TestOps Mobile's own messiest
+ * facing until proven — point this at one of TestOps ai-automate's own messiest
  * internal apps (logins, OTP, payment flows) before anything else, and
  * expect it to stop early and often; that's the loop's safety valve
  * working as intended, not a bug to work around.

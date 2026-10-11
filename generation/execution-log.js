@@ -121,7 +121,7 @@ function pruneOldExecutions() {
  * log on every single execution. This is what makes cleanup a
  * framework capability rather than a cron job someone has to remember
  * to set up: it piggybacks on ordinary usage (any call to
- * logExecution), so as long as TestOps Mobile is being run at all, the log
+ * logExecution), so as long as TestOps ai-automate is being run at all, the log
  * stays bounded with zero separate scheduling step.
  */
 function maybePruneOldExecutions() {

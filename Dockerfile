@@ -1,4 +1,4 @@
-# TestOps Mobile — containerizes the Node-side pipeline only:
+# TestOps ai-automate — containerizes the Node-side pipeline only:
 # run-session.js (engine/session.js spawn-path client + live-view + capture +
 # generation), run-batch-executions.js (test-case/batch mode, including the
 # BrowserStack provider path), and frontend/server.js.
@@ -58,9 +58,9 @@ FROM node:22.23.3-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe423
 # exactly as before.
 ARG VERSION=dev
 
-# "TestOps Mobile" (2026-10-04 rename): every package, module, env var,
+# "TestOps ai-automate" (2026-10-04 rename): every package, module, env var,
 # and code identifier in this repo was renamed from "Phoenix" to
-# "TestOps Mobile" -- see git history for the full rename commit. The
+# "TestOps ai-automate" -- see git history for the full rename commit. The
 # one thing that deliberately did NOT change is the GitHub repo's own
 # name/URL below: it stays github.com/prabathkumar/phoenix permanently,
 # by explicit choice -- not a "rename pending" placeholder. Don't "fix"
@@ -69,8 +69,8 @@ ARG VERSION=dev
 # the full handoff workflow (build, save/load without a registry, and
 # the separate GitHub-pull path for the source code itself), and
 # docs/RELEASING.md for the version-tag/registry-push process.
-LABEL org.opencontainers.image.title="TestOps Mobile" \
-      org.opencontainers.image.description="TestOps Mobile semantic mobile-automation pipeline, packaged for TestOps integration" \
+LABEL org.opencontainers.image.title="TestOps ai-automate" \
+      org.opencontainers.image.description="TestOps ai-automate semantic mobile-automation pipeline, packaged for TestOps integration" \
       org.opencontainers.image.vendor="YTL / Robotico" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.source="https://github.com/prabathkumar/phoenix"

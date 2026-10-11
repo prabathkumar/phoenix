@@ -67,7 +67,7 @@
       <div class="row"><button id="stop-btn" class="danger">Stop &amp; generate</button><button class="ghost" id="up">Scroll ↑</button><button class="ghost" id="down">Scroll ↓</button></div>
     </div>
     <div class="block">
-      <div class="row"><input id="type-input" type="text" placeholder="Click a field, then type here"><button id="type-btn">Type</button></div>
+      <div class="row"><input id="type-input" type="text" placeholder="Click a field, then type here"><button id="type-btn">Type</button><button class="ghost" id="enter-btn" title="Press Enter in the field (submits most forms)">Enter ↵</button></div>
     </div>
     <div id="steps"></div>
     <div class="block row" id="outbar" style="display:none"><button id="copy-script">Copy script</button><button class="ghost" id="copy-json">Copy test-case JSON</button></div>
@@ -151,6 +151,7 @@
   const typeNow = () => send({ type: "type", text: $("type-input").value });
   $("type-btn").addEventListener("click", typeNow);
   $("type-input").addEventListener("keydown", (e) => { if (e.key === "Enter") typeNow(); });
+  $("enter-btn").addEventListener("click", () => { if ($("type-input").value) typeNow(); send({ type: "press", key: "Enter" }); });
   $("stop-btn").addEventListener("click", () => { $("stop-btn").disabled = true; send({ type: "stop" }); });
 
   let out = null;

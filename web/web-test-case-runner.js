@@ -8,6 +8,7 @@
  *   navigate     {url}                     -- web only; relative URLs join baseUrl
  *   tap          {instruction | selector}  -- click
  *   type         {instruction | selector, text}  -- fill ("${ENV}" placeholders supported)
+ *   press        {key, selector?}          -- keyboard key (e.g. Enter) on the focused field / selector
  *   scroll       {direction?}              -- up|down, default down
  *   wait         {durationMs?}
  *   tapIfExists  {selector}                -- hand-authored locator, never guessed; skipped if absent
@@ -37,7 +38,7 @@ const { verifyExpectedOutcome, validateExpectShape } = require("../generation/ou
 const { SERIALIZE_DOM_SCRIPT } = require("../generation/webview-snapshot");
 const { resolveWebviewAction: defaultResolveAction } = require("../generation/webview-act");
 
-const WEB_KINDS = new Set(["navigate", "tap", "type", "scroll", "wait", "tapIfExists", "assert"]);
+const WEB_KINDS = new Set(["navigate", "tap", "type", "press", "scroll", "wait", "tapIfExists", "assert"]);
 const DEFAULT_WAIT_MS = 1000;
 const ACTION_TIMEOUT_MS = 10000;
 
@@ -69,6 +70,7 @@ function validateWebSteps(steps, label = "test case") {
     if (["tap", "type"].includes(step.kind) && !step.instruction && !step.selector && !step.resolvedSelector) {
       throw new Error(`${where} needs an "instruction" or a "selector"`);
     }
+    if (step.kind === "press" && typeof step.key !== "string") throw new Error(`${where} is a "press" step with no "key"`);
     if (step.kind === "type" && typeof step.text !== "string") throw new Error(`${where} is a "type" step with no "text"`);
     if (step.kind === "tapIfExists" && !(step.selector && step.selector.strategy && step.selector.value)) {
       throw new Error(`${where} is a "tapIfExists" step with no valid "selector"`);
@@ -156,6 +158,19 @@ async function runWebSteps(page, steps, options = {}) {
         if (step.kind === "assert") {
           const problem = await runAssert(page, step.assert);
           if (problem) { if (step.optional) { record("skipped", { reason: problem }); continue; } record("fail", { reason: problem }); break; }
+          record("pass");
+          continue;
+        }
+
+        if (step.kind === "press") {
+          const beforeLines = step.expect ? await visibleLines(page) : null;
+          if (step.selector) await locatorFor(page, step.selector).first().press(step.key, { timeout: ACTION_TIMEOUT_MS });
+          else await page.keyboard.press(step.key);
+          try { await page.waitForLoadState("load", { timeout: 3000 }); } catch { /* no navigation */ }
+          if (step.expect) {
+            const v = verifyExpectedOutcome(diffLines(beforeLines, await visibleLines(page)), step.expect);
+            if (!v.ok) { record("fail", { reason: v.reason }); break; }
+          }
           record("pass");
           continue;
         }

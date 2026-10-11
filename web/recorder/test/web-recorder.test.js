@@ -9,7 +9,7 @@ const WebSocket = require("ws");
 const PAGE = `<!doctype html><title>Demo</title><body style="margin:0;font:20px sans-serif">
 <form onsubmit="return false"><label for="email">Email</label><input id="email" style="position:absolute;left:100px;top:100px;width:300px;height:40px">
 <button id="go" type="button" style="position:absolute;left:100px;top:200px;width:200px;height:50px" onclick="document.getElementById('msg').textContent='Welcome back'">Sign in</button></form>
-<p id="msg" style="position:absolute;left:100px;top:300px"></p></body>`;
+<script>document.addEventListener("keydown",e=>{if(e.key==="Enter"&&document.activeElement.id==="email")document.getElementById("msg").textContent="Submitted via enter"})</script><p id="msg" style="position:absolute;left:100px;top:300px"></p></body>`;
 
 let failed = 0;
 async function test(name, fn) { try { await fn(); console.log(`  ok - ${name}`); } catch (e) { failed++; console.error(`  FAIL - ${name}\n    ${e.stack}`); } }
@@ -82,6 +82,33 @@ test("codegen emits parameters, locators and assertions", () => {
       const result = await runWebSteps(page, done.testCase.steps, { baseUrl: done.testCase.baseUrl });
       assert.strictEqual(result.success, true, JSON.stringify(result.steps || result));
     } finally { await browser.close(); }
+  });
+
+  await test("Enter after typing is recorded as a press step, generated, and replays", async () => {
+    const p3 = await new Promise((r) => { const s = net.createServer().listen(0, () => { const p = s.address().port; s.close(() => r(p)); }); });
+    const s3 = await startWebLiveView({ port: p3, startUrl: url });
+    const w3 = new WebSocket(`ws://127.0.0.1:${p3}`);
+    const got = [];
+    w3.on("message", (d) => got.push(JSON.parse(String(d))));
+    await new Promise((r) => w3.on("open", r));
+    const wf = async (pred) => { const t0 = Date.now(); for (;;) { const m = got.find(pred); if (m) return m; if (Date.now() - t0 > 8000) throw new Error("timeout"); await new Promise((r) => setTimeout(r, 50)); } };
+    w3.send(JSON.stringify({ type: "click", xRatio: 250 / 1280, yRatio: 120 / 800 }));
+    await wf((m) => m.type === "step" && m.step.kind === "tap");
+    w3.send(JSON.stringify({ type: "type", text: "q" }));
+    await wf((m) => m.type === "step" && m.step.kind === "type");
+    w3.send(JSON.stringify({ type: "press", key: "Enter" }));
+    const pressed = await wf((m) => m.type === "step" && m.step.kind === "press");
+    assert.deepStrictEqual(pressed.step.expect, { appeared: ["Submitted via enter"] });
+    w3.send(JSON.stringify({ type: "stop" }));
+    const done = await wf((m) => m.type === "stopped");
+    assert.ok(done.script.includes('.press("Enter")'));
+    const { chromium } = require("playwright");
+    const browser = await chromium.launch({ executablePath: process.env.TESTOPS_MOBILE_WEB_CHROMIUM_PATH || undefined });
+    try {
+      const result = await runWebSteps(await browser.newPage(), done.testCase.steps, { baseUrl: done.testCase.baseUrl });
+      assert.strictEqual(result.success, true, JSON.stringify(result.steps || result));
+    } finally { await browser.close(); }
+    w3.close();
   });
 
   await test("typing before clicking a field is refused with a message", async () => {

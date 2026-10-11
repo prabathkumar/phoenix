@@ -4,7 +4,7 @@
  * on the real page AND recorded as a step (web-recorder.js).
  *
  * Protocol (client -> server): {type:"navigate",url} {type:"click",xRatio,yRatio}
- *   {type:"type",text} {type:"scroll",direction} {type:"stop"}
+ *   {type:"type",text} {type:"press",key} {type:"scroll",direction} {type:"stop"}
  * Server -> client: {type:"ready",viewport} {type:"frame",screenshotBase64}
  *   {type:"page",url,title} {type:"step",index,step} {type:"error",message}
  *   {type:"busy"} {type:"stopped",steps,script,testCase}
@@ -88,6 +88,10 @@ async function startWebLiveView({ port, startUrl, name = "recorded_web_flow", br
       } else if (message.type === "type") {
         const { index, step } = await recorder.type(String(message.text ?? ""));
         send({ type: "step", index, step, replace: true });
+      } else if (message.type === "press") {
+        const { index, step } = await recorder.press(String(message.key || "Enter"));
+        send({ type: "step", index, step });
+        if (recorder.steps.length - 1 > index) send({ type: "step", index: recorder.steps.length - 1, step: recorder.steps[recorder.steps.length - 1] });
       } else if (message.type === "scroll") {
         const { index, step } = await recorder.scroll(message.direction);
         send({ type: "step", index, step });

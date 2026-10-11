@@ -54,6 +54,12 @@ function toPlaywrightScript(steps, { name = "recorded_web_flow" } = {}) {
         lines.push(`  await expect(page.getByText(${q(t)}).first()).toBeVisible(); // ${JSON.stringify(t)} appeared`);
       }
     } else if (s.kind === "type") lines.push(`  await ${locatorExpr(s.selector)}.fill(field_${i});`);
+    else if (s.kind === "press") {
+      lines.push(`  await ${locatorExpr(s.selector)}.press(${q(s.key)});`);
+      for (const t of (s.expect && s.expect.appeared) || []) {
+        lines.push(`  await expect(page.getByText(${q(t)}).first()).toBeVisible(); // ${JSON.stringify(t)} appeared`);
+      }
+    }
     else if (s.kind === "scroll") lines.push(`  await page.mouse.wheel(0, ${s.direction === "up" ? -600 : 600});`);
     else if (s.kind === "assert" && s.assert && s.assert.urlContains) {
       lines.push(`  await expect(page).toHaveURL(new RegExp(${q(s.assert.urlContains.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))}));`);

@@ -124,6 +124,36 @@ class WebRecorder {
     return { index: target.index, step };
   }
 
+  /** Presses a key (e.g. Enter) in the field that was last typed into. */
+  async press(key = "Enter") {
+    const target = this._lastTap;
+    if (!target) {
+      const err = new Error("Click and type in a field before pressing a key.");
+      err.code = "no-field";
+      throw err;
+    }
+    const urlBefore = this.page.url();
+    const before = await this._lines();
+    await this.page.keyboard.press(key);
+    await this._settle();
+    const after = await this._lines();
+    const step = { kind: "press", instruction: `Press ${key}`, key, selector: target.selector };
+    const expect = this._expectFrom(before, after);
+    if (expect) step.expect = expect;
+    this.steps.push(step);
+    const index = this.steps.length - 1;
+    const urlAfter = this.page.url();
+    if (urlAfter !== urlBefore) {
+      try {
+        const pathname = new URL(urlAfter).pathname;
+        if (pathname && pathname !== "/" && pathname !== new URL(urlBefore).pathname) {
+          this.steps.push({ kind: "assert", instruction: `Landed on ${pathname}`, assert: { urlContains: pathname } });
+        }
+      } catch { /* ignore */ }
+    }
+    return { index, step };
+  }
+
   async scroll(direction) {
     const dy = direction === "up" ? -SCROLL_PIXELS : SCROLL_PIXELS;
     await this.page.mouse.wheel(0, dy);

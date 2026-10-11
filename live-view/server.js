@@ -47,14 +47,23 @@ function startLiveView(driver, recorder, port = 8090, platform = "android") {
     // makes that in-flight response a silent no-op instead.
     let stopped = false;
 
+    // Never let polls overlap: a BrowserStack screenshot takes longer than the
+    // poll interval, so un-guarded ticks piled up dozens of concurrent
+    // requests (seen in a real run) which, together with a user action, ended
+    // in the HTTP client crashing the whole server ("onCancel handler was
+    // attached after the promise settled"). One screenshot in flight at a time.
+    let pollInFlight = false;
     const pollTimer = setInterval(async () => {
-      if (stopped) return;
+      if (stopped || pollInFlight) return;
+      pollInFlight = true;
       try {
         const screenshotBase64 = await driver.takeScreenshot();
         if (stopped) return;
         socket.send(JSON.stringify({ type: "frame", screenshotBase64 }));
       } catch (err) {
         if (!stopped) console.error("[live-view] screenshot poll failed:", err.message);
+      } finally {
+        pollInFlight = false;
       }
     }, SCREENSHOT_POLL_INTERVAL_MS);
 

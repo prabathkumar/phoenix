@@ -60,6 +60,20 @@ const path = require("path");
 const { handleUploadAndStart } = require("./upload-session");
 const mockTestOps = require("./mock-testops-endpoints");
 
+// The HTTP client used for the Appium/BrowserStack calls (got/p-cancelable)
+// can throw "The `onCancel` handler was attached after the promise settled"
+// from inside an event handler when a request races a closing socket. It is
+// not catchable at the call site and used to take the whole server (and the
+// live session) down. Swallow exactly that error; anything else still crashes.
+process.on("uncaughtException", (err) => {
+  if (err && /onCancel` handler was attached after the promise settled/.test(String(err.message))) {
+    console.error("[frontend] ignored transient HTTP-client error:", err.message);
+    return;
+  }
+  console.error(err);
+  process.exit(1);
+});
+
 const PORT = Number(process.env.TESTOPS_MOBILE_FRONTEND_PORT) || 8091;
 const INDEX_PATH = path.join(__dirname, "index.html");
 const RECORD_STEP_PAGE_PATH = path.join(__dirname, "record-step.html");

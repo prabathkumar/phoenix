@@ -74,8 +74,8 @@
   }
   .device-frame {
     position: relative;
-    width: 100%;
-    max-width: 380px;
+    width: fit-content;
+    max-width: 100%;
     border: 8px solid #23262e;
     border-radius: 28px;
     overflow: hidden;
@@ -84,12 +84,20 @@
   }
   .device-frame img {
     display: block;
-    width: 100%;
+    /* Fit the WHOLE phone in the window: leave room for the header and the
+       type / scroll / stop controls under it, instead of overflowing. */
+    max-height: calc(100vh - 360px);
+    min-height: 320px;
+    width: auto;
+    max-width: 100%;
     cursor: crosshair;
     user-select: none;
   }
   .device-frame .placeholder {
+    width: 300px;
+    max-width: 100%;
     aspect-ratio: 9 / 19.5;
+    max-height: calc(100vh - 360px);
     display: flex;
     align-items: center;
     justify-content: center;

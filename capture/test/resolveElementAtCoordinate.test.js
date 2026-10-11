@@ -255,3 +255,11 @@ test("a tap on a bare layout wrapper resolves to its identifiable ancestor, not 
   assert.equal(r.strategy, "resource-id");
   assert.equal(r.value, "app:id/userIdLayout");
 });
+
+test("a tap on an unnamed screen-sized container (e.g. an on-screen keypad with no accessibility info) is recorded as a coordinate tap, not the root's xpath", () => {
+  const xml = `<hierarchy><node class="android.widget.FrameLayout" bounds="[0,0][1080,2400]">
+    <node class="android.widget.LinearLayout" bounds="[0,0][1080,2400]"/></node></hierarchy>`;
+  const r = resolveElementAtCoordinate({ x: 300, y: 1900 }, xml);
+  assert.strictEqual(r.strategy, "coordinate");
+  assert.strictEqual(r.value, "300,1900");
+});

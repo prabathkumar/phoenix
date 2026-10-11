@@ -381,6 +381,18 @@ function buildResourceIdSelector(resourceId, label, platform = "android", labelS
  * false on iOS since recorder.js never sets it there) and "text" cases
  * need a platform branch.
  */
+/** Android tap at (xExpr, yExpr) via W3C pointer actions (works on BrowserStack). */
+function androidPointerTapLines(xExpr, yExpr) {
+  return [
+    `    await driver.performActions([{ type: "pointer", id: "finger1", parameters: { pointerType: "touch" }, actions: [`,
+    `      { type: "pointerMove", duration: 0, x: ${xExpr}, y: ${yExpr} },`,
+    `      { type: "pointerDown", button: 0 },`,
+    `      { type: "pause", duration: 50 },`,
+    `      { type: "pointerUp", button: 0 },`,
+    `    ] }]);`,
+  ];
+}
+
 function buildSelector(resolvedElement, platform = "android") {
   if (!resolvedElement) return null;
   switch (resolvedElement.strategy) {
@@ -511,14 +523,32 @@ function synthesizeCode(steps, meta) {
       lines.push(`    // with no accessibility info, e.g. a Canvas/OpenGL view) -- falling back`);
       lines.push(`    // to a tap coordinate, re-scaled to THIS device's actual screen size so`);
       lines.push(`    // it still lands correctly if this device differs from the one recorded on.`);
-      lines.push(`    const step${index}WindowSize = await driver.getWindowSize();`);
-      lines.push(`    await driver.execute(${JSON.stringify(tapExtension)}, { x: Math.round(${xRatio} * step${index}WindowSize.width), y: Math.round(${yRatio} * step${index}WindowSize.height) });`);
+      if (platform === "ios") {
+        lines.push(`    const step${index}WindowSize = await driver.getWindowSize();`);
+        lines.push(`    await driver.execute(${JSON.stringify(tapExtension)}, { x: Math.round(${xRatio} * step${index}WindowSize.width), y: Math.round(${yRatio} * step${index}WindowSize.height) });`);
+      } else {
+        // Android: scale by the SCREENSHOT's pixel size (read from its PNG
+        // header), not getWindowSize() -- the latter leaves out the system bars
+        // (real Pixel 7: 1080x2219 vs the real 1080x2400 screen) so taps would
+        // land too high. And tap with W3C pointer actions: BrowserStack's
+        // Android driver rejects `mobile: clickGesture`.
+        lines.push(`    const step${index}Shot = Buffer.from(await driver.takeScreenshot(), "base64");`);
+        lines.push(`    const step${index}X = Math.round(${xRatio} * step${index}Shot.readUInt32BE(16));`);
+        lines.push(`    const step${index}Y = Math.round(${yRatio} * step${index}Shot.readUInt32BE(20));`);
+        lines.push(...androidPointerTapLines(`step${index}X`, `step${index}Y`));
+      }
+      if (param) lines.push(`    await driver.keys(${toIdentifier(param.name)});`);
     } else {
       const { x, y } = step.tapCoordinate || {};
       lines.push(`    // No stable locator resolved for this tap — falling back to a raw`);
       lines.push(`    // coordinate. Fragile: will break if this screen's layout, device, or`);
       lines.push(`    // resolution changes (no tap ratio was recorded for this step to re-scale from).`);
-      lines.push(`    await driver.execute(${JSON.stringify(tapExtension)}, { x: ${x}, y: ${y} });`);
+      if (platform === "ios") {
+        lines.push(`    await driver.execute(${JSON.stringify(tapExtension)}, { x: ${x}, y: ${y} });`);
+      } else {
+        lines.push(...androidPointerTapLines(String(x), String(y)));
+      }
+      if (param) lines.push(`    await driver.keys(${toIdentifier(param.name)});`);
     }
 
     const stepAssertions = assertionsByStep.get(index) || [];

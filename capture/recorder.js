@@ -335,6 +335,15 @@ function resolveElementAtCoordinate(coordinate, pageSourceXml) {
   /** @type {ResolvedElement} */
   const base = { resourceId, accessibilityId: contentDesc, text, contentDesc, className, bounds, xpath };
 
+  // A tap that landed on a screen-sized container with no id, description or
+  // text (e.g. an on-screen keypad drawn without accessibility info, which
+  // resolved to the app's root FrameLayout) cannot be replayed by locating
+  // that container: clicking the root's centre taps the wrong place. Record
+  // it as a coordinate tap instead, so replay re-scales the recorded tap ratio.
+  if (!resourceId && !contentDesc && !text && rectArea(rect) > largestArea / 2) {
+    return { strategy: "coordinate", value: `${x},${y}`, bounds, className };
+  }
+
   if (resourceId) return { ...base, strategy: "resource-id", value: resourceId };
   if (contentDesc) return { ...base, strategy: "accessibility-id", value: contentDesc };
   if (text) return { ...base, strategy: "text", value: text };

@@ -330,9 +330,14 @@ test("generateScript re-scales a coordinate-fallback tap against the replay devi
   };
 
   const result = await generateScript([coordinateStep]);
-  assert.ok(result.scriptSource.includes("await driver.getWindowSize()"), "must look up the REPLAY device's own window size, not assume the recording device's");
-  assert.ok(result.scriptSource.includes("0.5 * step0WindowSize.width"), "must re-scale the recorded ratio, not a hardcoded fraction");
-  assert.ok(result.scriptSource.includes("0.5 * step0WindowSize.height"));
+  // Android: scaled by the replay device's own SCREENSHOT size (getWindowSize()
+  // omits the system bars -- real Pixel 7 1080x2219 vs 1080x2400) and tapped
+  // with W3C pointer actions (BrowserStack rejects mobile: clickGesture).
+  assert.ok(result.scriptSource.includes("await driver.takeScreenshot()"), "must look up the REPLAY device's own screen size, not assume the recording device's");
+  assert.ok(result.scriptSource.includes("0.5 * step0Shot.readUInt32BE(16)"), "must re-scale the recorded ratio, not a hardcoded fraction");
+  assert.ok(result.scriptSource.includes("0.5 * step0Shot.readUInt32BE(20)"));
+  assert.ok(result.scriptSource.includes("driver.performActions("), "must tap with W3C pointer actions");
+  assert.ok(!result.scriptSource.includes("mobile: clickGesture"), "BrowserStack rejects mobile: clickGesture");
   assert.ok(!result.scriptSource.includes("{ x: 540, y: 1200 }"), "must not fall back to the record-time absolute pixels when a ratio is available");
 });
 
@@ -347,7 +352,8 @@ test("generateScript falls back to the raw recorded pixel coordinate when no tap
   };
 
   const result = await generateScript([coordinateStepNoRatio]);
-  assert.ok(result.scriptSource.includes("{ x: 540, y: 1200 }"), "with no recorded ratio, must still fall back to the literal pixel coordinate rather than fail");
+  assert.ok(result.scriptSource.includes("x: 540") && result.scriptSource.includes("y: 1200"), "with no recorded ratio, must still fall back to the literal pixel coordinate rather than fail");
+  assert.ok(result.scriptSource.includes("driver.performActions("), "tapped with W3C pointer actions, not the rejected mobile: clickGesture");
   assert.ok(!result.scriptSource.includes("getWindowSize"), "no ratio to re-scale -- must not emit a pointless window-size lookup");
 });
 

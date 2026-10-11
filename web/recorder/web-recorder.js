@@ -47,7 +47,7 @@ class WebRecorder {
     // wrapped heading ("phones, always the"), not tiny words ("RM", "All"),
     // not prices, clocks or what the tester typed. Longest lines first.
     const appeared = after
-      .filter((l) => !had.has(l) && l.length >= 6 && l.length <= 80 && /^[A-Z0-9]/.test(l) &&
+      .filter((l) => !had.has(l) && l.length >= 6 && l.length <= 60 && !/[?]\s*$/.test(l) && /^[A-Z0-9]/.test(l) &&
         (l.match(/[A-Za-z]/g) || []).length >= 4 && !NOISY_LINE_RE.test(l) && !PRICE_RE.test(l) && !typed.has(l))
       .sort((a, b) => b.length - a.length)
       .slice(0, MAX_ASSERTIONS_PER_STEP);

@@ -115,7 +115,7 @@ test("codegen emits parameters, locators and assertions", () => {
   await test("duplicate links are pinned with nth, scrolls are dropped from output, and noisy lines are not asserted", async () => {
     const DUP = `<!doctype html><title>Dup</title><body style="margin:0;font:20px sans-serif;height:3000px">
 <a href="#nav" style="position:absolute;left:20px;top:20px">Pricing</a>
-<a href="#body" onclick="document.getElementById('o').innerHTML='<p>Compare every plan today</p><p>RM 99/mth</p><p>All</p><p>phones, always the</p><p>Welcome to the pricing page</p>'" style="position:absolute;left:20px;top:300px">Pricing</a>
+<a href="#body" onclick="document.getElementById('o').innerHTML='<p>Compare every plan today</p><p>RM 99/mth</p><p>All</p><p>phones, always the</p><p>Welcome to the pricing page</p><p>Who is eligible to register for this plan?</p>'" style="position:absolute;left:20px;top:300px">Pricing</a>
 <div id="o" style="position:absolute;left:20px;top:400px"></div></body>`;
     const dsrv = http.createServer((_, res) => { res.writeHead(200, { "Content-Type": "text/html" }); res.end(DUP); });
     await new Promise((r) => dsrv.listen(0, r));
@@ -134,6 +134,7 @@ test("codegen emits parameters, locators and assertions", () => {
     w4.send(JSON.stringify({ type: "click", xRatio: 40 / 1280, yRatio: 310 / 800 }));
     const click = await wf((m) => m.type === "step" && m.step.kind === "tap");
     assert.strictEqual(click.step.selector.nth, 1, JSON.stringify(click.step.selector));
+    assert.ok(!click.step.expect.appeared.some((l) => l.endsWith("?")), "FAQ questions are not asserted");
     assert.deepStrictEqual(click.step.expect.appeared, ["Welcome to the pricing page", "Compare every plan today"].sort((a, b) => b.length - a.length));
     w4.send(JSON.stringify({ type: "stop" }));
     const done = await wf((m) => m.type === "stopped");

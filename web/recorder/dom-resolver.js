@@ -20,7 +20,18 @@ function ELEMENT_AT_POINT(point) {
   }
 
   var attr = function (n) { var v = el.getAttribute(n); return v ? v.trim() : ""; };
-  var clip = function (s, n) { s = (s || "").replace(/\s+/g, " ").trim(); return s.length > n ? "" : s; };
+  // First visible line only: a container's innerText joins child blocks with
+  // newlines, and a name spanning several children ("Choose Contract Period" +
+  // "No Contract") would never match on replay.
+  var clip = function (s, n) {
+    var line = String(s || "").split("\n").map(function (l) { return l.replace(/\s+/g, " ").trim(); }).filter(Boolean)[0] || "";
+    return line.length > n ? "" : line;
+  };
+  var altText = function () {
+    var img = el.querySelector("img[alt]");
+    var svgTitle = el.querySelector("svg title");
+    return clip(attr("title") || (img && img.getAttribute("alt")) || (svgTitle && svgTitle.textContent) || "", 60);
+  };
   var tag = el.tagName.toLowerCase();
   var type = (attr("type") || "").toLowerCase();
   var editable = tag === "textarea" || el.isContentEditable ||
@@ -74,7 +85,7 @@ function ELEMENT_AT_POINT(point) {
     labelText: labelText,
     name: attr("name"),
     placeholder: attr("placeholder"),
-    text: editable ? "" : clip(el.innerText || el.value || "", 60),
+    text: editable ? "" : clip(el.innerText || el.value || "", 60) || altText(),
     cssPath: cssPath(el),
     rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
   };
@@ -128,7 +139,8 @@ function buildWebSelector(d) {
 /** Human-readable description used as the step's `instruction`. */
 function describeElement(d, verb = "Click") {
   if (!d) return verb;
-  const name = d.ariaLabel || d.labelText || d.text || d.placeholder || d.name || d.id || d.tag;
+  const name = d.ariaLabel || d.labelText || d.text || d.placeholder || d.name || d.id;
+  if (!name) return `${verb} unnamed ${d.tag}`;
   const kind = d.tag === "a" ? "link" : d.tag === "button" || d.type === "submit" ? "button" : d.editable ? "field" : d.tag === "select" ? "dropdown" : d.type === "checkbox" ? "checkbox" : "";
   return `${verb} "${name}"${kind ? " " + kind : ""}`;
 }

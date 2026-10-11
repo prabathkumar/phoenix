@@ -502,6 +502,13 @@ function runRecorder(host, port) {
       setConnected(false, "Generation failed: " + message.message);
     }
 
+    if (message.type === "action-error") {
+      // A tap the device itself rejected (e.g. an unsupported mobile
+      // command on this device/driver build). The server survives and
+      // the tap was NOT recorded -- say so instead of silently doing nothing.
+      setConnected(true, "That tap failed on the device: " + (message.message || "unknown error"));
+    }
+
     if (message.type === "type-error") {
       // Server rejected this keystroke (e.g. typed before any tap was
       // recorded) — surface why instead of leaving the tester wondering

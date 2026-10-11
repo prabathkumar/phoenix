@@ -20,6 +20,7 @@ touches it.
 - [Uploading an app directly](#uploading-an-app-directly)
 - [Running the full loop locally](#running-the-full-loop-locally)
 - [Public frontend URL](#public-frontend-url)
+- [Live recording hardening and the web recorder](#live-recording-hardening-and-the-web-recorder)
 - [Engine session flow (spawn path)](#engine-session-flow-spawn-path)
 - [Engine architecture: spawn vs. embedded (Android)](#engine-architecture-spawn-vs-embedded-android)
 - [iOS support](#ios-support)
@@ -903,5 +904,67 @@ Real findings (screenshots from the tester's run):
   `[live-view] screenshot poll failed` lines show when it died.
 - **A failed tap was invisible on the Act 1 page** (it ignored `action-error`):
   fixed.
-- Known, not fixed: generated Android scripts' coordinate-fallback taps still
-  emit `mobile: clickGesture`, which the BrowserStack Pixel 7 rejects.
+- ~~Known, not fixed: generated Android scripts' coordinate-fallback taps still
+  emit `mobile: clickGesture`, which the BrowserStack Pixel 7 rejects.~~ Fixed
+  (see "Live recording hardening and the web recorder" below): replay now uses
+  W3C pointer actions scaled by the screenshot's own size.
+
+## Live recording hardening and the web recorder
+
+Found by running real recording sessions (BrowserStack Android from a Mac, and
+real websites) and fixing what the logs and generated scripts showed.
+
+**Mobile live view (BrowserStack Android)**
+- **Taps landed ~8% too high.** A tap ratio is a fraction of the screenshot the
+  tester sees, but it was scaled by `getWindowSize()`, which excludes system
+  bars (Pixel 7: screenshot 1080x2400, window 1080x2219). Taps are now scaled by
+  the screenshot's own PNG size, in the live view and in generated replay code.
+- **BrowserStack quirks:** `mobile: clickGesture` is rejected (W3C
+  `performActions` is used instead); `DELETE /actions` 404s (no longer called);
+  concurrent requests could crash the server through `got`/`p-cancelable`
+  (screenshot polls no longer overlap, plus a narrow uncaught-exception guard).
+- **Actions are serialized.** Taps/scrolls run one at a time; an overlapping one
+  is refused with a `busy` message; Stop waits for the in-flight action and
+  nothing runs after it.
+- **Unnamed keypad/screen-sized containers** (Compose apps with no
+  accessibility ids) resolve to a coordinate tap, replayed by ratio, instead of
+  the root xpath.
+- **Generated-script cleanup:** repeated taps on the same named element
+  collapse; no assertions on error messages, edit-field contents, masked
+  passwords or typed values; labels that exist only as a content-desc are
+  asserted with `.description()`; flow names prefer a text label.
+- **UI:** BrowserStack-style stage - the phone centred at full height, controls,
+  steps and generated script in a fixed side panel. Default device is a Samsung
+  Galaxy S23.
+
+**Web recorder** (`web/recorder/`, page at `/web-record`)
+- Opens a local Chromium (no BrowserStack, no device latency), mirrors it over
+  WebSocket, and records clicks, typing, Enter/key presses, native dropdowns
+  (the tester picks the option from a list drawn over the mirror, since the
+  browser draws its own popup) and scrolls.
+- **Locators** are checked against the live page, best first: data-testid,
+  role+name, label, id, name/placeholder, text, css path. A non-unique match is
+  pinned with `nth` rather than silently hitting its twin; a positional css
+  path is a last resort. Multi-part labels match on their first line.
+- **Output:** a standalone `@playwright/test` script and a test-case JSON the web
+  runner (`web/run-web-test-case.js`) replays. Scroll steps and repeated clicks
+  on one element are dropped from the output (Playwright scrolls into view
+  itself). Assertions come from text that appeared after a step, filtered to
+  stable copy: no prices, clocks, addresses, FAQ questions or heading
+  fragments, at most three per step. The flow is named from the site host.
+- **Web runner additions:** `role`, `select` and `press` steps and an `nth`
+  pin; it now waits up to 10 s for an element to appear before failing "element
+  not found" (an instant check failed a real run on a still-loading page).
+- **Verified:** recorded against a real site (yes.my) and replayed through the
+  runner; browser-level tests cover click, type, Enter, dropdown, duplicate
+  locators and replay of each recording (they skip themselves where Chromium is
+  not installed; set `TESTOPS_MOBILE_WEB_CHROMIUM_PATH` to use an existing one).
+- **Known limits:** icon-only elements with no readable name fall back to a
+  positional css path, which breaks if the site's layout changes - re-record
+  those on labelled elements. File uploads, iframes and new-tab flows are not
+  handled yet. The Docker image has no Chromium, so the web recorder runs on a
+  developer machine, not in the container.
+
+**Still open:** replay of a recorded Android script on BrowserStack to confirm
+pass/fail; local Android emulator recording (a BrowserStack step takes 10-15 s);
+the TestOps write API and frothAI contract; Flutter element identification.

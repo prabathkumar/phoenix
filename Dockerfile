@@ -106,7 +106,7 @@ COPY run-batch-executions.js ./run-batch-executions.js
 COPY test-cases/ ./test-cases/
 
 # Web (Playwright) runs need a browser binary, which `npm install` does NOT
-# fetch: in a container, run `npx --prefix web playwright install --with-deps chromium`
+# fetch: in a container, run `cd web && npx playwright install --with-deps chromium`
 # (or point TESTOPS_MOBILE_WEB_CHROMIUM_PATH at an existing Chromium). Not baked
 # in here -- it adds ~400MB and mobile-only deployments never need it.
 # (Dockerfile changes in this commit are not build-verified: the sandbox can't

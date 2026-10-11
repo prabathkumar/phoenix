@@ -41,7 +41,7 @@ Web adds `navigate {url}` and `assert {…}`; selector strategies `css | xpath |
 
 ```bash
 # web — exit code 0 = pass, 1 = fail
-npm --prefix web install && npx --prefix web playwright install chromium
+(cd web && npm install && npx playwright install chromium)
 node web/run-web-test-case.js test-cases/web-example.json --base-url https://example.com [--headed] [--persist] [--out result.json]
 
 # mobile — start the frontend with the opt-in APIs you need

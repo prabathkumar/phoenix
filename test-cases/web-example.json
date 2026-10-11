@@ -1,0 +1,11 @@
+{
+  "name": "web-example",
+  "description": "Sample web test case in the SAME format as the mobile ones. Run: node web/run-web-test-case.js test-cases/web-example.json --base-url https://example.com . Pass/fail comes from step results, `expect` (what appeared/disappeared after the step) and `assert` (absolute page checks).",
+  "platform": "web",
+  "steps": [
+    { "kind": "navigate", "url": "/" },
+    { "kind": "assert", "instruction": "page shows the example heading", "assert": { "textVisible": ["Example Domain"], "titleContains": "Example" } },
+    { "kind": "tap", "instruction": "tap the 'Learn more' link", "selector": { "strategy": "text", "value": "Learn more" }, "expect": { "appeared": ["Example Domains"] } },
+    { "kind": "assert", "instruction": "landed on the IANA page", "assert": { "urlContains": "iana.org" } }
+  ]
+}

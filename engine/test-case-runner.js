@@ -25,6 +25,7 @@ const fs = require("fs");
 const { verifyExpectedOutcome, validateExpectShape } = require("../generation/outcome-verification");
 const { logExecution } = require("../generation/execution-log");
 const { recordResolution } = require("./locator-store");
+const { buildTestResult } = require("./test-result");
 
 // Default pause for a "wait" step when the step doesn't specify its own
 // durationMs. Exists for a real timing gap found on real hardware
@@ -270,10 +271,26 @@ async function runScriptSteps(driver, steps, options) {
   // "${PASSWORD}"-style secret's literal value back out to disk.
   const updatedSteps = steps.map((step) => ({ ...step }));
   let lastResult;
+  // Per-step outcomes in the shared pass/fail contract (engine/test-result.js).
+  // Additive: `success`/`detail`/`updatedSteps` below are unchanged.
+  const stepLog = [];
+  const startedAt = Date.now();
+  const logStep = (i, step, status, reason) =>
+    stepLog.push({ index: i, kind: step.kind, instruction: step.instruction, status, ...(reason ? { reason } : {}) });
+  const finish = (success, detail) => ({
+    success,
+    detail,
+    updatedSteps,
+    ...(() => {
+      const r = buildTestResult({ platform, testCase: options.testCaseFile, steps: stepLog, startedAt, finishedAt: Date.now() });
+      return { status: success ? "pass" : "fail", summary: r.summary, steps: r.steps, durationMs: r.durationMs, platform };
+    })(),
+  });
   for (let i = 0; i < resolvedSteps.length; i += 1) {
     const step = resolvedSteps[i];
     if (step.kind === "wait") {
       await sleepFn(typeof step.durationMs === "number" ? step.durationMs : DEFAULT_WAIT_MS);
+      logStep(i, step, "pass");
       continue;
     }
     const result = await executeSemanticAction(driver, step.instruction, {
@@ -304,8 +321,9 @@ async function runScriptSteps(driver, steps, options) {
       expect: step.expect,
     });
     if (!result.success) {
-      if (step.optional) continue;
-      return { success: false, detail: `step "${step.instruction}" failed: ${result.reason}`, updatedSteps };
+      if (step.optional) { logStep(i, step, "skipped", result.reason); continue; }
+      logStep(i, step, "fail", result.reason);
+      return finish(false, `step "${step.instruction}" failed: ${result.reason}`);
     }
     // Outcome verification: a step can report success (no WebDriver
     // error) while having hit the wrong element entirely -- this is
@@ -350,12 +368,9 @@ async function runScriptSteps(driver, steps, options) {
             reason: verification.reason,
           });
         }
-        if (step.optional) continue;
-        return {
-          success: false,
-          detail: `step "${step.instruction}" reported success but failed outcome verification: ${verification.reason}`,
-          updatedSteps,
-        };
+        if (step.optional) { logStep(i, step, "skipped", verification.reason); continue; }
+        logStep(i, step, "fail", verification.reason);
+        return finish(false, `step "${step.instruction}" reported success but failed outcome verification: ${verification.reason}`);
       }
     }
     // A "tapIfExists" step's selector is hand-authored evidence, not a
@@ -421,12 +436,9 @@ async function runScriptSteps(driver, steps, options) {
       }
     }
     lastResult = result;
+    logStep(i, step, result.skipped ? "skipped" : "pass");
   }
-  return {
-    success: true,
-    detail: lastResult ? lastResult.diffSummary : "test case completed with no steps run",
-    updatedSteps,
-  };
+  return finish(true, lastResult ? lastResult.diffSummary : "test case completed with no steps run");
 }
 
 /**

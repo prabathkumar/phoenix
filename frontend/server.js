@@ -64,6 +64,7 @@ const PORT = Number(process.env.TESTOPS_MOBILE_FRONTEND_PORT) || 8091;
 const INDEX_PATH = path.join(__dirname, "index.html");
 const MOCK_TESTOPS_PATH = path.join(__dirname, "mock-testops.html");
 const SEMANTIC_API_ENABLED = process.env.TESTOPS_MOBILE_ENABLE_SEMANTIC_API === "1";
+const WEB_API_ENABLED = process.env.TESTOPS_MOBILE_ENABLE_WEB_API === "1";
 const EXECUTE_API_ENABLED = process.env.TESTOPS_MOBILE_ENABLE_EXECUTE_API === "1";
 const RECORD_STEP_API_ENABLED = process.env.TESTOPS_MOBILE_ENABLE_RECORD_STEP_API === "1";
 
@@ -81,6 +82,10 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (WEB_API_ENABLED && req.method === "POST" && req.url === "/api/execute-web-test-case") {
+    require("./execute-web-test-case-endpoint").handleExecuteWebTestCase(req, res);
+    return;
+  }
   if (EXECUTE_API_ENABLED && req.method === "POST" && req.url === "/api/execute-test-case") {
     require("./execute-test-case-endpoint").handleExecuteTestCase(req, res);
     return;

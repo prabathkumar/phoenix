@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        package: [capture, generation, engine, live-view, frontend, root]
+        package: [capture, generation, engine, live-view, frontend, web, root]
     steps:
       - uses: actions/checkout@v4
 

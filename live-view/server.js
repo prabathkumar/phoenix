@@ -67,7 +67,18 @@ function startLiveView(driver, recorder, port = 8090, platform = "android") {
       }
     }, SCREENSHOT_POLL_INTERVAL_MS);
 
-    socket.on("message", async (raw) => {
+    // Messages run strictly one at a time, in arrival order. On BrowserStack a
+    // single tap/scroll (with its before/after captures) takes 5-15 seconds, so
+    // two quick actions used to overlap, and "Stop" arrived while they were
+    // still capturing and finished the session with 0 steps (real run
+    // 2026-10-11). Queued, "stop" now runs only after every earlier action has
+    // been fully recorded.
+    let queue = Promise.resolve();
+    socket.on("message", (raw) => {
+      queue = queue.then(() => onMessage(raw));
+    });
+
+    async function onMessage(raw) {
       try {
         await handleMessage(raw);
       } catch (err) {
@@ -93,7 +104,7 @@ function startLiveView(driver, recorder, port = 8090, platform = "android") {
           // socket may already be closed -- nothing more to do
         }
       }
-    });
+    }
 
     async function handleMessage(raw) {
       const message = JSON.parse(raw.toString());

@@ -69,8 +69,10 @@ class SessionRecorder {
    *   CapturedStep's own doc comment on `tapRatio` for why this matters).
    */
   async beginStep(tapCoordinate, tapRatio) {
-    const screenshotBeforeBase64 = await this.driver.takeScreenshot();
-    const pageSourceBefore = await this.driver.getPageSource();
+    const [screenshotBeforeBase64, pageSourceBefore] = await Promise.all([
+      this.driver.takeScreenshot(),
+      this.driver.getPageSource(),
+    ]);
     return { tapCoordinate, tapRatio, screenshotBeforeBase64, pageSourceBefore, timestamp: Date.now() };
   }
 
@@ -91,8 +93,10 @@ class SessionRecorder {
     let pageSourceAfter = partialStep.pageSourceBefore;
     let afterCaptureFailed;
     try {
-      screenshotAfterBase64 = await this.driver.takeScreenshot();
-      pageSourceAfter = await this.driver.getPageSource();
+      [screenshotAfterBase64, pageSourceAfter] = await Promise.all([
+        this.driver.takeScreenshot(),
+        this.driver.getPageSource(),
+      ]);
     } catch (err) {
       afterCaptureFailed = err.message;
       screenshotAfterBase64 = partialStep.screenshotBeforeBase64;
@@ -122,12 +126,16 @@ class SessionRecorder {
    * @param {() => Promise<void>} perform
    */
   async recordScroll(direction, perform) {
-    const screenshotBeforeBase64 = await this.driver.takeScreenshot();
-    const pageSourceBefore = await this.driver.getPageSource();
+    const [screenshotBeforeBase64, pageSourceBefore] = await Promise.all([
+      this.driver.takeScreenshot(),
+      this.driver.getPageSource(),
+    ]);
     const timestamp = Date.now();
     await perform();
-    const screenshotAfterBase64 = await this.driver.takeScreenshot();
-    const pageSourceAfter = await this.driver.getPageSource();
+    const [screenshotAfterBase64, pageSourceAfter] = await Promise.all([
+      this.driver.takeScreenshot(),
+      this.driver.getPageSource(),
+    ]);
     const step = { kind: "scroll", direction, timestamp, screenshotBeforeBase64, pageSourceBefore, screenshotAfterBase64, pageSourceAfter };
     this.steps.push(step);
     return step;

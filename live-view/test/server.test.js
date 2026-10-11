@@ -465,6 +465,23 @@ async function main() {
     });
   });
 
+  await testAsync("Stop sent right after two slow scrolls still waits for BOTH to be recorded (real run lost them: 0 steps)", async () => {
+    await withLiveView("android", null, async ({ recorder, socket }) => {
+      const slowScroll = recorder.recordScroll.bind(recorder);
+      recorder.recordScroll = async (direction, perform) => {
+        await new Promise((r) => setTimeout(r, 120)); // a slow BrowserStack capture
+        return slowScroll(direction, perform);
+      };
+      const finished = nextMessageOfType(socket, "session-finished");
+      socket.send(JSON.stringify({ type: "scroll", direction: "down" }));
+      socket.send(JSON.stringify({ type: "scroll", direction: "up" }));
+      socket.send(JSON.stringify({ type: "stop" }));
+      const evt = await finished;
+      assert.strictEqual(evt.stepCount, 2, "both scrolls must be recorded before the session finishes");
+      assert.deepStrictEqual(recorder.steps.map((s) => s.direction), ["down", "up"], "actions run in arrival order");
+    });
+  });
+
   if (process.exitCode) {
     console.error("\nlive-view/server tests FAILED");
     process.exit(1);

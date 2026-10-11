@@ -12,7 +12,7 @@ const VISIBLE_LINES = function () {
   var text = (document.body && document.body.innerText) || "";
   var seen = {}, out = [];
   text.split("\n").forEach(function (l) {
-    l = l.trim();
+    l = l.replace(/[\u200B-\u200D\uFEFF]/g, "").trim();
     if (l && !seen[l]) { seen[l] = true; out.push(l.slice(0, 200)); }
   });
   return out.slice(0, 500);
@@ -37,6 +37,8 @@ class WebRecorder {
 
   async _settle() {
     try { await this.page.waitForLoadState("load", { timeout: 3000 }); } catch { /* no navigation */ }
+    // Let XHR-driven results (search, filters) land before the "after" snapshot.
+    try { await this.page.waitForLoadState("networkidle", { timeout: 2000 }); } catch { /* chatty page: carry on */ }
     await this.sleep(SETTLE_MS);
   }
 

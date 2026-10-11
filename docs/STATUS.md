@@ -882,3 +882,26 @@ First real BrowserStack validation of the "Record this step" endpoints
   extension if unavailable. Unit-tested only — NOT yet proven on real hardware.
 - **CI:** frontend job needs `capture` deps installed (cross-require); fixed.
 - Dockerfile now installs frontend's own deps (`busboy`).
+
+## 2026-10-11 — first real BrowserStack run of the recorder page
+
+Real findings (screenshots from the tester's run):
+
+- **No scrolling at all (real gap, fixed):** the live view only knew `tap` and
+  `type`, so anything below the fold was unreachable. Now: a `scroll` message
+  (`live-view/server.js`) swipes the real device (Android `mobile: swipeGesture`
+  -- present in the real Pixel 7 supported list -- falling back to W3C pointer
+  actions; iOS `mobile: dragFromToForDuration`), it is recorded as a
+  `kind: "scroll"` step (`capture/recorder.js recordScroll`), replayed by
+  generated scripts (`mobile: swipeGesture` / `mobile: swipe`), and exposed as
+  buttons + mouse wheel on both `index.html` and `record-step.html`.
+  Unit/real-Chromium tested against stubs -- NOT yet proven on a real device.
+- **Session ended before the first tap** ("Session not started or terminated"):
+  not the tap bug. BrowserStack's default idle timeout is 90s; the session now
+  asks for 300s (`TESTOPS_MOBILE_BROWSERSTACK_IDLE_TIMEOUT` overrides). Root
+  cause not confirmed from logs -- if it recurs, the frontend terminal's
+  `[live-view] screenshot poll failed` lines show when it died.
+- **A failed tap was invisible on the Act 1 page** (it ignored `action-error`):
+  fixed.
+- Known, not fixed: generated Android scripts' coordinate-fallback taps still
+  emit `mobile: clickGesture`, which the BrowserStack Pixel 7 rejects.

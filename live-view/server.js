@@ -19,6 +19,14 @@ const { WebSocketServer } = require("ws");
 
 const SCREENSHOT_POLL_INTERVAL_MS = 300;
 
+// Time for a scroll's momentum/animation to finish before the "after"
+// state is captured (a screenshot mid-fling would diff as a false change).
+const SCROLL_SETTLE_MS = 400;
+
+// Scroll direction is described by where the CONTENT goes ("down" reveals
+// what's further down); the finger moves the opposite way.
+const FINGER_DIRECTION = { down: "up", up: "down", left: "right", right: "left" };
+
 /**
  * @param {import('webdriverio').Browser} driver - the live Appium session
  * @param {import('../capture/recorder').SessionRecorder} recorder
@@ -112,6 +120,27 @@ function startLiveView(driver, recorder, port = 8090, platform = "android") {
           type: "step-recorded",
           stepIndex: recorder.steps.length - 1,
           resolvedElement: step.resolvedElement,
+        }));
+      }
+
+      if (message.type === "scroll") {
+        // Real gap found 2026-10-11 on the first real BrowserStack run of
+        // the recorder: there was NO way to scroll the device at all (the
+        // live view only knew tap and type), so anything below the fold
+        // was unreachable. Performed on the device AND recorded as a step
+        // so a replayed script scrolls where the tester did.
+        if (!FINGER_DIRECTION[message.direction]) {
+          throw new Error(`unknown scroll direction "${message.direction}" (expected up, down, left or right)`);
+        }
+        const size = await getWindowSizeCached(driver);
+        await recorder.recordScroll(message.direction, async () => {
+          await injectScroll(driver, platform, message.direction, size);
+          await new Promise((resolve) => setTimeout(resolve, SCROLL_SETTLE_MS));
+        });
+        socket.send(JSON.stringify({
+          type: "scroll-recorded",
+          stepIndex: recorder.steps.length - 1,
+          direction: message.direction,
         }));
       }
 
@@ -281,16 +310,88 @@ const windowSizeCache = new WeakMap();
  * device window size (not the image's own dimensions, which may be
  * scaled or letterboxed differently than the physical screen).
  */
-async function toDeviceCoordinate(xRatio, yRatio, driver) {
+async function getWindowSizeCached(driver) {
   let size = windowSizeCache.get(driver);
   if (!size) {
     size = await driver.getWindowSize();
     windowSizeCache.set(driver, size);
   }
+  return size;
+}
+
+/**
+ * Finger path for a swipe: starts/ends well inside the screen (never on
+ * the system-gesture edges) along the screen's vertical or horizontal
+ * centre line.
+ */
+function swipePath(fingerDirection, { width, height }) {
+  const cx = Math.round(width / 2);
+  const cy = Math.round(height / 2);
+  const near = (v) => Math.round(v * 0.3);
+  const far = (v) => Math.round(v * 0.7);
+  switch (fingerDirection) {
+    case "up": return { fromX: cx, fromY: far(height), toX: cx, toY: near(height) };
+    case "down": return { fromX: cx, fromY: near(height), toX: cx, toY: far(height) };
+    case "left": return { fromX: far(width), fromY: cy, toX: near(width), toY: cy };
+    default: return { fromX: near(width), fromY: cy, toX: far(width), toY: cy };
+  }
+}
+
+/**
+ * Performs one scroll on the device. Android prefers `mobile: swipeGesture`
+ * -- it IS in the supported-commands list the real BrowserStack Pixel 7
+ * returned (unlike clickGesture) -- and falls back to W3C pointer actions.
+ * iOS uses XCUITest's `mobile: dragFromToForDuration`, falling back to W3C.
+ */
+async function injectScroll(driver, platform, direction, size) {
+  const fingerDirection = FINGER_DIRECTION[direction];
+  const path = swipePath(fingerDirection, size);
+  let firstError;
+  try {
+    if (platform === "ios") {
+      await driver.execute("mobile: dragFromToForDuration", { ...path, duration: 0.4 });
+    } else {
+      await driver.execute("mobile: swipeGesture", {
+        left: Math.round(size.width * 0.1),
+        top: Math.round(size.height * 0.2),
+        width: Math.round(size.width * 0.8),
+        height: Math.round(size.height * 0.6),
+        direction: fingerDirection,
+        percent: 0.75,
+      });
+    }
+    return;
+  } catch (err) {
+    firstError = err;
+    if (typeof driver.performActions !== "function") throw err;
+  }
+  try {
+    await driver.performActions([
+      {
+        type: "pointer",
+        id: "finger1",
+        parameters: { pointerType: "touch" },
+        actions: [
+          { type: "pointerMove", duration: 0, x: path.fromX, y: path.fromY },
+          { type: "pointerDown", button: 0 },
+          { type: "pause", duration: 100 },
+          { type: "pointerMove", duration: 400, x: path.toX, y: path.toY },
+          { type: "pointerUp", button: 0 },
+        ],
+      },
+    ]);
+    if (typeof driver.releaseActions === "function") await driver.releaseActions();
+  } catch (err) {
+    throw new Error(`scroll failed (${firstError.message}); W3C fallback also failed (${err.message})`);
+  }
+}
+
+async function toDeviceCoordinate(xRatio, yRatio, driver) {
+  const size = await getWindowSizeCached(driver);
   return {
     x: Math.round(xRatio * size.width),
     y: Math.round(yRatio * size.height),
   };
 }
 
-module.exports = { startLiveView };
+module.exports = { startLiveView, swipePath, injectScroll };

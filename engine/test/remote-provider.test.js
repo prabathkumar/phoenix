@@ -188,9 +188,20 @@ test("browserstack capabilities replace the local app reference with the uploade
         projectName: "TestOps Mobile",
         buildName: "testops-mobile-recording",
         sessionName: "TestOps Mobile recording session",
+        idleTimeout: 300,
       });
     }
   );
+});
+
+test("browserstack idleTimeout defaults to 300s (a tester's pause must not end the session) and is overridable", () => {
+  const base = { TESTOPS_MOBILE_APPIUM_PROVIDER: "browserstack", TESTOPS_MOBILE_BROWSERSTACK_USER: "u", TESTOPS_MOBILE_BROWSERSTACK_KEY: "k" };
+  withEnv(base, () => {
+    assert.strictEqual(freshProvider().buildCapabilities({}, { "appium:app": "bs://x" })["bstack:options"].idleTimeout, 300);
+  });
+  withEnv({ ...base, TESTOPS_MOBILE_BROWSERSTACK_IDLE_TIMEOUT: "120" }, () => {
+    assert.strictEqual(freshProvider().buildCapabilities({}, { "appium:app": "bs://x" })["bstack:options"].idleTimeout, 120);
+  });
 });
 
 test("browserstack capabilities omit local/localIdentifier when TESTOPS_MOBILE_BROWSERSTACK_LOCAL is unset", () => {

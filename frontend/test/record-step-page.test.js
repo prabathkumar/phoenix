@@ -32,6 +32,7 @@ const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwA
     sock.on("close", () => clearInterval(t));
     sock.on("message", (raw) => {
       const m = JSON.parse(raw.toString()); calls.push(["ws", m.type]);
+      if (m.type === "scroll") return sock.send(JSON.stringify({ type: "scroll-recorded", stepIndex: 0, direction: m.direction }));
       if (m.type === "tap") {
         if (wss.failNext) { wss.failNext = false; return sock.send(JSON.stringify({ type: "action-error", message: "Unknown mobile command" })); }
         sock.send(JSON.stringify({ type: "step-recorded", stepIndex: 0, resolvedElement: { strategy: "id", value: "buyAddonLayout" } }));
@@ -67,6 +68,11 @@ const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwA
     await page.fill("#sessionId", "live-1");
     await page.click("#startBtn");
     await page.waitForSelector("#device img");
+    // scroll first (the element may be below the fold): button enabled once frames arrive
+    await page.waitForFunction(() => !document.getElementById("scrollDownBtn").disabled);
+    await page.click("#scrollDownBtn");
+    await page.waitForFunction(() => document.getElementById("status").textContent.includes("Scrolled down"));
+    assert.ok(calls.some((c) => c[0] === "ws" && c[1] === "scroll"), "scroll message must reach the device");
     await page.click("#device img");
     await page.waitForFunction(() => document.getElementById("message").textContent.includes("tap failed"));
     await page.click("#device img");

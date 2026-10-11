@@ -69,6 +69,12 @@ function makeFakeRecorder() {
       this.steps.push(step);
       return step;
     },
+    async recordScroll(direction, perform) {
+      await perform();
+      const step = { kind: "scroll", direction };
+      this.steps.push(step);
+      return step;
+    },
     finish() {
       return this.steps;
     },
@@ -361,6 +367,74 @@ async function main() {
     } finally {
       wss.close();
     }
+  });
+
+  async function withLiveView(platform, driverSetup, body) {
+    const driver = makeFakeDriver();
+    if (driverSetup) driverSetup(driver);
+    const recorder = makeFakeRecorder();
+    const port = 18090 + Math.floor(Math.random() * 1000);
+    const wss = startLiveView(driver, recorder, port, platform);
+    try {
+      const socket = await connect(port);
+      await body({ driver, recorder, socket });
+      socket.close();
+    } finally {
+      wss.close();
+    }
+  }
+
+  await testAsync("android scroll 'down' swipes the finger UP with mobile: swipeGesture, and is recorded as a scroll step", async () => {
+    await withLiveView("android", null, async ({ driver, recorder, socket }) => {
+      const done = nextMessageOfType(socket, "scroll-recorded");
+      socket.send(JSON.stringify({ type: "scroll", direction: "down" }));
+      const evt = await done;
+      assert.strictEqual(evt.direction, "down");
+      assert.strictEqual(evt.stepIndex, 0);
+      const [script, args] = driver.executeCalls.find(([s]) => s === "mobile: swipeGesture");
+      assert.strictEqual(script, "mobile: swipeGesture");
+      assert.strictEqual(args.direction, "up", "content scrolls down when the finger swipes up");
+      assert.deepStrictEqual(recorder.steps.map((s) => [s.kind, s.direction]), [["scroll", "down"]]);
+    });
+  });
+
+  await testAsync("android scroll falls back to W3C pointer actions when swipeGesture is unsupported", async () => {
+    await withLiveView("android", (d) => {
+      d.execute = async () => { throw new Error('Unknown mobile command "swipeGesture"'); };
+      d.performCalls = [];
+      d.performActions = async (a) => { d.performCalls.push(a); };
+    }, async ({ driver, socket }) => {
+      const done = nextMessageOfType(socket, "scroll-recorded");
+      socket.send(JSON.stringify({ type: "scroll", direction: "up" }));
+      await done;
+      const acts = driver.performCalls[0][0].actions;
+      const move = acts.find((a) => a.type === "pointerMove" && a.duration === 400);
+      assert.ok(move.y > acts[0].y, "scrolling up = finger swipes DOWN, so the end y is below the start y");
+    });
+  });
+
+  await testAsync("iOS scroll uses mobile: dragFromToForDuration", async () => {
+    await withLiveView("ios", null, async ({ driver, socket }) => {
+      const done = nextMessageOfType(socket, "scroll-recorded");
+      socket.send(JSON.stringify({ type: "scroll", direction: "down" }));
+      await done;
+      const [script, args] = driver.executeCalls.find(([s]) => s === "mobile: dragFromToForDuration");
+      assert.strictEqual(script, "mobile: dragFromToForDuration");
+      assert.ok(args.toY < args.fromY, "finger moves up to scroll content down");
+    });
+  });
+
+  await testAsync("an invalid scroll direction, or a device-side failure, reports action-error and records nothing", async () => {
+    await withLiveView("android", null, async ({ driver, recorder, socket }) => {
+      let err = nextMessageOfType(socket, "action-error");
+      socket.send(JSON.stringify({ type: "scroll", direction: "sideways" }));
+      assert.match((await err).message, /unknown scroll direction/);
+      driver.execute = async () => { throw new Error("device gone"); };
+      err = nextMessageOfType(socket, "action-error");
+      socket.send(JSON.stringify({ type: "scroll", direction: "down" }));
+      assert.match((await err).message, /device gone/);
+      assert.strictEqual(recorder.steps.length, 0, "a failed scroll must not be recorded as a step");
+    });
   });
 
   if (process.exitCode) {

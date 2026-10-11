@@ -466,7 +466,21 @@ function synthesizeCode(steps, meta) {
     const selector = buildSelector(step.resolvedElement, platform);
     const param = paramsByStep.get(index);
 
-    if (selector) {
+    if (step.kind === "scroll") {
+      // Recorded scroll/swipe (capture/recorder.js recordScroll). The
+      // direction is where the CONTENT moves; the gesture's finger goes
+      // the opposite way. Android uses `mobile: swipeGesture` (present in
+      // the real BrowserStack device's supported-command list); iOS uses
+      // `mobile: swipe`.
+      const finger = { down: "up", up: "down", left: "right", right: "left" }[step.direction] || "up";
+      lines.push(`    // Scroll ${step.direction} (recorded)`);
+      if (platform === "ios") {
+        lines.push(`    await driver.execute("mobile: swipe", { direction: ${JSON.stringify(finger)} });`);
+      } else {
+        lines.push(`    const step${index}WindowSize = await driver.getWindowSize();`);
+        lines.push(`    await driver.execute("mobile: swipeGesture", { left: Math.round(0.1 * step${index}WindowSize.width), top: Math.round(0.2 * step${index}WindowSize.height), width: Math.round(0.8 * step${index}WindowSize.width), height: Math.round(0.6 * step${index}WindowSize.height), direction: ${JSON.stringify(finger)}, percent: 0.75 });`);
+      }
+    } else if (selector) {
       lines.push(`    const step${index}El = await $(${JSON.stringify(selector)});`);
       lines.push(`    await step${index}El.waitForDisplayed();`);
       lines.push(`    await step${index}El.click();`);

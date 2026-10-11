@@ -115,6 +115,11 @@ function buildCapabilities(baseCapabilities, overrides = {}) {
       projectName: process.env.TESTOPS_MOBILE_BROWSERSTACK_PROJECT || "TestOps Mobile",
       buildName: process.env.TESTOPS_MOBILE_BROWSERSTACK_BUILD || "testops-mobile-recording",
       sessionName: process.env.TESTOPS_MOBILE_BROWSERSTACK_SESSION_NAME || "TestOps Mobile recording session",
+      // BrowserStack closes a session after this many idle seconds (default
+      // 90, max 300). A tester reading the screen or hunting for the right
+      // element easily exceeds 90s -- a real session ended before a tester's
+      // first tap ("Session not started or terminated", 2026-10-11).
+      idleTimeout: Number(process.env.TESTOPS_MOBILE_BROWSERSTACK_IDLE_TIMEOUT) || 300,
       // Routes this session's device traffic through a BrowserStackLocal
       // tunnel running on TESTOPS_MOBILE_BROWSERSTACK_USER's machine (or wherever
       // it was started), so the app-under-test can reach a backend that

@@ -93,6 +93,29 @@ class SessionRecorder {
     return step;
   }
 
+  /**
+   * Records a scroll/swipe as its own step (kind: "scroll"), so a replayed
+   * script scrolls where the tester scrolled -- without it, anything the
+   * tester reached by scrolling (an element below the fold) would be
+   * unreachable on replay. `perform` does the actual gesture on the
+   * device; before/after state is captured around it exactly like a tap.
+   *
+   * @param {"up"|"down"|"left"|"right"} direction - the direction the
+   *   CONTENT moves into view ("down" = reveal what's further down).
+   * @param {() => Promise<void>} perform
+   */
+  async recordScroll(direction, perform) {
+    const screenshotBeforeBase64 = await this.driver.takeScreenshot();
+    const pageSourceBefore = await this.driver.getPageSource();
+    const timestamp = Date.now();
+    await perform();
+    const screenshotAfterBase64 = await this.driver.takeScreenshot();
+    const pageSourceAfter = await this.driver.getPageSource();
+    const step = { kind: "scroll", direction, timestamp, screenshotBeforeBase64, pageSourceBefore, screenshotAfterBase64, pageSourceAfter };
+    this.steps.push(step);
+    return step;
+  }
+
   /** Called on "Stop" — hands the full session to generation/. */
   finish() {
     return this.steps;

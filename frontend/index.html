@@ -320,6 +320,10 @@
         <input type="text" id="type-input" placeholder="Type into the focused field, then press Enter" />
         <button class="btn-secondary" id="type-btn">Type</button>
       </div>
+      <div class="type-row">
+        <button class="btn-secondary" id="scroll-up-btn" title="Scroll the app up (see content above)">&#9650; Scroll up</button>
+        <button class="btn-secondary" id="scroll-down-btn" title="Scroll the app down (see content below)">&#9660; Scroll down</button>
+      </div>
       <button class="btn-danger" id="stop-btn" disabled>Stop &amp; Generate Script</button>
     </div>
   </section>
@@ -442,8 +446,11 @@ function runRecorder(host, port) {
   const stepsList = document.getElementById("steps-list");
   const scriptOutput = document.getElementById("script-output");
   const copyBtn = document.getElementById("copy-btn");
+  const scrollUpBtn = document.getElementById("scroll-up-btn");
+  const scrollDownBtn = document.getElementById("scroll-down-btn");
 
   let img = null;
+  let lastScrollAt = 0;
   let stepCount = 0;
   let stopped = false;
 
@@ -479,6 +486,11 @@ function runRecorder(host, port) {
     if (message.type === "step-recorded") {
       stepCount = message.stepIndex + 1;
       addStepRow(stepCount, "tap");
+    }
+
+    if (message.type === "scroll-recorded") {
+      stepCount = message.stepIndex + 1;
+      addStepRow(stepCount, "scroll", message.direction);
     }
 
     if (message.type === "text-entered") {
@@ -539,6 +551,26 @@ function runRecorder(host, port) {
     send({ type: "tap", xRatio, yRatio });
   }
 
+  // Scrolling the app. The mouse wheel over the device image (and the two
+  // buttons) send a "scroll" message; the server swipes the real device and
+  // records it as a step. Throttled: one wheel flick = one swipe, not dozens.
+  function requestScroll(direction) {
+    if (stopped) return;
+    const now = Date.now();
+    if (now - lastScrollAt < 900) return;
+    lastScrollAt = now;
+    setConnected(true, "Scrolling " + direction + "…");
+    send({ type: "scroll", direction });
+  }
+  deviceFrame.addEventListener("wheel", (event) => {
+    if (!img || stopped) return;
+    event.preventDefault();
+    if (Math.abs(event.deltaY) >= Math.abs(event.deltaX)) requestScroll(event.deltaY > 0 ? "down" : "up");
+    else requestScroll(event.deltaX > 0 ? "right" : "left");
+  }, { passive: false });
+  scrollUpBtn.addEventListener("click", () => requestScroll("up"));
+  scrollDownBtn.addEventListener("click", () => requestScroll("down"));
+
   function showTapMarker(x, y) {
     const marker = document.createElement("div");
     marker.className = "tap-marker";
@@ -554,7 +586,9 @@ function runRecorder(host, port) {
     row.className = "step-row";
     const detail = kind === "type"
       ? "Typed <code>" + escapeHtml(typedValue || "") + "</code>"
-      : "Tapped an element";
+      : kind === "scroll"
+        ? "Scrolled " + escapeHtml(typedValue || "")
+        : "Tapped an element";
     row.innerHTML = '<span class="step-index">' + index + '</span><span class="step-detail">' + detail + "</span>";
     stepsList.appendChild(row);
     stepsList.scrollTop = stepsList.scrollHeight;

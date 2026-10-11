@@ -111,10 +111,25 @@ async function handleApplyRecordedStep(req, res) {
     return;
   }
 
-  const idx = Number.isInteger(recorderStepIndex) ? recorderStepIndex : recorder.steps.length - 1;
+  // Default: the LAST recorded tap -- skipping any scroll steps recorded
+  // after it (a tester often scrolls, taps, then scrolls again to look).
+  let idx = Number.isInteger(recorderStepIndex) ? recorderStepIndex : -1;
+  if (idx === -1) {
+    for (let i = recorder.steps.length - 1; i >= 0; i -= 1) {
+      if (recorder.steps[i].kind !== "scroll") { idx = i; break; }
+    }
+    if (idx === -1) {
+      respondJson(res, 200, { success: false, error: "only scrolls have been recorded so far -- have the tester tap the element first" });
+      return;
+    }
+  }
   const capturedStep = recorder.steps[idx];
   if (!capturedStep) {
     respondJson(res, 200, { success: false, error: `no recorded tap at recorderStepIndex ${idx} (${recorder.steps.length} tap(s) recorded so far)` });
+    return;
+  }
+  if (capturedStep.kind === "scroll") {
+    respondJson(res, 200, { success: false, error: `recorded step ${idx} is a scroll, not a tap -- pick a tap step` });
     return;
   }
   if (!capturedStep.resolvedElement || !capturedStep.resolvedElement.strategy || !capturedStep.resolvedElement.value) {

@@ -56,6 +56,11 @@
 
   <section class="panel">
     <div class="device" id="device">Start recording to see the live device here.</div>
+    <div class="row">
+      <button class="secondary" id="scrollUpBtn" disabled>&#9650; Scroll up</button>
+      <button class="secondary" id="scrollDownBtn" disabled>&#9660; Scroll down</button>
+    </div>
+    <p class="hint">The element not visible? Scroll the app first (buttons, or the mouse wheel over the screen), then tap it.</p>
   </section>
 
   <section class="panel result" id="resultPanel" style="display:none;">
@@ -76,7 +81,7 @@
   var $ = function (id) { return document.getElementById(id); };
   ["sessionId", "platform", "testCaseFile", "stepIndex"].forEach(function (k) { if (params.get(k)) $(k).value = params.get(k); });
 
-  var socket = null, recordingId = null, img = null, awaitingResult = false, lastElement = null, finished = false;
+  var sawFrame = false, socket = null, recordingId = null, img = null, awaitingResult = false, lastElement = null, finished = false;
 
   function status(text) { $("status").textContent = text; }
   function message(text, kind) { var m = $("message"); m.textContent = text || ""; m.className = kind || ""; }
@@ -108,6 +113,25 @@
     socket.send(JSON.stringify({ type: "tap", xRatio: x / r.width, yRatio: y / r.height }));
   }
 
+  var lastScrollAt = 0;
+  function requestScroll(direction) {
+    if (!socket || awaitingResult || finished) return;
+    var now = Date.now();
+    if (now - lastScrollAt < 900) return;
+    lastScrollAt = now;
+    awaitingResult = true;
+    status("Scrolling " + direction + "…");
+    socket.send(JSON.stringify({ type: "scroll", direction: direction }));
+  }
+  $("scrollUpBtn").addEventListener("click", function () { requestScroll("up"); });
+  $("scrollDownBtn").addEventListener("click", function () { requestScroll("down"); });
+  $("device").addEventListener("wheel", function (ev) {
+    if (!img) return;
+    ev.preventDefault();
+    if (Math.abs(ev.deltaY) >= Math.abs(ev.deltaX)) requestScroll(ev.deltaY > 0 ? "down" : "up");
+    else requestScroll(ev.deltaX > 0 ? "right" : "left");
+  }, { passive: false });
+
   function connect(port) {
     socket = new WebSocket("ws://" + wsHost + ":" + port);
     socket.addEventListener("open", function () { status("Connected — waiting for the screen"); });
@@ -115,13 +139,16 @@
     socket.addEventListener("error", function () { status("Connection error"); message("Couldn't reach the live view on port " + port + ".", "err"); });
     socket.addEventListener("message", function (event) {
       var m = JSON.parse(event.data);
-      if (m.type === "frame") { renderFrame(m.screenshotBase64); if (!awaitingResult) status("Live — tap the element"); }
+      if (m.type === "frame") { $("scrollUpBtn").disabled = false; $("scrollDownBtn").disabled = false; renderFrame(m.screenshotBase64); if (!sawFrame) { sawFrame = true; status("Live — tap the element"); } }
       if (m.type === "step-recorded") {
         awaitingResult = false; lastElement = m.resolvedElement || null;
         $("resolved").textContent = lastElement ? JSON.stringify(lastElement, null, 2) : "(the tap didn't resolve to a recognisable element — tap again, or pick a different spot)";
         $("applyBtn").disabled = !lastElement;
         $("resultPanel").style.display = "block";
         status("Tapped — review the result");
+      }
+      if (m.type === "scroll-recorded") {
+        awaitingResult = false; message(""); status("Scrolled " + m.direction + " — tap the element");
       }
       if (m.type === "action-error") {
         awaitingResult = false; status("Live — tap the element");
@@ -157,7 +184,7 @@
   function stop() {
     if (socket) { try { socket.send(JSON.stringify({ type: "stop" })); } catch (e) {} try { socket.close(); } catch (e) {} }
     if (recordingId) post("/api/record-step/" + encodeURIComponent(recordingId) + "/stop", {}).catch(function () {});
-    $("stopBtn").disabled = true;
+    $("stopBtn").disabled = true; $("scrollUpBtn").disabled = true; $("scrollDownBtn").disabled = true;
   }
   $("stopBtn").addEventListener("click", function () { finished = true; stop(); status("Stopped"); });
 })();

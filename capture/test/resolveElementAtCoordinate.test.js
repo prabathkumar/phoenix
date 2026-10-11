@@ -201,6 +201,28 @@ function makeFakeDriverForRecorder(pageSourceXml) {
     assert.strictEqual(step.resolvedElement.strategy, "coordinate");
   });
 
+  await asyncTest("SessionRecorder.recordScroll captures state before AND after the gesture and records a kind:'scroll' step", async () => {
+    const calls = [];
+    const driver = {
+      async takeScreenshot() { calls.push("shot"); return "img"; },
+      async getPageSource() { calls.push("src"); return "<hierarchy/>"; },
+    };
+    const recorder = new SessionRecorder(driver);
+    const step = await recorder.recordScroll("down", async () => { calls.push("perform"); });
+    assert.deepStrictEqual(calls, ["shot", "src", "perform", "shot", "src"]);
+    assert.strictEqual(step.kind, "scroll");
+    assert.strictEqual(step.direction, "down");
+    assert.strictEqual(step.resolvedElement, undefined);
+    assert.strictEqual(recorder.steps.length, 1);
+  });
+
+  await asyncTest("SessionRecorder.recordScroll records nothing if the gesture itself fails", async () => {
+    const driver = { async takeScreenshot() { return "i"; }, async getPageSource() { return "<h/>"; } };
+    const recorder = new SessionRecorder(driver);
+    await assert.rejects(() => recorder.recordScroll("up", async () => { throw new Error("device gone"); }), /device gone/);
+    assert.strictEqual(recorder.steps.length, 0);
+  });
+
   if (process.exitCode) {
     console.error("\nresolveElementAtCoordinate tests FAILED");
     process.exit(1);

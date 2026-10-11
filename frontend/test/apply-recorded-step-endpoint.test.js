@@ -206,6 +206,35 @@ async function main() {
     }
   });
 
+  await test("default pick skips scroll steps recorded AFTER the tap; an explicitly chosen scroll step is refused; only-scrolls is refused", async () => {
+    writeTmpTestCase([{ kind: "tap", instruction: "tap X" }]);
+    recordings.set("rec-scroll1", fakeRecordingEntry({
+      steps: [
+        { resolvedElement: { strategy: "resource-id", value: "the tapped one" } },
+        { kind: "scroll", direction: "down" },
+      ],
+    }));
+    recordings.set("rec-scroll2", fakeRecordingEntry({ steps: [{ kind: "scroll", direction: "down" }] }));
+    const server = await startTestServer();
+    try {
+      const port = server.address().port;
+      const ok = await post(port, "/api/apply-recorded-step", { recordingId: "rec-scroll1", testCaseFile: TMP_FILE_NAME, stepIndex: 0 });
+      assert.strictEqual(ok.json.success, true, JSON.stringify(ok.json));
+      assert.strictEqual(ok.json.resolvedSelector.value, "the tapped one");
+
+      recordings.set("rec-scroll1", fakeRecordingEntry({ steps: [{ resolvedElement: { strategy: "text", value: "t" } }, { kind: "scroll", direction: "down" }] }));
+      const explicit = await post(port, "/api/apply-recorded-step", { recordingId: "rec-scroll1", testCaseFile: TMP_FILE_NAME, stepIndex: 0, recorderStepIndex: 1 });
+      assert.strictEqual(explicit.json.success, false);
+      assert.match(explicit.json.error, /scroll, not a tap/);
+
+      const only = await post(port, "/api/apply-recorded-step", { recordingId: "rec-scroll2", testCaseFile: TMP_FILE_NAME, stepIndex: 0 });
+      assert.strictEqual(only.json.success, false);
+      assert.match(only.json.error, /only scrolls/);
+    } finally {
+      server.close();
+    }
+  });
+
   await test("rejects an out-of-range stepIndex", async () => {
     writeTmpTestCase([{ kind: "tap", instruction: "only step" }]);
     recordings.set("rec5", fakeRecordingEntry({

@@ -409,6 +409,19 @@ test("buildSelector and buildResourceIdSelector emit iOS predicate strings, not 
   assert.strictEqual(buildSelector({ strategy: "accessibility-id", value: "loginButton" }, "ios"), "~loginButton");
 });
 
+testAsync("generateScript replays a recorded scroll with the platform's swipe command (and no tap code) and still asserts what it revealed", async () => {
+  const before = '<hierarchy><android.widget.FrameLayout bounds="[0,0][1080,2400]"><android.widget.TextView text="Top" bounds="[0,0][100,50]" /></android.widget.FrameLayout></hierarchy>';
+  const after = '<hierarchy><android.widget.FrameLayout bounds="[0,0][1080,2400]"><android.widget.TextView text="Further down" bounds="[0,100][200,150]" /></android.widget.FrameLayout></hierarchy>';
+  const steps = [{ kind: "scroll", direction: "down", pageSourceBefore: before, pageSourceAfter: after }];
+  const android = await generateScript(steps, { platform: "android" });
+  assert.ok(android.scriptSource.includes('"mobile: swipeGesture"'));
+  assert.ok(android.scriptSource.includes('direction: "up"'), "content scrolls down = finger swipes up");
+  assert.ok(!android.scriptSource.includes("clickGesture"), "a scroll step must not emit tap code");
+  assert.ok(android.scriptSource.includes("Further down"), "what the scroll revealed is still asserted");
+  const ios = await generateScript(steps, { platform: "ios" });
+  assert.ok(ios.scriptSource.includes('"mobile: swipe", { direction: "up" }'));
+});
+
 testAsync("generateScript emits mobile: tap (not mobile: clickGesture) and iOS-style selectors when platform is ios", async () => {
   const iosSteps = [
     {

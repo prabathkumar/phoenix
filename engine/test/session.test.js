@@ -74,7 +74,7 @@ test("browserstack provider, no override: defaults to a real BrowserStack catalo
       const session = freshSession();
       const caps = session.buildCapabilities();
       assert.notStrictEqual(caps["appium:deviceName"], "emulator-5554");
-      assert.strictEqual(caps["appium:deviceName"], "Google Pixel 7");
+      assert.strictEqual(caps["appium:deviceName"], "Samsung Galaxy S23");
     }
   );
 });

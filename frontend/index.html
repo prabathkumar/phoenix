@@ -522,6 +522,12 @@ function runRecorder(host, port) {
       setConnected(false, "Generation failed: " + message.message);
     }
 
+    if (message.type === "busy") {
+      // The previous tap/scroll is still being recorded (BrowserStack is slow);
+      // the server refused this one rather than piling it up.
+      setConnected(true, message.message || "Still recording the previous step - wait a few seconds.");
+      return;
+    }
     if (message.type === "action-error") {
       // A tap the device itself rejected (e.g. an unsupported mobile
       // command on this device/driver build). The server survives and

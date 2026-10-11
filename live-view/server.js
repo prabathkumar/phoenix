@@ -74,8 +74,29 @@ function startLiveView(driver, recorder, port = 8090, platform = "android") {
     // 2026-10-11). Queued, "stop" now runs only after every earlier action has
     // been fully recorded.
     let queue = Promise.resolve();
+    // How many tap/scroll actions are queued or running. A new tap/scroll while
+    // one is still being recorded is REJECTED (not queued): the mouse wheel
+    // fires about once a second but a BrowserStack action takes 5-15 s, so
+    // queueing them built a backlog that kept hitting the device for a minute
+    // after Stop (real run 2026-10-11). Typing and Stop still queue in order.
+    let activeActions = 0;
+    let sessionStopped = false;
     socket.on("message", (raw) => {
-      queue = queue.then(() => onMessage(raw));
+      let type;
+      try { type = JSON.parse(raw.toString()).type; } catch { type = undefined; }
+      if (sessionStopped) return; // nothing after Stop may touch the device
+      const isAction = type === "tap" || type === "scroll";
+      if (isAction && activeActions > 0) {
+        try {
+          socket.send(JSON.stringify({ type: "busy", message: "Still recording the previous step — wait a few seconds and try again." }));
+        } catch {
+          // socket may already be closed
+        }
+        return;
+      }
+      if (type === "stop") sessionStopped = true;
+      if (isAction) activeActions += 1;
+      queue = queue.then(() => onMessage(raw)).finally(() => { if (isAction) activeActions -= 1; });
     });
 
     async function onMessage(raw) {

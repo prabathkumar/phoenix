@@ -465,20 +465,44 @@ async function main() {
     });
   });
 
-  await testAsync("Stop sent right after two slow scrolls still waits for BOTH to be recorded (real run lost them: 0 steps)", async () => {
+  await testAsync("Stop sent while a slow scroll is still recording waits for it (real run lost it: 0 steps)", async () => {
     await withLiveView("android", null, async ({ recorder, socket }) => {
       const slowScroll = recorder.recordScroll.bind(recorder);
       recorder.recordScroll = async (direction, perform) => {
         await new Promise((r) => setTimeout(r, 120)); // a slow BrowserStack capture
         return slowScroll(direction, perform);
       };
+      const first = nextMessageOfType(socket, "scroll-recorded");
+      socket.send(JSON.stringify({ type: "scroll", direction: "down" }));
+      await first;
+      const finished = nextMessageOfType(socket, "session-finished");
+      socket.send(JSON.stringify({ type: "scroll", direction: "up" }));
+      socket.send(JSON.stringify({ type: "stop" })); // arrives mid-capture
+      const evt = await finished;
+      assert.strictEqual(evt.stepCount, 2, "the in-flight scroll must be recorded before the session finishes");
+      assert.deepStrictEqual(recorder.steps.map((s) => s.direction), ["down", "up"]);
+    });
+  });
+
+  await testAsync("a scroll sent while another is still recording is refused with 'busy' (no backlog), and nothing runs after Stop", async () => {
+    await withLiveView("android", null, async ({ recorder, socket }) => {
+      const slow = recorder.recordScroll.bind(recorder);
+      recorder.recordScroll = async (d, perform) => {
+        await new Promise((r) => setTimeout(r, 150));
+        return slow(d, perform);
+      };
+      const busy = nextMessageOfType(socket, "busy");
       const finished = nextMessageOfType(socket, "session-finished");
       socket.send(JSON.stringify({ type: "scroll", direction: "down" }));
-      socket.send(JSON.stringify({ type: "scroll", direction: "up" }));
+      socket.send(JSON.stringify({ type: "scroll", direction: "down" })); // refused
+      socket.send(JSON.stringify({ type: "scroll", direction: "up" })); // refused
+      await busy;
       socket.send(JSON.stringify({ type: "stop" }));
+      socket.send(JSON.stringify({ type: "scroll", direction: "down" })); // after Stop: ignored
       const evt = await finished;
-      assert.strictEqual(evt.stepCount, 2, "both scrolls must be recorded before the session finishes");
-      assert.deepStrictEqual(recorder.steps.map((s) => s.direction), ["down", "up"], "actions run in arrival order");
+      await new Promise((r) => setTimeout(r, 300));
+      assert.strictEqual(evt.stepCount, 1, "only the first scroll was accepted");
+      assert.strictEqual(recorder.steps.length, 1, "nothing is recorded after Stop");
     });
   });
 

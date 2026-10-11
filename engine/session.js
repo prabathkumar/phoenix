@@ -45,11 +45,11 @@ const { remote } = require("webdriverio");
 const remoteProvider = require("./remote-provider");
 
 // "emulator-5554" is a local ADB serial, meaningless to BrowserStack's
-// device catalog; "Google Pixel 7" is a real BrowserStack App Automate
+// device catalog; "Samsung Galaxy S23" is a real BrowserStack App Automate
 // catalog entry. Only used when TESTOPS_MOBILE_APPIUM_DEVICE_NAME isn't set --
 // an explicit value is still passed through unchanged on either provider.
 function defaultDeviceName() {
-  return remoteProvider.provider() === remoteProvider.BROWSERSTACK ? "Google Pixel 7" : "emulator-5554";
+  return remoteProvider.provider() === remoteProvider.BROWSERSTACK ? "Samsung Galaxy S23" : "emulator-5554";
 }
 
 function buildBaseCapabilities() {

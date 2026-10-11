@@ -312,7 +312,6 @@ async function injectTap(driver, platform, tapExtension, { x, y }) {
         ],
       },
     ]);
-    if (typeof driver.releaseActions === "function") await driver.releaseActions().catch(() => {}); // BrowserStack 404s on DELETE /actions; the gesture already ran
     return;
   }
   await driver.execute(tapExtension, { x, y });
@@ -398,7 +397,6 @@ async function injectScroll(driver, platform, direction, size) {
         ],
       },
     ]);
-    if (typeof driver.releaseActions === "function") await driver.releaseActions().catch(() => {}); // BrowserStack 404s on DELETE /actions; the gesture already ran
   } catch (err) {
     throw new Error(`scroll failed (${firstError.message}); W3C fallback also failed (${err.message})`);
   }

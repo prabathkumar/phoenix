@@ -86,7 +86,7 @@
     display: block;
     /* Fit the WHOLE phone in the window: leave room for the header and the
        type / scroll / stop controls under it, instead of overflowing. */
-    max-height: calc(100vh - 360px);
+    max-height: calc(100vh - 150px);
     min-height: 320px;
     width: auto;
     max-width: 100%;
@@ -97,7 +97,7 @@
     width: 300px;
     max-width: 100%;
     aspect-ratio: 9 / 19.5;
-    max-height: calc(100vh - 360px);
+    max-height: calc(100vh - 150px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -123,8 +123,8 @@
 
   .controls {
     width: 100%;
-    max-width: 380px;
-    margin-top: 16px;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -323,6 +323,9 @@
       <div class="placeholder" id="placeholder">Waiting for the device...</div>
     </div>
 
+  </section>
+
+  <section class="side-pane">
     <div class="controls">
       <div class="type-row">
         <input type="text" id="type-input" placeholder="Type into the focused field, then press Enter" />
@@ -334,9 +337,6 @@
       </div>
       <button class="btn-danger" id="stop-btn" disabled>Stop &amp; Generate Script</button>
     </div>
-  </section>
-
-  <section class="side-pane">
     <div class="steps-panel">
       <h2>Recorded steps</h2>
       <div id="steps-list"><p class="empty-hint">Tap the device above to start recording.</p></div>
@@ -493,16 +493,16 @@ function runRecorder(host, port) {
 
     if (message.type === "step-recorded") {
       stepCount = message.stepIndex + 1;
-      addStepRow(stepCount, "tap");
+      addStepRow(stepCount, "tap", describeElement(message.resolvedElement));
     }
 
     if (message.type === "scroll-recorded") {
       stepCount = message.stepIndex + 1;
-      addStepRow(stepCount, "scroll", message.direction);
+      addStepRow(0, "scroll", message.direction);
     }
 
     if (message.type === "text-entered") {
-      addStepRow(message.stepIndex + 1, "type", typeInput.value);
+      addStepRow(0, "type", typeInput.value);
       typeInput.value = "";
     }
 
@@ -594,15 +594,27 @@ function runRecorder(host, port) {
     setTimeout(() => marker.remove(), 600);
   }
 
-  function addStepRow(index, kind, typedValue) {
+  // Short human name for a tapped element: its text / description, else the
+  // tail of its resource-id, else nothing (generic wording).
+  function describeElement(el) {
+    if (!el) return "";
+    const name = el.text || el.contentDesc || el.accessibilityId ||
+      (el.resourceId ? String(el.resourceId).split("/").pop().split(":id/").pop() : "");
+    return String(name || "").slice(0, 40);
+  }
+
+  function addStepRow(_index, kind, typedValue) {
     if (stepsList.querySelector(".empty-hint")) stepsList.innerHTML = "";
+    // Rows are numbered by how many are listed, so a typed value or a scroll
+    // no longer repeats the number of the tap it belongs to.
+    const index = stepsList.querySelectorAll(".step-row").length + 1;
     const row = document.createElement("div");
     row.className = "step-row";
     const detail = kind === "type"
       ? "Typed <code>" + escapeHtml(typedValue || "") + "</code>"
       : kind === "scroll"
         ? "Scrolled " + escapeHtml(typedValue || "")
-        : "Tapped an element";
+        : (typedValue ? "Tapped <code>" + escapeHtml(typedValue) + "</code>" : "Tapped an element");
     row.innerHTML = '<span class="step-index">' + index + '</span><span class="step-detail">' + detail + "</span>";
     stepsList.appendChild(row);
     stepsList.scrollTop = stepsList.scrollHeight;

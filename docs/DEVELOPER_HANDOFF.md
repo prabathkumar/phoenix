@@ -8,7 +8,7 @@ One framework runs the same test-case JSON on **Android, iOS (Appium / BrowserSt
 |---|---|---|---|
 | 1 | Test cases (JSON) from scenarios | `test-cases/*.json`, `generation/` | built |
 | 2 | Version them in Git | `engine/git-sync.js`, `POST /api/sync-test-cases` | built, unit-tested (real git repos) |
-| 3 | Push scripts + results to FrothAI | — | **not built** (needs the FrothAI contract) |
+| 3 | Push results to TestOps (and scripts/logs to FrothAI) | `engine/testops-adapter.js`: status mapping (`pass/fail/skipped` → `PASSED/FAILED/SKIPPED/NOT_RUN`), `testopsRef` linking, fail-soft push | adapter built + tested against a stub; **wire format is provisional** — TestOps' write API isn't known (the read-only connector reports `write_actions_enabled: false`). FrothAI push **not built** |
 | 4 | App upload, BrowserStack session | `engine/browserstack-upload.js`, `engine/remote-provider.js` | built, proven on real hardware |
 | 5 | Regression cycle: many cases + parameterised data | `run-batch-executions.js` (`test-case` mode), `testData` on the execute endpoints | built; the cycle-builder UI is TestOps's |
 | 6 | Execute (mobile) | `engine/test-case-runner.js`, `POST /api/execute-test-case` | built, proven on real hardware |
@@ -34,7 +34,7 @@ What makes a step fail, beyond an error: an `expect` that doesn't show up. `expe
 
 ## Test-case format
 
-Shared: `kind`, `instruction`, `text` (`"${ENV_VAR}"` placeholders only — never commit a literal secret; Git sync refuses it), `optional`, `expect`, `resolvedSelector` (pinned from a proven run), `tapIfExists` + `selector` (hand-authored, never guessed).
+Shared: top-level `testopsRef` (e.g. `"APP-TC-1"`, links the case to a TestOps test case; pass `cycleRef` like `"APP-TCY-1"` on the execute call), `kind`, `instruction`, `text` (`"${ENV_VAR}"` placeholders only — never commit a literal secret; Git sync refuses it), `optional`, `expect`, `resolvedSelector` (pinned from a proven run), `tapIfExists` + `selector` (hand-authored, never guessed).
 Web adds `navigate {url}` and `assert {…}`; selector strategies `css | xpath | text | label | testid`. Example: `test-cases/web-example.json`.
 
 ## Run it
@@ -71,7 +71,7 @@ Tests: `npm test` in each of `capture generation engine live-view frontend web`,
 - Android tap via W3C pointer actions in `live-view/server.js`. The BrowserStack Pixel 7 rejects `mobile: clickGesture`, so until one real run confirms the replacement, the manual-fallback tap (and Act 1's recorder) is unproven end to end on Android. Harness: `live-view/validate-record-step.js`.
 - Dockerfile changes for `frontend` + `web` deps (the sandbox can't reach Docker Hub — run `docker build .` once).
 
-**Not built:** FrothAI push of scripts/logs/results (needs its ingestion contract — build it behind an adapter); the TestOps-side UI that links a failed step to `/record-step`.
+**Not built / provisional:** the real TestOps write call and FrothAI ingestion — set `TESTOPS_MOBILE_TESTOPS_URL` / `_TOKEN` once the contract is known and adjust `buildExecutionPayload()`; only `PASSED` has been seen in real TestOps data, confirm the exact `FAILED`/`SKIPPED`/`NOT_RUN` strings; the TestOps-side UI that links a failed step to `/record-step`.
 
 **Known bugs, need a real failing log to reproduce:** iOS harness crash (`got`/`p-cancelable` after a slow `getPageSource()`); iOS loop repeatedly resolving a deep index-based xpath after the screen changed (the loop already re-reads the page source each retry, so the cause isn't a plain re-resolve gap).
 

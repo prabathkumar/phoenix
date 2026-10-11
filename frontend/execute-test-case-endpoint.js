@@ -53,6 +53,7 @@
 const { attachSession } = require("../engine/attach-session");
 const { runScriptSteps } = require("../engine/test-case-runner");
 const { executeSemanticAction } = require("../engine/semantic-act-executor");
+const { pushResult } = require("../engine/testops-adapter");
 
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
@@ -93,7 +94,8 @@ async function handleExecuteTestCase(req, res) {
     return;
   }
 
-  const { sessionId, platform, hubUrl = {}, testCase, testData = {} } = body;
+  const { sessionId, platform, hubUrl = {}, testCase, testData = {}, cycleRef } = body;
+  const testopsRef = body.testopsRef || (testCase && !Array.isArray(testCase) && testCase.testopsRef);
 
   if (!sessionId) {
     respondJson(res, 400, { success: false, error: "sessionId is required (TestOps's own already-started session id)" });
@@ -129,7 +131,19 @@ async function handleExecuteTestCase(req, res) {
     });
 
     const result = await runScriptSteps(driver, steps, { platform, executeSemanticAction });
-    respondJson(res, 200, { success: result.success, detail: result.detail });
+    // Additive: the shared pass/fail contract fields (engine/test-result.js)
+    // ride along; `success`/`detail` are unchanged for existing callers.
+    const response = {
+      success: result.success,
+      detail: result.detail,
+      status: result.status,
+      platform: result.platform,
+      summary: result.summary,
+      steps: result.steps,
+      durationMs: result.durationMs,
+    };
+    if (testopsRef) response.testopsPush = await pushResult(response, { testopsRef, cycleRef });
+    respondJson(res, 200, response);
   } catch (err) {
     respondJson(res, 200, { success: false, error: err.message });
   } finally {

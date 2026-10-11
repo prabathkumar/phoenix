@@ -6,9 +6,12 @@
  * (engine/test-result.js) -- the same shape TestOps already reads for
  * android/ios.
  *
- * Body: { testCase: <steps array | {steps}>, baseUrl?, testData?: {ENV: "value"}, headless? }
+ * Body: { testCase: <steps array | {steps, testopsRef?}>, baseUrl?, testData?: {ENV: "value"}, headless?, testopsRef?, cycleRef? }
+ * With a testopsRef (e.g. "APP-TC-1") the result is also pushed via engine/testops-adapter.js
+ * (response gains `testopsPush`); the pass/fail outcome is never affected by the push.
  */
 const { runWebTestCase } = require("../web/web-test-case-runner");
+const { pushResult } = require("../engine/testops-adapter");
 
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
@@ -22,9 +25,11 @@ function respondJson(res, status, body) { res.writeHead(status, { "Content-Type"
 
 async function handleExecuteWebTestCase(req, res, deps = {}) {
   const run = deps.runWebTestCase || runWebTestCase;
+  const push = deps.pushResult || pushResult;
   let body;
   try { body = await readJsonBody(req); } catch (e) { return respondJson(res, 400, { success: false, error: e.message }); }
-  const { testCase, baseUrl, testData = {}, headless } = body;
+  const { testCase, baseUrl, testData = {}, headless, cycleRef } = body;
+  const testopsRef = body.testopsRef || (testCase && testCase.testopsRef);
   if (!testCase || (!Array.isArray(testCase) && !Array.isArray(testCase.steps))) {
     return respondJson(res, 400, { success: false, error: "testCase must be a steps array, or an object with a steps array" });
   }
@@ -33,6 +38,9 @@ async function handleExecuteWebTestCase(req, res, deps = {}) {
   for (const [k, v] of Object.entries(testData)) { previousEnv[k] = process.env[k]; process.env[k] = String(v); }
   try {
     const result = await run(steps, { baseUrl, headless, testCase: testCase.name });
+    // Optional push to TestOps when the case is linked (testopsRef). Never
+    // changes the outcome; failures are reported in `testopsPush`.
+    if (testopsRef) result.testopsPush = await push(result, { testopsRef, cycleRef });
     respondJson(res, 200, result);
   } catch (e) {
     respondJson(res, 200, { success: false, status: "fail", platform: "web", detail: `run error: ${e.message}`, error: e.message });

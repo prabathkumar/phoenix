@@ -33,5 +33,22 @@ async function post(server, body) {
     const s = await serve({ runWebTestCase: async () => { throw new Error("browser died"); } });
     try { const r = await post(s, { testCase: [{ kind: "wait" }] }); assert.strictEqual(r.json.status, "fail"); assert.match(r.json.detail, /browser died/); } finally { s.close(); }
   });
+  await test("with a testopsRef the result is pushed and reported; the outcome is unchanged even if the push fails", async () => {
+    let pushed;
+    const s = await serve({
+      runWebTestCase: async () => ({ status: "fail", success: false, platform: "web", steps: [] }),
+      pushResult: async (r, a) => { pushed = [r.status, a]; return { pushed: false, error: "TestOps responded 403" }; },
+    });
+    try {
+      const r = await post(s, { testCase: { testopsRef: "APP-TC-1", steps: [{ kind: "wait" }] }, cycleRef: "APP-TCY-1" });
+      assert.strictEqual(r.json.status, "fail");
+      assert.deepStrictEqual(pushed, ["fail", { testopsRef: "APP-TC-1", cycleRef: "APP-TCY-1" }]);
+      assert.match(r.json.testopsPush.error, /403/);
+    } finally { s.close(); }
+  });
+  await test("no testopsRef -> no push attempted", async () => {
+    const s = await serve({ runWebTestCase: async () => ({ status: "pass", success: true }), pushResult: async () => { throw new Error("must not push"); } });
+    try { const r = await post(s, { testCase: [{ kind: "wait" }] }); assert.strictEqual(r.json.status, "pass"); assert.strictEqual(r.json.testopsPush, undefined); } finally { s.close(); }
+  });
   console.log("\nexecute-web-test-case-endpoint tests passed");
 })();

@@ -4,9 +4,10 @@
   "private": true,
   "description": "TestOps Mobile web adapter -- runs the SAME test-case JSON on a browser via Playwright and reports through the SAME pass/fail contract (engine/test-result.js) as android/ios.",
   "dependencies": {
-    "playwright": "^1.48.0"
+    "playwright": "^1.48.0",
+    "ws": "^8.18.0"
   },
   "scripts": {
-    "test": "node test/web-test-case-runner.test.js"
+    "test": "node test/web-test-case-runner.test.js && node recorder/test/web-recorder.test.js"
   }
 }

@@ -90,6 +90,20 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (req.method === "POST" && req.url === "/api/web-sessions") {
+    require("./web-session-endpoint").handleStartWebSession(req, res);
+    return;
+  }
+
+  if (req.method === "GET" && req.url.split("?")[0] === "/web-record") {
+    fs.readFile(path.join(__dirname, "web-record.html"), "utf8", (err, content) => {
+      if (err) { res.writeHead(500); res.end("Failed to read web-record.html: " + err.message); return; }
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      res.end(content);
+    });
+    return;
+  }
+
   if (SEMANTIC_API_ENABLED && req.method === "POST" && req.url === "/api/semantic-action") {
     // Lazily required so the executor/session-manager/generation chain
     // it pulls in is only loaded when this experimental path is

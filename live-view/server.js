@@ -53,12 +53,20 @@ function startLiveView(driver, recorder, port = 8090, platform = "android") {
     // in the HTTP client crashing the whole server ("onCancel handler was
     // attached after the promise settled"). One screenshot in flight at a time.
     let pollInFlight = false;
+    // Pixel size of the most recent screenshot the tester is looking at. A tap
+    // ratio is a fraction of THAT image, so it must be scaled by that image's
+    // own size. getWindowSize() is not the same thing: on a real BrowserStack
+    // Pixel 7 the screenshot is 1080x2400 but getWindowSize() says 1080x2219
+    // (it leaves out the navigation bar), so every tap landed ~8% too high and
+    // LOGIN could be clicked forever without hitting it.
+    let frameSize = null;
     const pollTimer = setInterval(async () => {
       if (stopped || pollInFlight) return;
       pollInFlight = true;
       try {
         const screenshotBase64 = await driver.takeScreenshot();
         if (stopped) return;
+        frameSize = pngSize(screenshotBase64) || frameSize;
         socket.send(JSON.stringify({ type: "frame", screenshotBase64 }));
       } catch (err) {
         if (!stopped) console.error("[live-view] screenshot poll failed:", err.message);
@@ -133,7 +141,7 @@ function startLiveView(driver, recorder, port = 8090, platform = "android") {
       if (message.type === "tap") {
         // message.xRatio / yRatio are 0..1, relative to the rendered
         // image size on the tester's screen — not device pixels.
-        const deviceCoordinate = await toDeviceCoordinate(message.xRatio, message.yRatio, driver);
+        const deviceCoordinate = await toDeviceCoordinate(message.xRatio, message.yRatio, driver, platform === "android" ? frameSize : null);
 
         // Pass the ORIGINAL ratio through too, not just the device pixels
         // scaled from it -- capture/recorder.js's CapturedStep.tapRatio
@@ -434,12 +442,25 @@ async function injectScroll(driver, platform, direction, size) {
   }
 }
 
-async function toDeviceCoordinate(xRatio, yRatio, driver) {
-  const size = await getWindowSizeCached(driver);
+/** Width/height from a base64 PNG's IHDR header, or null if it isn't one. */
+function pngSize(base64) {
+  try {
+    const head = Buffer.from(String(base64).slice(0, 48), "base64");
+    if (head.length < 24 || head.toString("ascii", 1, 4) !== "PNG") return null;
+    const width = head.readUInt32BE(16);
+    const height = head.readUInt32BE(20);
+    return width > 0 && height > 0 ? { width, height } : null;
+  } catch {
+    return null;
+  }
+}
+
+async function toDeviceCoordinate(xRatio, yRatio, driver, frameSize) {
+  const size = frameSize || (await getWindowSizeCached(driver));
   return {
     x: Math.round(xRatio * size.width),
     y: Math.round(yRatio * size.height),
   };
 }
 
-module.exports = { startLiveView, swipePath, injectScroll };
+module.exports = { startLiveView, swipePath, injectScroll, pngSize };

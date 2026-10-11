@@ -167,6 +167,31 @@ async function main() {
     }
   });
 
+  await testAsync("a tap is scaled by the SCREENSHOT's pixel size, not getWindowSize() (real Pixel 7: 1080x2400 vs 1080x2219 -> taps missed LOGIN)", async () => {
+    const driver = makeFakeDriver();
+    const png = Buffer.alloc(33);
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]).copy(png, 0);
+    png.write("IHDR", 12, "ascii");
+    png.writeUInt32BE(1080, 16);
+    png.writeUInt32BE(2400, 20);
+    driver.takeScreenshot = async () => png.toString("base64");
+    driver.getWindowSize = async () => ({ width: 1080, height: 2219 });
+    const recorder = makeFakeRecorder();
+    const port = 18090 + Math.floor(Math.random() * 1000);
+    const wss = startLiveView(driver, recorder, port, "android");
+    try {
+      const socket = await connect(port);
+      await nextMessageOfType(socket, "frame"); // the tester is now looking at a 1080x2400 image
+      const done = nextMessageOfType(socket, "step-recorded");
+      socket.send(JSON.stringify({ type: "tap", xRatio: 0.5, yRatio: 0.672 }));
+      await done;
+      assert.deepStrictEqual(recorder.beginStepCalls[0][0], { x: 540, y: Math.round(0.672 * 2400) });
+      socket.close();
+    } finally {
+      wss.close();
+    }
+  });
+
   await testAsync("typing after a tap attaches the value to the most recent step", async () => {
     const driver = makeFakeDriver();
     const recorder = makeFakeRecorder();

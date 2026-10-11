@@ -201,6 +201,21 @@ function makeFakeDriverForRecorder(pageSourceXml) {
     assert.strictEqual(step.resolvedElement.strategy, "coordinate");
   });
 
+  await asyncTest("SessionRecorder.completeStep still records a tap whose after-state capture fails (the tap already reached the device)", async () => {
+    let calls = 0;
+    const driver = {
+      async takeScreenshot() { return "img"; },
+      async getPageSource() { calls += 1; if (calls > 1) throw new Error("page source timed out"); return API_DEMOS_TREE; },
+    };
+    const recorder = new SessionRecorder(driver);
+    const partial = await recorder.beginStep({ x: 540, y: 1200 });
+    const step = await recorder.completeStep(partial);
+    assert.strictEqual(recorder.steps.length, 1, "the tap must not be lost");
+    assert.match(step.afterCaptureFailed, /timed out/);
+    assert.strictEqual(step.pageSourceAfter, step.pageSourceBefore);
+    assert.ok(step.resolvedElement, "the tapped element is still resolved from the before-state");
+  });
+
   await asyncTest("SessionRecorder.recordScroll captures state before AND after the gesture and records a kind:'scroll' step", async () => {
     const calls = [];
     const driver = {

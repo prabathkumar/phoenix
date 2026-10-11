@@ -80,8 +80,24 @@ class SessionRecorder {
    * the completed step.
    */
   async completeStep(partialStep) {
-    const screenshotAfterBase64 = await this.driver.takeScreenshot();
-    const pageSourceAfter = await this.driver.getPageSource();
+    // The tap has ALREADY reached the device by the time this runs. If
+    // reading the after-state fails (a slow/failed getPageSource on a heavy
+    // screen, a flaky cloud session), throwing here used to lose the step
+    // entirely while the device had really changed -- the tester saw a
+    // "tap failed" for a tap that happened, and the generated script was
+    // missing it. Record the step anyway, reusing the before-state, and
+    // flag it so downstream knows the after-state is not real.
+    let screenshotAfterBase64 = partialStep.screenshotBeforeBase64;
+    let pageSourceAfter = partialStep.pageSourceBefore;
+    let afterCaptureFailed;
+    try {
+      screenshotAfterBase64 = await this.driver.takeScreenshot();
+      pageSourceAfter = await this.driver.getPageSource();
+    } catch (err) {
+      afterCaptureFailed = err.message;
+      screenshotAfterBase64 = partialStep.screenshotBeforeBase64;
+      pageSourceAfter = partialStep.pageSourceBefore;
+    }
     const resolvedElement = resolveElementAtCoordinate(
       partialStep.tapCoordinate,
       partialStep.pageSourceBefore
@@ -89,6 +105,7 @@ class SessionRecorder {
 
     /** @type {CapturedStep} */
     const step = { ...partialStep, screenshotAfterBase64, pageSourceAfter, resolvedElement };
+    if (afterCaptureFailed) step.afterCaptureFailed = afterCaptureFailed;
     this.steps.push(step);
     return step;
   }

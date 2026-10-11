@@ -437,6 +437,34 @@ async function main() {
     });
   });
 
+  await testAsync("typed text attaches to the last TAP step even after scrolls, never to a scroll step (real bug: values were silently dropped from the script)", async () => {
+    await withLiveView("android", null, async ({ recorder, socket }) => {
+      let ev = nextMessageOfType(socket, "step-recorded");
+      socket.send(JSON.stringify({ type: "tap", xRatio: 0.5, yRatio: 0.5 }));
+      await ev;
+      ev = nextMessageOfType(socket, "scroll-recorded");
+      socket.send(JSON.stringify({ type: "scroll", direction: "down" }));
+      await ev;
+      const typed = nextMessageOfType(socket, "text-entered");
+      socket.send(JSON.stringify({ type: "type", value: "hello" }));
+      await typed;
+      assert.strictEqual(recorder.steps[0].typedValue, "hello", "attached to the tap step");
+      assert.strictEqual(recorder.steps[1].typedValue, undefined, "NOT attached to the scroll step");
+    });
+  });
+
+  await testAsync("typing when only scrolls have been recorded is rejected with a clear message (nothing to attach it to)", async () => {
+    await withLiveView("android", null, async ({ recorder, socket }) => {
+      const ev = nextMessageOfType(socket, "scroll-recorded");
+      socket.send(JSON.stringify({ type: "scroll", direction: "down" }));
+      await ev;
+      const err = nextMessageOfType(socket, "type-error");
+      socket.send(JSON.stringify({ type: "type", value: "x" }));
+      assert.match((await err).message, /Tap a field/);
+      assert.strictEqual(recorder.steps[0].typedValue, undefined);
+    });
+  });
+
   if (process.exitCode) {
     console.error("\nlive-view/server tests FAILED");
     process.exit(1);

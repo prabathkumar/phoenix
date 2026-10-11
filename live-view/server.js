@@ -159,16 +159,25 @@ function startLiveView(driver, recorder, port = 8090, platform = "android") {
         //    coordinate to resolve a field from in this case, so instead
         //    of guessing we reject the keystroke outright and tell the
         //    tester why, rather than losing their input silently.
-        if (recorder.steps.length === 0) {
+        // Typed text belongs to the most recent TAP step (the field the
+        // tester tapped) -- never to a scroll step. Found on the first real
+        // run that recorded scrolls (2026-10-11): once scrolls became steps,
+        // "the last step" could be a scroll, so typed values were attached to
+        // it and silently dropped from the generated script (it declared
+        // `const field_0 = "test"` and never used it). A scroll between tapping
+        // a field and typing into it is fine -- the field stays focused.
+        let currentStep;
+        for (let i = recorder.steps.length - 1; i >= 0; i -= 1) {
+          if (recorder.steps[i].kind !== "scroll") { currentStep = recorder.steps[i]; break; }
+        }
+        if (!currentStep) {
           socket.send(JSON.stringify({
             type: "type-error",
             reason: "no-step-yet",
-            message: "Tap a field before typing into it — there's no recorded step to attach this text to yet.",
+            message: "Tap a field before typing into it — there's no recorded tap to attach this text to yet.",
           }));
           return;
         }
-
-        const currentStep = recorder.steps[recorder.steps.length - 1];
 
         // 2. frontend/index.html's submitType() sends the FULL current
         //    value of the input box each time (not incremental

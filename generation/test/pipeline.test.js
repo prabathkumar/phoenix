@@ -469,6 +469,49 @@ testAsync("generateScript produces a runnable script with parameters, selectors,
   assert.ok(src.includes('"Welcome" appeared'));
 });
 
+// ---- script-quality cleanup ----
+
+const screen = (inner) => `<hierarchy><android.widget.FrameLayout bounds="[0,0][1080,2400]">${inner}</android.widget.FrameLayout></hierarchy>`;
+const BTN = '<android.widget.TextView text="NEXT" bounds="[100,100][300,200]" />';
+
+test("repeated taps on the same named element collapse into one step, keeping the later state", async () => {
+  const el = { strategy: "text", value: "NEXT", text: "NEXT" };
+  const a = screen(BTN);
+  const b = screen(BTN + '<android.widget.TextView text="Done" bounds="[100,300][300,400]" />');
+  const src = (await generateScript([
+    { resolvedElement: el, pageSourceBefore: a, pageSourceAfter: a },
+    { resolvedElement: el, pageSourceBefore: a, pageSourceAfter: b },
+  ])).scriptSource;
+  assert.strictEqual((src.match(/\.click\(\)/g) || []).length, 1);
+  assert.ok(src.includes('"Done" appeared'));
+});
+
+test("coordinate taps are never merged", async () => {
+  const el = { strategy: "coordinate", value: "10,10" };
+  const a = screen(BTN);
+  const src = (await generateScript([
+    { resolvedElement: el, tapCoordinate: { x: 10, y: 10 }, pageSourceBefore: a, pageSourceAfter: a },
+    { resolvedElement: el, tapCoordinate: { x: 10, y: 10 }, pageSourceBefore: a, pageSourceAfter: a },
+  ])).scriptSource;
+  assert.strictEqual((src.match(/performActions/g) || []).length >= 2, true);
+});
+
+test("assertions skip error messages, edit-field contents, masked and typed values", async () => {
+  const before = screen(BTN);
+  const after = screen(
+    BTN +
+    '<android.widget.TextView resource-id="app:id/tvError" text="Bad format" bounds="[0,500][100,600]" />' +
+    '<android.widget.EditText resource-id="app:id/edtCommon" text="rtestser" bounds="[0,700][100,800]" />' +
+    '<android.widget.TextView text="••••••••" bounds="[0,900][100,1000]" />' +
+    '<android.widget.TextView text="hunter2" bounds="[0,1100][100,1200]" />' +
+    '<android.widget.TextView resource-id="app:id/tvForgotPassword" text="FORGOT PASSWORD" bounds="[0,1300][100,1400]" />'
+  );
+  const labels = inferAssertions([
+    { resolvedElement: { strategy: "text", value: "NEXT", text: "NEXT" }, typedValue: "hunter2", pageSourceBefore: before, pageSourceAfter: after },
+  ]).map((x) => x.label);
+  assert.deepStrictEqual(labels, ["FORGOT PASSWORD"]);
+});
+
 setImmediate(() => {
   if (process.exitCode) {
     console.error("\ngeneration/pipeline tests FAILED");

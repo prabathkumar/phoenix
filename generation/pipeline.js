@@ -64,8 +64,9 @@ function cleanLabel(value) {
  *   engine/ios-session.js.
  * @returns {Promise<{ scriptSource: string, testName: string, assertions: string[] }>}
  */
-async function generateScript(steps, options = {}) {
+async function generateScript(rawSteps, options = {}) {
   const { useLlm = false, platform = "android" } = options;
+  const steps = dedupeRepeatedTaps(rawSteps);
 
   let testName = inferTestName(steps);
   let assertions = inferAssertions(steps);
@@ -149,6 +150,39 @@ function labelKey({ label, resourceId, bounds }) {
 }
 
 /**
+ * Collapses a tap that repeats the previous tap on the SAME named element
+ * (resource-id / accessibility-id / text / xpath) when it carries no typed
+ * value: testers click a button several times while waiting for the slow
+ * remote device, and replaying each click is noise at best and a double
+ * submit at worst. The kept step takes over the later step's after-state so
+ * the flow's evidence is not lost. Coordinate taps and scrolls are never merged
+ * (the same keypad position can be tapped on purpose, e.g. "1 1").
+ */
+function dedupeRepeatedTaps(steps) {
+  const NAMED = new Set(["resource-id", "accessibility-id", "text", "xpath"]);
+  const out = [];
+  for (const step of steps) {
+    const prev = out[out.length - 1];
+    const a = prev && prev.resolvedElement;
+    const b = step.resolvedElement;
+    const sameTarget =
+      a && b && prev.kind !== "scroll" && step.kind !== "scroll" &&
+      NAMED.has(a.strategy) && a.strategy === b.strategy && a.value === b.value && (a.text || "") === (b.text || "");
+    const noTyped = step.typedValue === undefined || step.typedValue === null;
+    if (sameTarget && noTyped) {
+      out[out.length - 1] = { ...prev, pageSourceAfter: step.pageSourceAfter, screenshotAfterBase64: step.screenshotAfterBase64 };
+      continue;
+    }
+    out.push(step);
+  }
+  return out;
+}
+
+/** Resource-ids of fields the tester types into, and of transient messages. */
+const NOISY_ASSERTION_ID_RE = /(:id\/(edt|et)[A-Z_0-9]|edittext|error|toast|snack|progress|loading|spinner|shimmer)/i;
+const MASKED_VALUE_RE = /^[•*●·]+$/;
+
+/**
  * Names the flow from the first screen title seen (the label of the
  * element resolved by the first step's before-state, or the first
  * distinct label in the whole session) — e.g. "API Demos" -> "api_demos".
@@ -160,8 +194,12 @@ function labelKey({ label, resourceId, bounds }) {
 function inferTestName(steps) {
   if (steps.length === 0) return "untitled_recorded_flow";
 
+  // Prefer a real on-screen TEXT over a content-desc: the first content-desc
+  // on a screen is often a decorative image ("Background Image"), which made
+  // every flow on that app start with the name "background_image".
   const firstLabels = extractLabels(steps[0].pageSourceBefore);
-  const candidate = firstLabels[0] && firstLabels[0].label;
+  const preferred = firstLabels.find((l) => l.source === "text") || firstLabels[0];
+  const candidate = preferred && preferred.label;
   if (!candidate) return "untitled_recorded_flow";
 
   return (
@@ -202,6 +240,9 @@ function inferTestName(steps) {
  * assertions (a clock widget ticking over) out of the meaningful ones.
  */
 function inferAssertions(steps) {
+  // What the tester typed must never become an assertion: it just re-reads the
+  // value back (and would write a real password into the script).
+  const typedValues = new Set(steps.filter((s) => s.typedValue !== undefined && s.typedValue !== null).map((s) => String(s.typedValue)));
   const assertions = [];
   if (steps.length === 0) return assertions;
 
@@ -238,6 +279,12 @@ function inferAssertions(steps) {
 
       if (labelsAssertedThisStep.has(item.label)) continue;
       labelsAssertedThisStep.add(item.label);
+
+      // Transient or user-entered content makes a brittle assertion: error
+      // messages, edit-field contents, masked passwords, typed values.
+      if (item.resourceId && NOISY_ASSERTION_ID_RE.test(item.resourceId)) continue;
+      if (MASKED_VALUE_RE.test(item.label)) continue;
+      if (typedValues.has(item.label)) continue;
 
       assertions.push({ stepIndex: index, label: item.label, source: item.source, resourceId: item.resourceId });
     }

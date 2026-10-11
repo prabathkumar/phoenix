@@ -63,14 +63,18 @@
     min-height: 0;
   }
 
+  /* BrowserStack-live style: a big dark stage with the phone centred in it,
+     and a fixed side panel for actions, steps and the generated script. */
   .device-pane {
-    flex: 0 0 420px;
+    flex: 1 1 auto;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
     padding: 20px;
-    border-right: 1px solid var(--border);
-    overflow-y: auto;
+    background: radial-gradient(ellipse at center, #1b1e27 0%, var(--bg) 70%);
+    overflow: hidden;
   }
   .device-frame {
     position: relative;
@@ -86,7 +90,7 @@
     display: block;
     /* Fit the WHOLE phone in the window: leave room for the header and the
        type / scroll / stop controls under it, instead of overflowing. */
-    max-height: calc(100vh - 150px);
+    max-height: calc(100vh - 110px);
     min-height: 320px;
     width: auto;
     max-width: 100%;
@@ -97,7 +101,7 @@
     width: 300px;
     max-width: 100%;
     aspect-ratio: 9 / 19.5;
-    max-height: calc(100vh - 150px);
+    max-height: calc(100vh - 110px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -159,7 +163,8 @@
   .btn-primary { background: var(--accent); color: #1a1a1a; }
 
   .side-pane {
-    flex: 1;
+    flex: 0 0 440px;
+    border-left: 1px solid var(--border);
     display: flex;
     flex-direction: column;
     min-width: 0;

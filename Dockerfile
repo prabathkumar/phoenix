@@ -85,12 +85,14 @@ COPY capture/package.json capture/package-lock.json ./capture/
 COPY generation/package.json generation/package-lock.json ./generation/
 COPY live-view/package.json live-view/package-lock.json ./live-view/
 COPY frontend/package.json frontend/package-lock.json ./frontend/
+COPY web/package.json web/package-lock.json ./web/
 
 RUN npm install --prefix engine --omit=dev \
  && npm install --prefix capture --omit=dev \
  && npm install --prefix generation --omit=dev \
  && npm install --prefix live-view --omit=dev \
- && npm install --prefix frontend --omit=dev
+ && npm install --prefix frontend --omit=dev \
+ && npm install --prefix web --omit=dev
 
 # Now bring in the actual source.
 COPY engine/ ./engine/
@@ -98,9 +100,17 @@ COPY capture/ ./capture/
 COPY generation/ ./generation/
 COPY live-view/ ./live-view/
 COPY frontend/ ./frontend/
+COPY web/ ./web/
 COPY run-session.js ./run-session.js
 COPY run-batch-executions.js ./run-batch-executions.js
 COPY test-cases/ ./test-cases/
+
+# Web (Playwright) runs need a browser binary, which `npm install` does NOT
+# fetch: in a container, run `npx --prefix web playwright install --with-deps chromium`
+# (or point TESTOPS_MOBILE_WEB_CHROMIUM_PATH at an existing Chromium). Not baked
+# in here -- it adds ~400MB and mobile-only deployments never need it.
+# (Dockerfile changes in this commit are not build-verified: the sandbox can't
+# reach Docker Hub -- run `docker build .` once before relying on it.)
 
 # live-view + frontend ports (see .env.example for what each does).
 EXPOSE 8090 8091

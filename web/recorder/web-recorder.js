@@ -47,7 +47,7 @@ class WebRecorder {
     // wrapped heading ("phones, always the"), not tiny words ("RM", "All"),
     // not prices, clocks or what the tester typed. Longest lines first.
     const appeared = after
-      .filter((l) => !had.has(l) && l.length >= 6 && l.length <= 60 && !/[?]\s*$/.test(l) && /^[A-Z0-9]/.test(l) &&
+      .filter((l) => !had.has(l) && !/\d{4,}/.test(l) && (l.match(/,/g) || []).length < 2 && l.length >= 6 && l.length <= 60 && !/[?]\s*$/.test(l) && /^[A-Z0-9]/.test(l) &&
         (l.match(/[A-Za-z]/g) || []).length >= 4 && !NOISY_LINE_RE.test(l) && !PRICE_RE.test(l) && !typed.has(l))
       .sort((a, b) => b.length - a.length)
       .slice(0, MAX_ASSERTIONS_PER_STEP);
@@ -109,6 +109,19 @@ class WebRecorder {
     const point = { x: Math.round(xRatio * vp.width), y: Math.round(yRatio * vp.height) };
     const descriptor = await this.page.evaluate(ELEMENT_AT_POINT, point);
     const selector = descriptor ? await this._resolveSelector(descriptor, point) : null;
+    // A native <select> popup is drawn by the browser, not the page, so it never
+    // appears in the mirror. Hand the options to the tester to pick from instead.
+    if (descriptor && descriptor.tag === "select" && selector) {
+      this._pendingSelect = { descriptor, selector };
+      this._lastTap = null;
+      return {
+        pendingSelect: {
+          instruction: describeElement(descriptor, "Select in"),
+          options: (descriptor.options || []).filter((o) => o.label),
+        },
+      };
+    }
+
     const urlBefore = this.page.url();
     const before = await this._lines();
 
@@ -164,6 +177,31 @@ class WebRecorder {
     };
     this.steps[target.index] = step; // replaces the focusing click
     return { index: target.index, step };
+  }
+
+  /** Chooses an option (by visible label) in the <select> the tester last clicked. */
+  async select(label) {
+    const target = this._pendingSelect;
+    if (!target) {
+      const err = new Error("Click a dropdown first, then pick one of its options.");
+      err.code = "no-select";
+      throw err;
+    }
+    const before = await this._lines();
+    await locatorFor(this.page, target.selector).first().selectOption({ label }, { timeout: 5000 });
+    await this._settle();
+    const after = await this._lines();
+    const step = {
+      kind: "select",
+      instruction: `${describeElement(target.descriptor, "Select")} → "${label}"`.replace(/^Select "/, 'Select "'),
+      selector: target.selector,
+      option: label,
+    };
+    const expect = this._expectFrom(before, after, [label]);
+    if (expect) step.expect = expect;
+    this.steps.push(step);
+    this._pendingSelect = null;
+    return { index: this.steps.length - 1, step };
   }
 
   /** Presses a key (e.g. Enter) in the field that was last typed into. */

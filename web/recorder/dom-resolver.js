@@ -86,6 +86,9 @@ function ELEMENT_AT_POINT(point) {
     name: attr("name"),
     placeholder: attr("placeholder"),
     text: editable ? "" : clip(el.innerText || el.value || "", 60) || altText(),
+    options: tag === "select"
+      ? Array.prototype.slice.call(el.options, 0, 200).map(function (o) { return { label: (o.text || "").replace(/\s+/g, " ").trim(), selected: o.selected, disabled: o.disabled }; })
+      : undefined,
     cssPath: cssPath(el),
     rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
   };

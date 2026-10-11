@@ -31,6 +31,10 @@
   #viewport { position:relative; aspect-ratio:1280/800; background:#fff; cursor:crosshair; }
   #viewport img { width:100%; height:100%; display:block; user-select:none; -webkit-user-drag:none; }
   #hint { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#667; }
+  #picker { position:absolute; z-index:5; min-width:220px; max-width:360px; max-height:60%; overflow:auto; background:var(--panel); border:1px solid var(--accent); border-radius:8px; box-shadow:0 12px 40px rgba(0,0,0,.5); }
+  #picker h4 { margin:0; padding:8px 12px; font-size:12px; color:var(--muted); border-bottom:1px solid var(--line); }
+  #picker button { display:block; width:100%; text-align:left; border-radius:0; background:transparent; color:var(--text); font-weight:400; padding:8px 12px; }
+  #picker button:hover { background:var(--accent); }
   .ping { position:absolute; width:22px; height:22px; margin:-11px 0 0 -11px; border-radius:50%; border:2px solid var(--accent); animation:ping .6s ease-out forwards; pointer-events:none; }
   @keyframes ping { to { transform:scale(2.2); opacity:0; } }
   #side { width:420px; border-left:1px solid var(--line); background:var(--panel); display:flex; flex-direction:column; min-height:0; }
@@ -106,6 +110,7 @@
       if (m.type === "frame") frame(m.screenshotBase64);
       else if (m.type === "page") { if (document.activeElement !== $("url")) $("url").value = m.url; }
       else if (m.type === "step") { addStep(m); $("status").textContent = ""; }
+      else if (m.type === "select-options") openPicker(m);
       else if (m.type === "error") $("status").textContent = m.message;
       else if (m.type === "busy") $("status").textContent = "Still working on the last action…";
       else if (m.type === "stopped") finish(m);
@@ -121,6 +126,8 @@
       img.addEventListener("click", (e) => {
         const r = img.getBoundingClientRect();
         const xr = (e.clientX - r.left) / r.width, yr = (e.clientY - r.top) / r.height;
+        lastClick = { x: e.clientX - r.left, y: e.clientY - r.top };
+        closePicker();
         ping(e.clientX - r.left, e.clientY - r.top);
         send({ type: "click", xRatio: xr, yRatio: yr });
       });
@@ -129,6 +136,22 @@
     }
     img.src = "data:image/jpeg;base64," + b64;
   }
+
+  function openPicker(m) {
+    closePicker();
+    const box = document.createElement("div");
+    box.id = "picker";
+    box.style.left = (lastClick.x + 8) + "px"; box.style.top = Math.max(0, lastClick.y - 8) + "px";
+    const h = document.createElement("h4"); h.textContent = m.instruction; box.appendChild(h);
+    m.options.forEach((o) => {
+      const b = document.createElement("button"); b.textContent = o.label;
+      b.addEventListener("click", () => { send({ type: "select", label: o.label }); closePicker(); });
+      box.appendChild(b);
+    });
+    $("viewport").appendChild(box);
+  }
+  function closePicker() { const p = $("picker"); if (p) p.remove(); }
+  let lastClick = { x: 0, y: 0 };
 
   function ping(x, y) {
     const d = document.createElement("div"); d.className = "ping"; d.style.left = x + "px"; d.style.top = y + "px";

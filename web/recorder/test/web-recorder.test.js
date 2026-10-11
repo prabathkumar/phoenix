@@ -151,6 +151,50 @@ test("codegen emits parameters, locators and assertions", () => {
     w4.close(); dsrv.close();
   });
 
+  await test("a <select> click offers its options; picking one records a select step that replays", async () => {
+    const SEL = `<!doctype html><title>Sel</title><body style="margin:0;font:20px sans-serif">
+<label for="idt" style="position:absolute;left:20px;top:10px">ID Type</label>
+<select id="idt" style="position:absolute;left:20px;top:50px;width:300px;height:40px" onchange="document.getElementById('o').textContent='Chosen '+this.options[this.selectedIndex].text"><option>Choose</option><option>NRIC</option><option>Passport</option></select>
+<p id="o" style="position:absolute;left:20px;top:200px"></p></body>`;
+    const ssrv = http.createServer((_, res) => { res.writeHead(200, { "Content-Type": "text/html" }); res.end(SEL); });
+    await new Promise((r) => ssrv.listen(0, r));
+    const surl = `http://127.0.0.1:${ssrv.address().port}/`;
+    const p5 = await new Promise((r) => { const s = net.createServer().listen(0, () => { const p = s.address().port; s.close(() => r(p)); }); });
+    const s5 = await startWebLiveView({ port: p5, startUrl: surl });
+    const w5 = new WebSocket(`ws://127.0.0.1:${p5}`);
+    const got = [];
+    w5.on("message", (d) => got.push(JSON.parse(String(d))));
+    await new Promise((r) => w5.on("open", r));
+    const wf = async (pred) => { const t0 = Date.now(); for (;;) { const m = got.find(pred); if (m) return m; if (Date.now() - t0 > 8000) throw new Error("timeout"); await new Promise((r) => setTimeout(r, 50)); } };
+    w5.send(JSON.stringify({ type: "click", xRatio: 100 / 1280, yRatio: 70 / 800 }));
+    const offered = await wf((m) => m.type === "select-options");
+    assert.deepStrictEqual(offered.options.map((o) => o.label), ["Choose", "NRIC", "Passport"]);
+    w5.send(JSON.stringify({ type: "select", label: "Passport" }));
+    const chosen = await wf((m) => m.type === "step" && m.step.kind === "select");
+    assert.strictEqual(chosen.step.option, "Passport");
+    w5.send(JSON.stringify({ type: "stop" }));
+    const done = await wf((m) => m.type === "stopped");
+    assert.ok(done.script.includes('.selectOption({ label: "Passport" })'));
+    const { chromium } = require("playwright");
+    const browser = await chromium.launch({ executablePath: process.env.TESTOPS_MOBILE_WEB_CHROMIUM_PATH || undefined });
+    try {
+      const result = await runWebSteps(await browser.newPage(), done.testCase.steps, { baseUrl: done.testCase.baseUrl });
+      assert.strictEqual(result.success, true, JSON.stringify(result.steps || result));
+    } finally { await browser.close(); }
+    w5.close(); ssrv.close();
+  });
+
+  test("repeated clicks on the same element collapse into one step", () => {
+    const sel = { strategy: "role", role: "button", value: "Go", exact: true };
+    const out = toTestCase([
+      { kind: "navigate", url: "http://x.test/" },
+      { kind: "tap", selector: sel, instruction: "a" },
+      { kind: "tap", selector: sel, instruction: "b" },
+      { kind: "tap", selector: sel, instruction: "c" },
+    ]);
+    assert.strictEqual(out.steps.filter((s) => s.kind === "tap").length, 1);
+  });
+
   await test("typing before clicking a field is refused with a message", async () => {
     const s2port = await new Promise((r) => { const s = net.createServer().listen(0, () => { const p = s.address().port; s.close(() => r(p)); }); });
     const s2 = await startWebLiveView({ port: s2port, startUrl: url });

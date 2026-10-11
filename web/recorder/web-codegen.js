@@ -9,7 +9,20 @@
  * emitted.
  */
 function withoutScrolls(steps) {
-  return steps.filter((s) => s.kind !== "scroll");
+  const out = [];
+  for (const s of steps) {
+    if (s.kind === "scroll") continue;
+    // Repeated clicks on the very same element (testers poking at a control)
+    // collapse into one; keep the latest outcome.
+    const prev = out[out.length - 1];
+    if (prev && prev.kind === "tap" && s.kind === "tap" && prev.selector && s.selector &&
+        JSON.stringify(prev.selector) === JSON.stringify(s.selector)) {
+      out[out.length - 1] = s;
+      continue;
+    }
+    out.push(s);
+  }
+  return out;
 }
 
 /** "https://www.yes.my/devices" -> "yes_my_web_flow" */
@@ -81,6 +94,12 @@ function toPlaywrightScript(rawSteps, { name } = {}) {
         lines.push(`  await expect(page.getByText(${q(t)}).first()).toBeVisible(); // ${JSON.stringify(t)} appeared`);
       }
     } else if (s.kind === "type") lines.push(`  await ${locatorExpr(s.selector)}.fill(field_${i});`);
+    else if (s.kind === "select") {
+      lines.push(`  await ${locatorExpr(s.selector)}.selectOption({ label: ${q(s.option)} });`);
+      for (const t of (s.expect && s.expect.appeared) || []) {
+        lines.push(`  await expect(page.getByText(${q(t)}).first()).toBeVisible(); // ${JSON.stringify(t)} appeared`);
+      }
+    }
     else if (s.kind === "press") {
       lines.push(`  await ${locatorExpr(s.selector)}.press(${q(s.key)});`);
       for (const t of (s.expect && s.expect.appeared) || []) {

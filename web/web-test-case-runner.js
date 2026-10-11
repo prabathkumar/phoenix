@@ -8,6 +8,7 @@
  *   navigate     {url}                     -- web only; relative URLs join baseUrl
  *   tap          {instruction | selector}  -- click
  *   type         {instruction | selector, text}  -- fill ("${ENV}" placeholders supported)
+ *   select       {selector|instruction, option}  -- choose a <select> option by its visible label
  *   press        {key, selector?}          -- keyboard key (e.g. Enter) on the focused field / selector
  *   scroll       {direction?}              -- up|down, default down
  *   wait         {durationMs?}
@@ -39,7 +40,7 @@ const { verifyExpectedOutcome, validateExpectShape } = require("../generation/ou
 const { SERIALIZE_DOM_SCRIPT } = require("../generation/webview-snapshot");
 const { resolveWebviewAction: defaultResolveAction } = require("../generation/webview-act");
 
-const WEB_KINDS = new Set(["navigate", "tap", "type", "press", "scroll", "wait", "tapIfExists", "assert"]);
+const WEB_KINDS = new Set(["navigate", "tap", "type", "select", "press", "scroll", "wait", "tapIfExists", "assert"]);
 const DEFAULT_WAIT_MS = 1000;
 const ACTION_TIMEOUT_MS = 10000;
 
@@ -68,7 +69,8 @@ function validateWebSteps(steps, label = "test case") {
         throw new Error(`${where} is an "assert" step with no checks (urlContains/titleContains/textVisible/textHidden)`);
       }
     }
-    if (["tap", "type"].includes(step.kind) && !step.instruction && !step.selector && !step.resolvedSelector) {
+    if (step.kind === "select" && typeof step.option !== "string") throw new Error(`${where} is a "select" step with no "option" (the visible option label)`);
+    if (["tap", "type", "select"].includes(step.kind) && !step.instruction && !step.selector && !step.resolvedSelector) {
       throw new Error(`${where} needs an "instruction" or a "selector"`);
     }
     if (step.kind === "press" && typeof step.key !== "string") throw new Error(`${where} is a "press" step with no "key"`);
@@ -210,6 +212,7 @@ async function runWebSteps(page, steps, options = {}) {
         const before = step.expect ? await visibleLines(page) : null;
         const beforeAny = await visibleLines(page);
         if (step.kind === "type") await locator.first().fill(step.text, { timeout: ACTION_TIMEOUT_MS });
+        else if (step.kind === "select") await locator.first().selectOption({ label: step.option }, { timeout: ACTION_TIMEOUT_MS });
         else await locator.first().click({ timeout: ACTION_TIMEOUT_MS });
         try { await page.waitForLoadState("load", { timeout: 3000 }); } catch { /* no navigation */ }
         const afterAny = await visibleLines(page);

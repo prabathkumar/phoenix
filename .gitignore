@@ -6,6 +6,8 @@ node_modules/
 __pycache__/
 *.pyc
 /batch-results/
+locator-store.db
+locator-store.db-*
 
 # generation/execution-log.js's automatic capture of every semantic-layer
 # execution (see docs/CONTINUOUS_TRAINING.md) -- per-environment data, not

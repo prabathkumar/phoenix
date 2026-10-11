@@ -62,6 +62,7 @@ const mockTestOps = require("./mock-testops-endpoints");
 
 const PORT = Number(process.env.TESTOPS_MOBILE_FRONTEND_PORT) || 8091;
 const INDEX_PATH = path.join(__dirname, "index.html");
+const RECORD_STEP_PAGE_PATH = path.join(__dirname, "record-step.html");
 const MOCK_TESTOPS_PATH = path.join(__dirname, "mock-testops.html");
 const SEMANTIC_API_ENABLED = process.env.TESTOPS_MOBILE_ENABLE_SEMANTIC_API === "1";
 const GIT_SYNC_API_ENABLED = process.env.TESTOPS_MOBILE_ENABLE_GIT_SYNC === "1";
@@ -113,6 +114,19 @@ const server = http.createServer((req, res) => {
   if (RECORD_STEP_API_ENABLED && req.method === "POST" && /^\/api\/record-step\/[^/]+\/stop$/.test(req.url)) {
     const recordingId = decodeURIComponent(req.url.split("/")[3]);
     require("./apply-recorded-step-endpoint").handleStopRecording(req, res, recordingId);
+    return;
+  }
+
+  if (req.method === "GET" && req.url.split("?")[0] === "/record-step") {
+    fs.readFile(RECORD_STEP_PAGE_PATH, "utf8", (err, content) => {
+      if (err) {
+        res.writeHead(500, { "Content-Type": "text/plain" });
+        res.end("Failed to read record-step.html: " + err.message);
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      res.end(content);
+    });
     return;
   }
 

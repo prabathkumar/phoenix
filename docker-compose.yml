@@ -22,7 +22,16 @@ services:
     image: testops-mobile:latest
     env_file:
       - .env
+    environment:
+      # Persist the locator store across container restarts (it is on by
+      # default); without a volume a --rm container loses it on exit.
+      TESTOPS_MOBILE_LOCATOR_DB_PATH: /data/locator-store.db
+    volumes:
+      - locator-data:/data
     ports:
       - "8090:8090"
       - "8091:8091"
     restart: unless-stopped
+
+volumes:
+  locator-data:

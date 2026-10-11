@@ -721,3 +721,10 @@ test("waitForAppReady gives up at the timeout and returns instead of hanging whe
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
+
+test("locator store is ON by default and only off with TESTOPS_MOBILE_DISABLE_LOCATOR_STORE=1", () => {
+  const { isLocatorStoreEnabled } = require("../run-batch-executions");
+  assert.strictEqual(isLocatorStoreEnabled({}), true);
+  assert.strictEqual(isLocatorStoreEnabled({ TESTOPS_MOBILE_DISABLE_LOCATOR_STORE: "1" }), false);
+  assert.strictEqual(isLocatorStoreEnabled({ TESTOPS_MOBILE_DISABLE_LOCATOR_STORE: "0" }), true);
+});

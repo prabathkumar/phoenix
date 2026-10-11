@@ -453,12 +453,14 @@ async function runOneTestCaseIteration(platform, filePath) {
   const driver = await startSession();
   try {
     await waitForAppReady(driver);
-    // Opt-in: only touches anything (opens/creates a .db file) when
-    // TESTOPS_MOBILE_LOCATOR_DB_PATH or TESTOPS_MOBILE_ENABLE_LOCATOR_STORE is set --
-    // a deployment that never sets either sees zero behavior change
-    // from before this store existed.
+    // ON by default (changed 2026-10-11, before developers start): the
+    // store is how "which locators are drifting across app builds" is
+    // answered at regression scale, and it is fail-soft -- a store that
+    // can't open is logged and the run continues without it. Opt OUT with
+    // TESTOPS_MOBILE_DISABLE_LOCATOR_STORE=1; the db path is
+    // TESTOPS_MOBILE_LOCATOR_DB_PATH (default locator-store.db in cwd).
     let locatorStore;
-    if (process.env.TESTOPS_MOBILE_ENABLE_LOCATOR_STORE || process.env.TESTOPS_MOBILE_LOCATOR_DB_PATH) {
+    if (isLocatorStoreEnabled()) {
       try {
         const dbPath = process.env.TESTOPS_MOBILE_LOCATOR_DB_PATH || require("./engine/locator-store").dbPath();
         locatorStore = openLocatorStore();
@@ -725,7 +727,13 @@ if (require.main === module) {
   main().catch((err) => handleFatalCrash(err));
 }
 
+/** Locator store is on unless explicitly disabled. */
+function isLocatorStoreEnabled(env = process.env) {
+  return env.TESTOPS_MOBILE_DISABLE_LOCATOR_STORE !== "1";
+}
+
 module.exports = {
+  isLocatorStoreEnabled,
   splitBatchCounts,
   summarizeBatchResults,
   buildEffectiveGoal,

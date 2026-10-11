@@ -28,7 +28,8 @@
  * returned in `updatedSteps` as the new resolvedSelector, exactly like
  * mobile -- the caller decides whether to persist it.
  *
- * Selector strategies: css | xpath | text | label | testid.
+ * Selector strategies: css | xpath | text | label | testid | role ({role, value=name, exact?}).
+ * Any strategy may carry `nth` to pin one match when the locator is not unique.
  */
 
 const path = require("path");
@@ -82,12 +83,15 @@ function validateWebSteps(steps, label = "test case") {
 }
 
 function locatorFor(page, sel) {
+  // `nth` pins one of several matches (recorded when the locator was not unique).
+  const pick = (loc) => (Number.isInteger(sel.nth) ? loc.nth(sel.nth) : loc.first());
   switch (sel.strategy) {
-    case "css": return page.locator(sel.value);
+    case "css": return Number.isInteger(sel.nth) ? pick(page.locator(sel.value)) : page.locator(sel.value);
     case "xpath": return page.locator(`xpath=${sel.value}`);
-    case "text": return page.getByText(sel.value, { exact: false }).first();
-    case "label": return page.getByLabel(sel.value).first();
-    case "testid": return page.getByTestId(sel.value);
+    case "text": return pick(page.getByText(sel.value, { exact: false }));
+    case "label": return pick(page.getByLabel(sel.value));
+    case "testid": return Number.isInteger(sel.nth) ? pick(page.getByTestId(sel.value)) : page.getByTestId(sel.value);
+    case "role": return pick(page.getByRole(sel.role, { name: sel.value, exact: sel.exact === true }));
     default: throw new Error(`unsupported web selector strategy "${sel.strategy}"`);
   }
 }
@@ -257,4 +261,4 @@ async function runWebTestCase(steps, options = {}) {
   }
 }
 
-module.exports = { runWebSteps, runWebTestCase, validateWebSteps, WEB_KINDS };
+module.exports = { runWebSteps, runWebTestCase, validateWebSteps, locatorFor, WEB_KINDS };

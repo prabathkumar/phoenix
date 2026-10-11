@@ -2,7 +2,8 @@
  * Records a manual browsing session as steps in the SAME format
  * web/web-test-case-runner.js replays. Works against any Playwright page.
  */
-const { ELEMENT_AT_POINT, buildWebSelector, describeElement } = require("./dom-resolver");
+const { ELEMENT_AT_POINT, buildWebSelectorCandidates, describeElement } = require("./dom-resolver");
+const { locatorFor } = require("../web-test-case-runner");
 
 const SCROLL_PIXELS = 600;
 const SETTLE_MS = 350;
@@ -18,6 +19,8 @@ const VISIBLE_LINES = function () {
 };
 
 const NOISY_LINE_RE = /^[\d\s:.,/%-]+$|^[•*●·]+$/; // clocks, counters, masked values
+const PRICE_RE = /(\bRM|\$|€|£|S\$|USD|MYR|SGD)\s?\d|\d\s?\/\s?(mth|month|yr|year)/i; // prices change; don't pin tests to them
+const MAX_ASSERTIONS_PER_STEP = 3;
 
 class WebRecorder {
   /** @param {import('playwright').Page} page */
@@ -40,9 +43,14 @@ class WebRecorder {
   _expectFrom(before, after, typedValues = []) {
     const had = new Set(before);
     const typed = new Set(typedValues);
+    // Keep only lines that read like real, stable copy: not fragments of a
+    // wrapped heading ("phones, always the"), not tiny words ("RM", "All"),
+    // not prices, clocks or what the tester typed. Longest lines first.
     const appeared = after
-      .filter((l) => !had.has(l) && l.length <= 80 && !NOISY_LINE_RE.test(l) && !typed.has(l))
-      .slice(0, 4);
+      .filter((l) => !had.has(l) && l.length >= 6 && l.length <= 80 && /^[A-Z0-9]/.test(l) &&
+        (l.match(/[A-Za-z]/g) || []).length >= 4 && !NOISY_LINE_RE.test(l) && !PRICE_RE.test(l) && !typed.has(l))
+      .sort((a, b) => b.length - a.length)
+      .slice(0, MAX_ASSERTIONS_PER_STEP);
     return appeared.length ? { appeared } : undefined;
   }
 
@@ -53,12 +61,54 @@ class WebRecorder {
     return this.steps.length - 1;
   }
 
+  /**
+   * Picks the most stable selector that points at exactly the element the
+   * tester clicked. Candidates are tried best-first against the live page; a
+   * non-unique match is pinned with `nth` rather than silently clicking the
+   * wrong twin (nav link vs. page link with the same text, duplicate ids...).
+   */
+  async _resolveSelector(descriptor, point) {
+    const candidates = buildWebSelectorCandidates(descriptor);
+    if (!candidates.length) return null;
+    try {
+      let bestPinned = null;
+      for (let i = 0; i < candidates.length; i += 1) {
+        const cand = candidates[i];
+        // The last candidate is a positional css path: only worth using when no
+        // semantic locator (role/label/id/text) matched the element at all.
+        if (i === candidates.length - 1 && bestPinned) break;
+        // count matches and where the target sits among them
+        const loc = this._allMatches(cand);
+        const info = await loc.evaluateAll((els) => ({ count: els.length, index: els.findIndex((e) => e.hasAttribute("data-tm-target")) })).catch(() => null);
+        if (!info || info.index < 0) continue;
+        if (info.count === 1) return cand;
+        if (!bestPinned || info.count < bestPinned.count) bestPinned = { cand, count: info.count, index: info.index };
+      }
+      return bestPinned ? { ...bestPinned.cand, nth: bestPinned.index } : candidates[candidates.length - 1];
+    } finally {
+      await this.page.evaluate(() => document.querySelectorAll("[data-tm-target]").forEach((n) => n.removeAttribute("data-tm-target"))).catch(() => {});
+    }
+  }
+
+  /** Locator for ALL matches of a candidate (no nth/first applied). */
+  _allMatches(sel) {
+    const page = this.page;
+    switch (sel.strategy) {
+      case "css": return page.locator(sel.value);
+      case "text": return page.getByText(sel.value, { exact: false });
+      case "label": return page.getByLabel(sel.value);
+      case "testid": return page.getByTestId(sel.value);
+      case "role": return page.getByRole(sel.role, { name: sel.value, exact: sel.exact === true });
+      default: return page.locator(sel.value);
+    }
+  }
+
   /** @param {number} xRatio 0..1 of the rendered viewport  @param {number} yRatio */
   async click(xRatio, yRatio) {
     const vp = this.page.viewportSize();
     const point = { x: Math.round(xRatio * vp.width), y: Math.round(yRatio * vp.height) };
     const descriptor = await this.page.evaluate(ELEMENT_AT_POINT, point);
-    const selector = descriptor ? buildWebSelector(descriptor) : null;
+    const selector = descriptor ? await this._resolveSelector(descriptor, point) : null;
     const urlBefore = this.page.url();
     const before = await this._lines();
 
@@ -97,15 +147,7 @@ class WebRecorder {
       err.code = "no-field";
       throw err;
     }
-    const locatorFor = (sel) => {
-      switch (sel.strategy) {
-        case "testid": return this.page.getByTestId(sel.value);
-        case "label": return this.page.getByLabel(sel.value).first();
-        case "text": return this.page.getByText(sel.value).first();
-        default: return this.page.locator(sel.value).first();
-      }
-    };
-    await locatorFor(target.selector).fill(text, { timeout: 5000 });
+    await locatorFor(this.page, target.selector).first().fill(text, { timeout: 5000 });
 
     // Replace (not stack) typed steps for the same field, and fold the click
     // that focused it into the type step: replay's fill() focuses by itself.

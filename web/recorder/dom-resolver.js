@@ -29,6 +29,17 @@ function ELEMENT_AT_POINT(point) {
   var labelText = "";
   if (el.labels && el.labels.length) labelText = clip(el.labels[0].innerText, 60);
   var rect = el.getBoundingClientRect();
+  // Mark the chosen element so the recorder can check selector uniqueness against it.
+  Array.prototype.forEach.call(document.querySelectorAll("[data-tm-target]"), function (n) { n.removeAttribute("data-tm-target"); });
+  el.setAttribute("data-tm-target", "1");
+
+  var roleAttr = attr("role").toLowerCase();
+  var role = roleAttr ||
+    (tag === "a" && el.hasAttribute("href") ? "link" :
+     tag === "button" || (tag === "input" && ["submit", "button", "reset"].indexOf(type) >= 0) ? "button" :
+     tag === "input" && type === "checkbox" ? "checkbox" :
+     tag === "input" && type === "radio" ? "radio" :
+     tag === "select" ? "combobox" : "");
 
   // Short, stable-looking ids only (skip framework-generated ones like ":r1:" or "ember123").
   var id = el.id && /^[A-Za-z][\w-]{0,40}$/.test(el.id) && !/\d{3,}/.test(el.id) ? el.id : "";
@@ -36,6 +47,10 @@ function ELEMENT_AT_POINT(point) {
   function cssPath(node) {
     var parts = [];
     while (node && node.nodeType === 1 && node !== document.documentElement && parts.length < 6) {
+      if (node !== el && node.id && /^[A-Za-z][\w-]{0,40}$/.test(node.id) && !/\d{3,}/.test(node.id)) {
+        parts.unshift("#" + node.id);
+        break;
+      }
       var part = node.tagName.toLowerCase();
       var parent = node.parentElement;
       if (parent) {
@@ -51,6 +66,7 @@ function ELEMENT_AT_POINT(point) {
   return {
     tag: tag,
     type: type,
+    role: role,
     editable: editable,
     testid: attr("data-testid") || attr("data-test") || attr("data-cy") || attr("data-qa"),
     id: id,
@@ -76,19 +92,37 @@ function cssEscapeValue(v) {
   return String(v).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
-/** @param {Object} d descriptor returned by ELEMENT_AT_POINT */
-function buildWebSelector(d) {
-  if (!d) return null;
-  if (d.testid) return { strategy: "testid", value: d.testid };
-  if (d.ariaLabel) return { strategy: "label", value: d.ariaLabel };
-  if (d.labelText) return { strategy: "label", value: d.labelText };
-  if (d.id) return { strategy: "css", value: `#${d.id}` };
-  if (d.name && (d.editable || d.tag === "select" || d.tag === "input" || d.tag === "button")) {
-    return { strategy: "css", value: `${d.tag}[name="${cssEscapeValue(d.name)}"]` };
+/**
+ * Every plausible selector for the element, most stable first. The recorder
+ * checks each against the live page and keeps the first one that is unique
+ * (or, failing that, the best one pinned with an `nth` index).
+ * @param {Object} d descriptor returned by ELEMENT_AT_POINT
+ */
+function buildWebSelectorCandidates(d) {
+  if (!d) return [];
+  const out = [];
+  if (d.testid) out.push({ strategy: "testid", value: d.testid });
+  const accessibleName = d.ariaLabel || d.text || d.labelText;
+  if (d.role && accessibleName && !d.editable) {
+    out.push({ strategy: "role", role: d.role, value: accessibleName, exact: true });
+    out.push({ strategy: "role", role: d.role, value: accessibleName });
   }
-  if (d.placeholder) return { strategy: "css", value: `${d.tag}[placeholder="${cssEscapeValue(d.placeholder)}"]` };
-  if (d.text) return { strategy: "text", value: d.text };
-  return { strategy: "css", value: d.cssPath };
+  if (d.ariaLabel) out.push({ strategy: "label", value: d.ariaLabel });
+  if (d.labelText) out.push({ strategy: "label", value: d.labelText });
+  if (d.id) out.push({ strategy: "css", value: `#${d.id}` });
+  if (d.name && (d.editable || d.tag === "select" || d.tag === "input" || d.tag === "button")) {
+    out.push({ strategy: "css", value: `${d.tag}[name="${cssEscapeValue(d.name)}"]` });
+  }
+  if (d.placeholder) out.push({ strategy: "css", value: `${d.tag}[placeholder="${cssEscapeValue(d.placeholder)}"]` });
+  if (d.text) out.push({ strategy: "text", value: d.text });
+  out.push({ strategy: "css", value: d.cssPath });
+  return out;
+}
+
+/** Best guess without a live page (first candidate). */
+function buildWebSelector(d) {
+  const c = buildWebSelectorCandidates(d);
+  return c.length ? c[0] : null;
 }
 
 /** Human-readable description used as the step's `instruction`. */
@@ -99,4 +133,4 @@ function describeElement(d, verb = "Click") {
   return `${verb} "${name}"${kind ? " " + kind : ""}`;
 }
 
-module.exports = { ELEMENT_AT_POINT, ACTIVE_ELEMENT_POINT, buildWebSelector, describeElement };
+module.exports = { ELEMENT_AT_POINT, ACTIVE_ELEMENT_POINT, buildWebSelector, buildWebSelectorCandidates, describeElement };

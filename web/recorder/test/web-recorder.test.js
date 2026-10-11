@@ -14,7 +14,8 @@ const PAGE = `<!doctype html><title>Demo</title><body style="margin:0;font:20px 
 let failed = 0;
 async function test(name, fn) { try { await fn(); console.log(`  ok - ${name}`); } catch (e) { failed++; console.error(`  FAIL - ${name}\n    ${e.stack}`); } }
 
-test("buildWebSelector prefers testid > label > id > text > css path", () => {
+test("buildWebSelector prefers testid > role+name > label > id > text > css path", () => {
+  assert.deepStrictEqual(buildWebSelector({ role: "button", text: "Go", id: "go" }), { strategy: "role", role: "button", value: "Go", exact: true });
   assert.deepStrictEqual(buildWebSelector({ testid: "t", id: "x" }), { strategy: "testid", value: "t" });
   assert.deepStrictEqual(buildWebSelector({ labelText: "Email", id: "x" }), { strategy: "label", value: "Email" });
   assert.deepStrictEqual(buildWebSelector({ id: "go", text: "Go" }), { strategy: "css", value: "#go" });
@@ -67,7 +68,7 @@ test("codegen emits parameters, locators and assertions", () => {
     assert.strictEqual(typed.step.text, "a@b.c");
     assert.strictEqual(typed.index, field.index); // the focusing click is folded into the type step
     ws.send(JSON.stringify({ type: "click", xRatio: 200 / 1280, yRatio: 225 / 800 }));
-    await waitFor((m) => m.type === "step" && m.step.selector && m.step.selector.value === "#go");
+    await waitFor((m) => m.type === "step" && m.step.selector && m.step.selector.strategy === "role" && m.step.selector.value === "Sign in");
     ws.send(JSON.stringify({ type: "stop" }));
     const done = await waitFor((m) => m.type === "stopped");
     assert.deepStrictEqual(done.steps.map((s) => s.kind), ["navigate", "type", "tap"]);
@@ -109,6 +110,44 @@ test("codegen emits parameters, locators and assertions", () => {
       assert.strictEqual(result.success, true, JSON.stringify(result.steps || result));
     } finally { await browser.close(); }
     w3.close();
+  });
+
+  await test("duplicate links are pinned with nth, scrolls are dropped from output, and noisy lines are not asserted", async () => {
+    const DUP = `<!doctype html><title>Dup</title><body style="margin:0;font:20px sans-serif;height:3000px">
+<a href="#nav" style="position:absolute;left:20px;top:20px">Pricing</a>
+<a href="#body" onclick="document.getElementById('o').innerHTML='<p>Compare every plan today</p><p>RM 99/mth</p><p>All</p><p>phones, always the</p><p>Welcome to the pricing page</p>'" style="position:absolute;left:20px;top:300px">Pricing</a>
+<div id="o" style="position:absolute;left:20px;top:400px"></div></body>`;
+    const dsrv = http.createServer((_, res) => { res.writeHead(200, { "Content-Type": "text/html" }); res.end(DUP); });
+    await new Promise((r) => dsrv.listen(0, r));
+    const durl = `http://127.0.0.1:${dsrv.address().port}/`;
+    const p4 = await new Promise((r) => { const s = net.createServer().listen(0, () => { const p = s.address().port; s.close(() => r(p)); }); });
+    const s4 = await startWebLiveView({ port: p4, startUrl: durl });
+    const w4 = new WebSocket(`ws://127.0.0.1:${p4}`);
+    const got = [];
+    w4.on("message", (d) => got.push(JSON.parse(String(d))));
+    await new Promise((r) => w4.on("open", r));
+    const wf = async (pred) => { const t0 = Date.now(); for (;;) { const m = got.find(pred); if (m) return m; if (Date.now() - t0 > 8000) throw new Error("timeout"); await new Promise((r) => setTimeout(r, 50)); } };
+    w4.send(JSON.stringify({ type: "scroll", direction: "down" }));
+    await wf((m) => m.type === "step" && m.step.kind === "scroll");
+    w4.send(JSON.stringify({ type: "scroll", direction: "up" }));
+    await new Promise((r) => setTimeout(r, 700));
+    w4.send(JSON.stringify({ type: "click", xRatio: 40 / 1280, yRatio: 310 / 800 }));
+    const click = await wf((m) => m.type === "step" && m.step.kind === "tap");
+    assert.strictEqual(click.step.selector.nth, 1, JSON.stringify(click.step.selector));
+    assert.deepStrictEqual(click.step.expect.appeared, ["Welcome to the pricing page", "Compare every plan today"].sort((a, b) => b.length - a.length));
+    w4.send(JSON.stringify({ type: "stop" }));
+    const done = await wf((m) => m.type === "stopped");
+    assert.ok(!done.script.includes("mouse.wheel"));
+    assert.ok(!done.testCase.steps.some((x) => x.kind === "scroll"));
+    assert.ok(done.script.includes(".nth(1)"));
+    assert.ok(/test\("127_0_0_1_web_flow"/.test(done.script));
+    const { chromium } = require("playwright");
+    const browser = await chromium.launch({ executablePath: process.env.TESTOPS_MOBILE_WEB_CHROMIUM_PATH || undefined });
+    try {
+      const result = await runWebSteps(await browser.newPage(), done.testCase.steps, { baseUrl: done.testCase.baseUrl });
+      assert.strictEqual(result.success, true, JSON.stringify(result.steps || result));
+    } finally { await browser.close(); }
+    w4.close(); dsrv.close();
   });
 
   await test("typing before clicking a field is refused with a message", async () => {

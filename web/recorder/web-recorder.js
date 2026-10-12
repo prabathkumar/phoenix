@@ -4,6 +4,7 @@
  */
 const { ELEMENT_AT_POINT, buildWebSelectorCandidates, describeElement } = require("./dom-resolver");
 const { locatorFor } = require("../web-test-case-runner");
+const { executeApiStep, validateApiStep } = require("../../engine/core/api-step");
 
 const SCROLL_PIXELS = 600;
 const SETTLE_MS = 350;
@@ -29,6 +30,7 @@ class WebRecorder {
     this.sleep = sleep;
     this.steps = [];
     this._lastTap = null; // { index, selector, descriptor }
+    this.vars = {}; // test data + values saved by api steps (for ${NAME} in later api calls)
   }
 
   async _lines() {
@@ -184,6 +186,33 @@ class WebRecorder {
     };
     this.steps[target.index] = step; // replaces the focusing click
     return { index: target.index, step };
+  }
+
+  setTestData(data) {
+    this.vars = { ...this.vars, ...(data && typeof data === "object" ? data : {}) };
+  }
+
+  /**
+   * Runs an API call now (so the tester sees the real response) and, when
+   * `record` is set and the checks pass (or `force`), records it as a step.
+   * Values it `save`s become ${NAME} for later steps.
+   */
+  async api(spec, { record = false, force = false } = {}) {
+    const step = { kind: "api", ...spec };
+    delete step.record;
+    const problem = validateApiStep(step);
+    if (problem) return { result: { ok: false, reason: `api step ${problem}`, saved: {}, request: {} }, recorded: false };
+    let origin;
+    try { origin = new URL(this.page.url()).origin; } catch { origin = undefined; }
+    const result = await executeApiStep(step, { vars: this.vars, baseUrl: origin });
+    let index;
+    if (record && (result.ok || force)) {
+      if (!step.instruction) step.instruction = `${step.method || "GET"} ${step.url}`;
+      this.steps.push(step);
+      index = this.steps.length - 1;
+      this._lastTap = null;
+    }
+    return { result, recorded: index !== undefined, index, step };
   }
 
   /** Removes the last recorded action (and the "Landed on" assert that followed it, if any). */

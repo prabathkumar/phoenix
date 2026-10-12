@@ -11,6 +11,7 @@
  *   {type:"type", value}             FULL value of the focused field (replaces)
  *   {type:"stop"}                    finish and generate
  *   web only: {type:"navigate", url} {type:"press", key} {type:"select", label}
+ *             {type:"undo"} {type:"test-data", data} {type:"api", spec, record, force}
  *             {type:"ai-goal", goal}
  * Server -> client
  *   {type:"frame", screenshotBase64, mime}
@@ -97,6 +98,7 @@ async function startWebLiveView({ port, startUrl, name, browser, headless, aiLoo
       instruction: step.instruction,
       resolvedElement: { text: extra.name || "" },
       ...(step.option ? { option: step.option } : {}),
+      ...(extra.fragile ? { fragile: true } : {}),
     });
 
   async function handle(message) {
@@ -129,14 +131,14 @@ async function startWebLiveView({ port, startUrl, name, browser, headless, aiLoo
         if (result.pendingSelect) {
           send({ type: "select-options", ...result.pendingSelect });
         } else {
-          announceStep(result.index, result.step, { name: elementName(result.descriptor) });
+          announceStep(result.index, result.step, { name: elementName(result.descriptor), fragile: result.fragile });
         }
       } else if (message.type === "type") {
         try {
-          const { index } = await recorder.type(String(message.value ?? ""));
+          const { index } = await recorder.type(String(message.value ?? ""), message.param ? { param: String(message.param) } : {});
           send({ type: "text-entered", stepIndex: index });
         } catch (err) {
-          if (err.code === "no-field") send({ type: "type-error", message: err.message });
+          if (err.code === "no-field") send({ type: "type-error", code: "no-field", message: err.message });
           else throw err;
         }
       } else if (message.type === "select") {
@@ -148,12 +150,30 @@ async function startWebLiveView({ port, startUrl, name, browser, headless, aiLoo
       } else if (message.type === "scroll") {
         const { index } = await recorder.scroll(message.direction === "up" ? "up" : "down");
         send({ type: "scroll-recorded", stepIndex: index, direction: message.direction === "up" ? "up" : "down" });
+      } else if (message.type === "undo") {
+        const removed = recorder.undo();
+        send({ type: "step-undone", removed, stepCount: recorder.steps.length });
+      } else if (message.type === "test-data") {
+        recorder.setTestData(message.data);
+      } else if (message.type === "api") {
+        const out = await recorder.api(message.spec || {}, { record: !!message.record, force: !!message.force });
+        send({
+          type: "api-result",
+          ok: out.result.ok,
+          reason: out.result.reason,
+          status: out.result.status,
+          durationMs: out.result.durationMs,
+          response: out.result.response,
+          saved: out.result.saved,
+          recorded: out.recorded,
+          stepIndex: out.index,
+        });
       } else if (message.type === "ai-goal") {
         if (typeof aiLoop !== "function") throw new Error("The AI goal loop is not enabled on this server.");
         await aiLoop({ goal: String(message.goal || ""), page, recorder, send });
       }
     } catch (err) {
-      send({ type: "action-error", message: err.message });
+      send({ type: "action-error", code: err.code, message: err.message });
     } finally {
       busy = false;
     }

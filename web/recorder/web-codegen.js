@@ -36,6 +36,11 @@ function inferWebFlowName(steps) {
   }
 }
 
+/** Constant name for a typed value: the tester's test-data name when given, else field_N. */
+function paramName(step, index) {
+  return step.param ? String(step.param).replace(/[^A-Za-z0-9_]/g, "_") : `field_${index}`;
+}
+
 function toTestCase(rawSteps, { name, baseUrl } = {}) {
   const steps = withoutScrolls(rawSteps);
   name = name && name !== "recorded_web_flow" ? name : inferWebFlowName(steps);
@@ -44,12 +49,15 @@ function toTestCase(rawSteps, { name, baseUrl } = {}) {
     const nav = steps.find((s) => s.kind === "navigate");
     try { origin = nav && new URL(nav.url).origin; } catch { /* ignore */ }
   }
+  const testData = {};
+  steps.forEach((s) => { if (s.kind === "type" && s.param) testData[paramName(s, 0)] = s.text; });
   return {
     name,
     description: "Recorded from a live browsing session by TestOps ai-automate (web recorder).",
     platform: "web",
     ...(origin ? { baseUrl: origin } : {}),
-    steps: steps.map((s) => ({ ...s })),
+    ...(Object.keys(testData).length ? { testData } : {}),
+    steps: steps.map((s) => (s.kind === "type" && s.param ? { ...s, text: "${" + paramName(s, 0) + "}" } : { ...s })),
   };
 }
 
@@ -67,6 +75,54 @@ function locatorExpr(sel) {
   }
 }
 
+const READ_PATH_HELPER = `function readPath(root, path) {
+  let p = String(path).replace(/^\\$\\.?/, "");
+  let cur = root;
+  for (const m of p.matchAll(/([^.[\\]]+)|\\[(\\d+)\\]/g)) {
+    const k = m[1] !== undefined ? m[1] : Number(m[2]);
+    if (cur == null || typeof cur !== "object" || !(k in cur)) return undefined;
+    cur = cur[k];
+  }
+  return cur;
+}`;
+
+/** "/orders/${ID}" -> a JS template literal; known test-data/saved names are variables, anything else is read from the environment. */
+function toTemplate(text, known) {
+  const body = String(text).replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_, n) => (known.has(n) ? "${" + n + "}" : "${process.env." + n + "}"));
+  return "`" + body + "`";
+}
+
+function apiLines(s, known) {
+  const method = String(s.method || "GET").toUpperCase();
+  const out = [];
+  const headers = Object.entries(s.headers || {});
+  const opts = [`method: ${q(method)}`];
+  if (headers.length) opts.push(`headers: { ${headers.map(([k, v]) => `${q(k)}: ${toTemplate(v, known)}`).join(", ")} }`);
+  if (s.body !== undefined && method !== "GET" && method !== "HEAD") {
+    opts.push(typeof s.body === "string" ? `data: ${toTemplate(s.body, known)}` : `data: ${JSON.stringify(s.body)}`);
+  }
+  out.push("  {");
+  out.push(`    const res = await page.request.fetch(${toTemplate(s.url, known)}, { ${opts.join(", ")} });`);
+  const e = s.expect || {};
+  if (e.status !== undefined) {
+    out.push(Array.isArray(e.status) ? `    expect(${JSON.stringify(e.status)}).toContain(res.status());` : `    expect(res.status()).toBe(${e.status});`);
+  } else if (!s.expect) out.push("    expect(res.ok()).toBeTruthy();");
+  const needsJson = (e.json && e.json.length) || Object.keys(s.save || {}).length;
+  if (needsJson) out.push("    const body = await res.json();");
+  if (e.bodyContains !== undefined) out.push(`    expect(await res.text()).toContain(${q(e.bodyContains)});`);
+  for (const c of e.json || []) {
+    if (c.exists === false) out.push(`    expect(readPath(body, ${q(c.path)})).toBeUndefined();`);
+    else if ("equals" in c) out.push(`    expect(readPath(body, ${q(c.path)})).toEqual(${JSON.stringify(c.equals)});`);
+    else if ("contains" in c) out.push(`    expect(String(readPath(body, ${q(c.path)}))).toContain(${q(c.contains)});`);
+    else if ("matches" in c) out.push(`    expect(String(readPath(body, ${q(c.path)}))).toMatch(new RegExp(${q(c.matches)}));`);
+    else out.push(`    expect(readPath(body, ${q(c.path)})).toBeDefined();`);
+  }
+  for (const [name, path] of Object.entries(s.save || {})) out.push(path === "status" ? `    ${name} = res.status();` : `    ${name} = readPath(body, ${q(path)});`);
+  if (e.maxMs !== undefined) out.push(`    // expected under ${e.maxMs} ms`);
+  out.push("  }");
+  return out;
+}
+
 function toPlaywrightScript(rawSteps, { name } = {}) {
   const steps = withoutScrolls(rawSteps);
   name = name && name !== "recorded_web_flow" ? name : inferWebFlowName(steps);
@@ -78,9 +134,16 @@ function toPlaywrightScript(rawSteps, { name } = {}) {
   lines.push(`// Locators: data-testid > role+name > label > id > name/placeholder > text > css path (pinned with .nth() when not unique).
 //  Scrolling is not recorded: Playwright scrolls elements into view itself.`);
   lines.push(`const { test, expect } = require("@playwright/test");`, "");
+  const apiSteps = steps.filter((s) => s.kind === "api");
+  const saved = apiSteps.flatMap((s) => Object.keys(s.save || {}));
+  const known = new Set([...params.map((p) => p[0]), ...saved]);
+  if (apiSteps.length) {
+    lines.push(READ_PATH_HELPER, "");
+    if (saved.length) lines.push(`// Values saved from API responses, used by later steps.`, `let ${saved.join(", ")};`, "");
+  }
   if (params.length) {
     lines.push("// Test data — lifted from values typed during recording.");
-    params.forEach(([n, v]) => lines.push(`const ${n} = ${q(v)};`));
+    params.forEach(([n, v, named]) => lines.push(named ? `const ${n} = process.env.${n} ?? ${q(v)};` : `const ${n} = ${q(v)};`));
     lines.push("");
   }
   lines.push(`test(${q(name)}, async ({ page }) => {`);
@@ -93,7 +156,8 @@ function toPlaywrightScript(rawSteps, { name } = {}) {
       for (const t of (s.expect && s.expect.appeared) || []) {
         lines.push(`  await expect(page.getByText(${q(t)}).first()).toBeVisible(); // ${JSON.stringify(t)} appeared`);
       }
-    } else if (s.kind === "type") lines.push(`  await ${locatorExpr(s.selector)}.fill(field_${i});`);
+    } else if (s.kind === "api") lines.push(...apiLines(s, known));
+    else if (s.kind === "type") lines.push(`  await ${locatorExpr(s.selector)}.fill(${paramName(s, i)});`);
     else if (s.kind === "select") {
       lines.push(`  await ${locatorExpr(s.selector)}.selectOption({ label: ${q(s.option)} });`);
       for (const t of (s.expect && s.expect.appeared) || []) {

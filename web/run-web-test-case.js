@@ -23,6 +23,7 @@ const { persistResolvedSelectors } = require("../engine/test-case-runner");
     headless: !argv.includes("--headed"),
     testCase: parsed.name || file,
     contextOptions: {},
+    testData: parsed.testData,
   });
   if (argv.includes("--persist") && result.success) persistResolvedSelectors(file, result.updatedSteps);
   const { updatedSteps, ...report } = result;

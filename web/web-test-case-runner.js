@@ -35,12 +35,14 @@
 
 const path = require("path");
 const { buildTestResult } = require("../engine/test-result");
+const { executeApiStep, validateApiStep } = require("../engine/core/api-step");
+const { interpolate } = require("../engine/core/vars");
 const { resolveStepText } = require("../engine/test-case-runner");
 const { verifyExpectedOutcome, validateExpectShape } = require("../generation/outcome-verification");
 const { SERIALIZE_DOM_SCRIPT } = require("../generation/webview-snapshot");
 const { resolveWebviewAction: defaultResolveAction } = require("../generation/webview-act");
 
-const WEB_KINDS = new Set(["navigate", "tap", "type", "select", "press", "scroll", "wait", "tapIfExists", "assert"]);
+const WEB_KINDS = new Set(["navigate", "tap", "type", "select", "press", "scroll", "wait", "tapIfExists", "assert", "api"]);
 const DEFAULT_WAIT_MS = 1000;
 const ACTION_TIMEOUT_MS = 10000;
 
@@ -62,6 +64,11 @@ function validateWebSteps(steps, label = "test case") {
     const where = `${label}: step ${i}`;
     if (!step || typeof step !== "object") throw new Error(`${where} is not an object`);
     if (!WEB_KINDS.has(step.kind)) throw new Error(`${where} has invalid "kind": ${step.kind}`);
+    if (step.kind === "api") {
+      const problem = validateApiStep(step);
+      if (problem) throw new Error(`${where} ${problem}`);
+      return;
+    }
     if (step.kind === "navigate" && typeof step.url !== "string") throw new Error(`${where} is a "navigate" step with no "url"`);
     if (step.kind === "assert") {
       const a = step.assert;
@@ -136,6 +143,7 @@ async function runAssert(page, a) {
 async function runWebSteps(page, steps, options = {}) {
   const { baseUrl, testCase, resolveAction = defaultResolveAction, sleepFn = (ms) => new Promise((r) => setTimeout(r, ms)) } = options;
   const startedAt = Date.now();
+  const vars = { ...(options.testData || {}) };
   const results = [];
   const updatedSteps = steps.map((s) => ({ ...s }));
   let runError;
@@ -143,7 +151,10 @@ async function runWebSteps(page, steps, options = {}) {
   try {
     validateWebSteps(steps, testCase || "web test case");
     // Resolve all ${ENV} text up front (same reason as the mobile runner).
-    const resolved = steps.map((s) => ({ ...s, text: resolveStepText(s) }));
+    // Shared across the run: test data in, values saved by api steps out.
+    const savedLater = new Set(steps.filter((s) => s.kind === "api").flatMap((s) => Object.keys(s.save || {})));
+    const isDeferred = (s) => typeof s.text === "string" && /^\$\{([A-Z0-9_]+)\}$/.test(s.text) && savedLater.has(s.text.slice(2, -1));
+    const resolved = steps.map((s) => ({ ...s, text: isDeferred(s) ? s.text : resolveStepText(s, vars) }));
 
     for (let i = 0; i < resolved.length; i += 1) {
       const step = resolved[i];
@@ -152,10 +163,20 @@ async function runWebSteps(page, steps, options = {}) {
         results.push({ index: i, kind: step.kind, instruction: step.instruction || step.url || step.kind, status, durationMs: Date.now() - t0, ...extra });
 
       try {
+        if (step.kind === "api") {
+          const r = await executeApiStep(step, { vars, baseUrl: options.apiBaseUrl || baseUrl, fetchFn: options.fetchFn });
+          const label = step.instruction || `${step.method || "GET"} ${step.url}`;
+          results.push({ index: i, kind: "api", instruction: label, status: r.ok ? "pass" : "fail", durationMs: Date.now() - t0, ...(r.ok ? {} : { reason: r.reason }), api: { status: r.status, saved: Object.keys(r.saved || {}) } });
+          if (!r.ok) break;
+          continue;
+        }
+        if (isDeferred(steps[i])) step.text = resolveStepText(steps[i], vars);
+
         if (step.kind === "wait") { await sleepFn(typeof step.durationMs === "number" ? step.durationMs : DEFAULT_WAIT_MS); record("pass"); continue; }
 
         if (step.kind === "navigate") {
-          const url = baseUrl && !/^[a-z]+:/i.test(step.url) ? new URL(step.url, baseUrl).toString() : step.url;
+          const rawUrl = step.url.includes("${") ? interpolate(step.url, { vars }) : step.url;
+          const url = baseUrl && !/^[a-z]+:/i.test(rawUrl) ? new URL(rawUrl, baseUrl).toString() : rawUrl;
           await page.goto(url, { waitUntil: "load", timeout: 30000 });
           record("pass");
           continue;

@@ -10,6 +10,8 @@
 .git
 .github
 .env
+.env.*
+!.env.example
 *.log
 /generated
 /docs

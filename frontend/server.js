@@ -90,6 +90,25 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (req.method === "GET" && req.url.split("?")[0] === "/english") {
+    fs.readFile(path.join(__dirname, "english.html"), "utf8", (err, content) => {
+      if (err) { res.writeHead(500); res.end("Failed to read english.html: " + err.message); return; }
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      res.end(content);
+    });
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/english-runs") {
+    require("./english-endpoint").handleStart(req, res);
+    return;
+  }
+
+  if (req.method === "GET" && /^\/api\/english-runs\/[^/]+\/events$/.test(req.url)) {
+    require("./english-endpoint").handleEvents(req, res, decodeURIComponent(req.url.split("/")[3]));
+    return;
+  }
+
   if (req.method === "POST" && req.url === "/api/web-sessions") {
     require("./web-session-endpoint").handleStartWebSession(req, res);
     return;

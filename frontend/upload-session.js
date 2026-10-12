@@ -174,4 +174,4 @@ function respondJson(res, statusCode, body) {
   res.end(json);
 }
 
-module.exports = { handleUploadAndStart };
+module.exports = { handleUploadAndStart, resolveAppCapability };

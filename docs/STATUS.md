@@ -990,3 +990,6 @@ Not done, stated plainly:
 - WebdriverIO upgraded 8.46 to 10.0.2 (needs Node 22.19+). No code changes: `require()` of the ES-module package works on Node 22.12+. `engine/test/webdriverio-compat.test.js` guards the calls we make; **not yet exercised against real BrowserStack/Appium**: run one smoke session before relying on it.
 - Found from that recording: a chat widget was recorded as `unnamed img` plus a click on its `<iframe>`. Fixed: a non-semantic element now resolves to the outermost `cursor:pointer` ancestor (`#yes-chat-toggle`), and a click inside an iframe is performed but not recorded, with a guided card explaining why. Known limit unchanged: nothing inside an iframe can be recorded (use Ask AI or add the step by hand).
 
+
+## Run from English (2026-10-12)
+New page `/english` with independent Web and Mobile cards; per-step results and screenshots; secret test data masked end to end. Tested in a real browser with a scripted model (web) and with fakes (mobile). NOT yet run against the real Ollama model on a real site, nor on a real BrowserStack device - the first real runs are the real test. Details: docs/ENGLISH_RUN.md.

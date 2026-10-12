@@ -220,3 +220,6 @@ cd mcp && npm install && node server.js
 Exposes locator-confidence history, test cases, and the execution log as MCP tools over stdio — see [`mcp/README.md`](mcp/README.md) for the client config and the full tool list.
 
 For running the engine directly and the public GitHub Pages URL, see [`docs/STATUS.md`](docs/STATUS.md).
+
+## Run from English
+Write a test in plain English with a URL (web) or app (mobile) and named test data, and the AI runs it: open `/english`. See [docs/ENGLISH_RUN.md](docs/ENGLISH_RUN.md).

@@ -69,6 +69,12 @@ const JPG = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDABsSFBcUERsXFhceHBsgKEIrKCUlKFE6PTB
     assert.ok((await page.getAttribute("#device-frame img", "src")).startsWith("data:image/jpeg;base64,"));
     await waitMsg((m) => m.type === "test-data" && m.data.USERNAME === "bob");
 
+    // Start-failure guidance names the real cause (Appium not reachable is not "server down").
+    const g = await page.evaluate(() => window.guidedStartFailure('Unable to connect to "http://127.0.0.1:4723/", make sure browser driver is running', "mobile"));
+    assert.ok(/device service/.test(g.title) && /--env-file/.test(g.command), JSON.stringify(g));
+    const g2 = await page.evaluate(() => window.guidedStartFailure("fetch failed", "web"));
+    assert.ok(/server couldn't be reached/.test(g2.title));
+
     // A failed click shows a guided card; Retry resends the same click.
     await page.click("#device-frame img", { position: { x: 1, y: 1 } });
     await page.waitForSelector("#guide.show");

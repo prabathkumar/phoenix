@@ -575,6 +575,9 @@ window.guidedStartFailure = function (message, platform) {
   if (/executable doesn't exist|chromium|browserType\.launch|playwright install/i.test(m)) {
     return { title: "The browser isn't installed on the machine running TestOps", why: "Web recording needs Chromium. Install it once, then try again.", command: "cd " + "web && npx playwright install chromium" };
   }
+  if (/:4723|appium|browser driver is running|make sure browser driver/i.test(m)) {
+    return { title: "Mobile has no device service to talk to", why: "The recorder server is fine, but it is set to a local Appium host that isn't running. To record on BrowserStack, start the server with your BrowserStack settings in .env (TESTOPS_MOBILE_APPIUM_PROVIDER=browserstack plus the user and key). Run this from the repo folder; Web recording needs none of this.", command: "docker run --rm --env-file .env -p 8091:8091 -p 8092-8099:8092-8099 --shm-size=1g testops-mobile:latest node frontend/server.js" };
+  }
   if (/fetch failed|ECONNREFUSED|ENOTFOUND/i.test(m)) {
     return { title: "The recorder server couldn't be reached", why: "Make sure the TestOps frontend server is still running, and that this page was opened from it.", command: "cd frontend && node server.js" };
   }

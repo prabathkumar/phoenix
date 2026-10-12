@@ -1,17 +1,31 @@
 /**
  * Web live view: a Chromium page mirrored to the tester over WebSocket.
- * The tester clicks / types / scrolls in the mirror; every action is performed
- * on the real page AND recorded as a step (web-recorder.js).
  *
- * Protocol (client -> server): {type:"navigate",url} {type:"click",xRatio,yRatio}
- *   {type:"type",text} {type:"select",label} {type:"press",key} {type:"scroll",direction} {type:"stop"}
- * Server -> client: {type:"ready",viewport} {type:"frame",screenshotBase64}
- *   {type:"page",url,title} {type:"step",index,step} {type:"select-options",instruction,options} {type:"error",message}
- *   {type:"busy"} {type:"stopped",steps,script,testCase}
+ * It speaks the SAME protocol as live-view/server.js (the mobile live view), so
+ * the one recorder page in frontend/index.html drives both with the same
+ * stage, side panel and flow. The web-only extras are additive.
+ *
+ * Client -> server
+ *   {type:"tap", xRatio, yRatio}     click at a fraction of the mirrored page
+ *   {type:"scroll", direction}       "up" | "down"
+ *   {type:"type", value}             FULL value of the focused field (replaces)
+ *   {type:"stop"}                    finish and generate
+ *   web only: {type:"navigate", url} {type:"press", key} {type:"select", label}
+ *             {type:"ai-goal", goal}
+ * Server -> client
+ *   {type:"frame", screenshotBase64, mime}
+ *   {type:"step-recorded", stepIndex, kind, instruction, resolvedElement:{text}}
+ *   {type:"scroll-recorded", stepIndex, direction}
+ *   {type:"text-entered", stepIndex}
+ *   {type:"session-finished", stepCount}
+ *   {type:"script-generated", scriptSource, testName, assertionCount, testCaseJson}
+ *   {type:"busy"|"action-error"|"type-error", message}
+ *   web only: {type:"page", url, title} {type:"select-options", instruction, options}
+ *             {type:"ai-progress"|"ai-finished", ...}
  */
 const { WebSocketServer } = require("ws");
 const { WebRecorder } = require("./web-recorder");
-const { toTestCase, toPlaywrightScript } = require("./web-codegen");
+const { toTestCase, toPlaywrightScript, inferWebFlowName } = require("./web-codegen");
 
 const FRAME_INTERVAL_MS = 250;
 const VIEWPORT = { width: 1280, height: 800 };
@@ -24,11 +38,22 @@ async function launchBrowser(options = {}) {
   });
 }
 
+const normalizeUrl = (u) => (/^[a-z][a-z0-9+.-]*:/i.test(u) ? u : `https://${u}`);
+
+function elementName(d) {
+  if (!d) return "";
+  return String(d.ariaLabel || d.labelText || d.text || d.placeholder || d.name || d.id || "").slice(0, 40);
+}
+
+function countAssertions(steps) {
+  return steps.reduce((n, s) => n + ((s.expect && s.expect.appeared && s.expect.appeared.length) || 0) + (s.kind === "assert" ? 1 : 0), 0);
+}
+
 /**
- * @param {{port:number, startUrl?:string, name?:string, browser?:Object, headless?:boolean}} opts
- * @returns {Promise<{wss:Object, close:Function, port:number}>}
+ * @param {{port:number, startUrl?:string, name?:string, browser?:Object, headless?:boolean, aiLoop?:Function}} opts
+ * @returns {Promise<{wss:Object, port:number, recorder:Object, page:Object, close:Function}>}
  */
-async function startWebLiveView({ port, startUrl, name = "recorded_web_flow", browser, headless } = {}) {
+async function startWebLiveView({ port, startUrl, name, browser, headless, aiLoop } = {}) {
   const ownsBrowser = !browser;
   const b = browser || (await launchBrowser({ headless }));
   const context = await b.newContext({ viewport: VIEWPORT });
@@ -48,7 +73,7 @@ async function startWebLiveView({ port, startUrl, name = "recorded_web_flow", br
     frameInFlight = true;
     try {
       const buf = await page.screenshot({ type: "jpeg", quality: 70 });
-      if (!stopped) send({ type: "frame", screenshotBase64: buf.toString("base64") });
+      if (!stopped) send({ type: "frame", screenshotBase64: buf.toString("base64"), mime: "image/jpeg" });
     } catch { /* page navigating */ } finally { frameInFlight = false; }
   }, FRAME_INTERVAL_MS);
 
@@ -64,48 +89,71 @@ async function startWebLiveView({ port, startUrl, name = "recorded_web_flow", br
     try { wss.close(); } catch { /* ignore */ }
   }
 
+  const announceStep = (index, step, extra = {}) =>
+    send({
+      type: "step-recorded",
+      stepIndex: index,
+      kind: step.kind,
+      instruction: step.instruction,
+      resolvedElement: { text: extra.name || "" },
+      ...(step.option ? { option: step.option } : {}),
+    });
+
   async function handle(message) {
+    if (stopped) return; // nothing runs after Stop
     if (message.type === "stop") {
+      busy = true;
       const steps = recorder.steps;
-      send({ type: "stopped", steps, script: toPlaywrightScript(steps, { name }), testCase: toTestCase(steps, { name }) });
+      const testName = name && name !== "recorded_web_flow" ? name : inferWebFlowName(steps);
+      send({ type: "session-finished", stepCount: steps.length });
+      send({
+        type: "script-generated",
+        scriptSource: toPlaywrightScript(steps, { name: testName }),
+        testName,
+        assertionCount: countAssertions(steps),
+        testCaseJson: toTestCase(steps, { name: testName }),
+      });
       await shutdown();
       return;
     }
-    if (busy) { send({ type: "busy" }); return; }
+    if (busy) { send({ type: "busy", message: "Still recording the previous step - wait a moment." }); return; }
     busy = true;
     try {
       if (message.type === "navigate") {
-        let url = String(message.url || "").trim();
+        const url = String(message.url || "").trim();
         if (!url) throw new Error("Enter a URL first.");
-        if (!/^[a-z][a-z0-9+.-]*:/i.test(url)) url = `https://${url}`;
-        const index = await recorder.navigate(url);
-        send({ type: "step", index, step: recorder.steps[index] });
-      } else if (message.type === "click") {
+        const index = await recorder.navigate(normalizeUrl(url));
+        announceStep(index, recorder.steps[index], { name: recorder.steps[index].url });
+      } else if (message.type === "tap") {
         const result = await recorder.click(Number(message.xRatio), Number(message.yRatio));
         if (result.pendingSelect) {
           send({ type: "select-options", ...result.pendingSelect });
-          return;
+        } else {
+          announceStep(result.index, result.step, { name: elementName(result.descriptor) });
         }
-        const { index, step } = result;
-        send({ type: "step", index, step });
-        // an assert step may have been appended after the click
-        if (recorder.steps.length - 1 > index) send({ type: "step", index: recorder.steps.length - 1, step: recorder.steps[recorder.steps.length - 1] });
       } else if (message.type === "type") {
-        const { index, step } = await recorder.type(String(message.text ?? ""));
-        send({ type: "step", index, step, replace: true });
+        try {
+          const { index } = await recorder.type(String(message.value ?? ""));
+          send({ type: "text-entered", stepIndex: index });
+        } catch (err) {
+          if (err.code === "no-field") send({ type: "type-error", message: err.message });
+          else throw err;
+        }
       } else if (message.type === "select") {
         const { index, step } = await recorder.select(String(message.label ?? ""));
-        send({ type: "step", index, step });
+        announceStep(index, step, { name: step.option });
       } else if (message.type === "press") {
         const { index, step } = await recorder.press(String(message.key || "Enter"));
-        send({ type: "step", index, step });
-        if (recorder.steps.length - 1 > index) send({ type: "step", index: recorder.steps.length - 1, step: recorder.steps[recorder.steps.length - 1] });
+        announceStep(index, step, { name: step.key });
       } else if (message.type === "scroll") {
-        const { index, step } = await recorder.scroll(message.direction);
-        send({ type: "step", index, step });
+        const { index } = await recorder.scroll(message.direction === "up" ? "up" : "down");
+        send({ type: "scroll-recorded", stepIndex: index, direction: message.direction === "up" ? "up" : "down" });
+      } else if (message.type === "ai-goal") {
+        if (typeof aiLoop !== "function") throw new Error("The AI goal loop is not enabled on this server.");
+        await aiLoop({ goal: String(message.goal || ""), page, recorder, send });
       }
     } catch (err) {
-      send({ type: "error", message: err.message });
+      send({ type: "action-error", message: err.message });
     } finally {
       busy = false;
     }
@@ -113,7 +161,6 @@ async function startWebLiveView({ port, startUrl, name = "recorded_web_flow", br
 
   wss.on("connection", (socket) => {
     client = socket;
-    send({ type: "ready", viewport: VIEWPORT });
     socket.on("message", (data) => {
       let msg;
       try { msg = JSON.parse(String(data)); } catch { return; }
@@ -124,7 +171,7 @@ async function startWebLiveView({ port, startUrl, name = "recorded_web_flow", br
   });
 
   if (startUrl) {
-    try { await recorder.navigate(/^[a-z][a-z0-9+.-]*:/i.test(startUrl) ? startUrl : `https://${startUrl}`); } catch (err) { /* surfaced on connect via blank page */ }
+    try { await recorder.navigate(normalizeUrl(startUrl)); } catch { /* surfaced as a blank page */ }
   }
 
   return { wss, port, recorder, page, close: shutdown };

@@ -71,7 +71,7 @@ class WebRecorder {
    */
   async _resolveSelector(descriptor, point) {
     const candidates = buildWebSelectorCandidates(descriptor);
-    if (!candidates.length) return null;
+    if (!candidates.length) return { selector: null, fragile: true };
     try {
       let bestPinned = null;
       for (let i = 0; i < candidates.length; i += 1) {
@@ -83,10 +83,12 @@ class WebRecorder {
         const loc = this._allMatches(cand);
         const info = await loc.evaluateAll((els) => ({ count: els.length, index: els.findIndex((e) => e.hasAttribute("data-tm-target")) })).catch(() => null);
         if (!info || info.index < 0) continue;
-        if (info.count === 1) return cand;
+        if (info.count === 1) return { selector: cand, fragile: i === candidates.length - 1 };
         if (!bestPinned || info.count < bestPinned.count) bestPinned = { cand, count: info.count, index: info.index };
       }
-      return bestPinned ? { ...bestPinned.cand, nth: bestPinned.index } : candidates[candidates.length - 1];
+      return bestPinned
+        ? { selector: { ...bestPinned.cand, nth: bestPinned.index }, fragile: false }
+        : { selector: candidates[candidates.length - 1], fragile: true };
     } finally {
       await this.page.evaluate(() => document.querySelectorAll("[data-tm-target]").forEach((n) => n.removeAttribute("data-tm-target"))).catch(() => {});
     }
@@ -110,7 +112,8 @@ class WebRecorder {
     const vp = this.page.viewportSize();
     const point = { x: Math.round(xRatio * vp.width), y: Math.round(yRatio * vp.height) };
     const descriptor = await this.page.evaluate(ELEMENT_AT_POINT, point);
-    const selector = descriptor ? await this._resolveSelector(descriptor, point) : null;
+    const resolved = descriptor ? await this._resolveSelector(descriptor, point) : { selector: null, fragile: true };
+    const selector = resolved.selector;
     // A native <select> popup is drawn by the browser, not the page, so it never
     // appears in the mirror. Hand the options to the tester to pick from instead.
     if (descriptor && descriptor.tag === "select" && selector) {
@@ -151,11 +154,11 @@ class WebRecorder {
       }
     }
     this._lastTap = descriptor && descriptor.editable ? { index, selector, descriptor } : null;
-    return { index, step, descriptor };
+    return { index, step, descriptor, fragile: resolved.fragile };
   }
 
   /** Types the FULL current value into the focused field (idempotent: replaces, never appends). */
-  async type(text) {
+  async type(text, { param } = {}) {
     const target = this._lastTap;
     if (!target) {
       const err = new Error("Click a field before typing into it — there's no focused field to type into yet.");
@@ -169,6 +172,7 @@ class WebRecorder {
     const existing = this.steps[target.index];
     if (existing && existing.kind === "type") {
       existing.text = text;
+      if (param) existing.param = param; else delete existing.param;
       return { index: target.index, step: existing };
     }
     const step = {
@@ -176,9 +180,20 @@ class WebRecorder {
       instruction: describeElement(target.descriptor, "Type into"),
       selector: target.selector,
       text,
+      ...(param ? { param } : {}),
     };
     this.steps[target.index] = step; // replaces the focusing click
     return { index: target.index, step };
+  }
+
+  /** Removes the last recorded action (and the "Landed on" assert that followed it, if any). */
+  undo() {
+    let removed = 0;
+    while (this.steps.length && this.steps[this.steps.length - 1].kind === "assert") { this.steps.pop(); removed += 1; }
+    if (this.steps.length) { this.steps.pop(); removed += 1; }
+    this._lastTap = null;
+    this._pendingSelect = null;
+    return removed;
   }
 
   /** Chooses an option (by visible label) in the <select> the tester last clicked. */

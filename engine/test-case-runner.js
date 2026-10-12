@@ -26,6 +26,7 @@ const { verifyExpectedOutcome, validateExpectShape } = require("../generation/ou
 const { logExecution } = require("../generation/execution-log");
 const { recordResolution } = require("./locator-store");
 const { buildTestResult } = require("./test-result");
+const { executeApiStep, validateApiStep } = require("./core/api-step");
 
 // Default pause for a "wait" step when the step doesn't specify its own
 // durationMs. Exists for a real timing gap found on real hardware
@@ -114,11 +115,16 @@ function loadTestCaseSteps(filePath) {
   if (!Array.isArray(steps)) {
     throw new Error(`test case file "${filePath}" must be a JSON array of steps, or an object with a "steps" array`);
   }
-  const VALID_KINDS = new Set(["tap", "type", "scroll", "wait", "tapIfExists"]);
+  const VALID_KINDS = new Set(["tap", "type", "scroll", "wait", "tapIfExists", "api"]);
   steps.forEach((step, i) => {
     if (!step || typeof step !== "object") throw new Error(`test case file "${filePath}": step ${i} is not an object`);
     if (!VALID_KINDS.has(step.kind)) {
-      throw new Error(`test case file "${filePath}": step ${i} has invalid "kind" (must be "tap", "type", "scroll", "wait", or "tapIfExists"): ${step.kind}`);
+      throw new Error(`test case file "${filePath}": step ${i} has invalid "kind" (must be "tap", "type", "scroll", "wait", "tapIfExists", or "api"): ${step.kind}`);
+    }
+    if (step.kind === "api") {
+      const problem = validateApiStep(step);
+      if (problem) throw new Error(`test case file "${filePath}": step ${i} ${problem}`);
+      return; // an api step is a plain HTTP call: no on-screen instruction needed
     }
     if (typeof step.instruction !== "string" || !step.instruction) {
       throw new Error(`test case file "${filePath}": step ${i} is missing a non-empty "instruction"`);
@@ -156,10 +162,12 @@ function loadTestCaseSteps(filePath) {
  * @param {{kind: string, text?: string}} step
  * @returns {string|undefined}
  */
-function resolveStepText(step) {
+function resolveStepText(step, vars = {}) {
   if (typeof step.text !== "string") return undefined;
   const match = ENV_PLACEHOLDER_RE.exec(step.text);
   if (!match) return step.text;
+  // Test data / values saved by an earlier API step win over the environment.
+  if (Object.prototype.hasOwnProperty.call(vars, match[1]) && vars[match[1]] !== undefined) return String(vars[match[1]]);
   const value = process.env[match[1]];
   if (typeof value !== "string" || value.length === 0) {
     throw new Error(`test case step references environment variable "${match[1]}", which is not set`);
@@ -265,7 +273,16 @@ function resolveSteps(steps) {
  */
 async function runScriptSteps(driver, steps, options) {
   const { platform, executeSemanticAction, sleepFn = defaultSleep } = options;
-  const resolvedSteps = steps.map((step) => ({ ...step, text: resolveStepText(step) }));
+  // Shared across the run: test data in, values saved by api steps out.
+  const vars = { ...(options.testData || {}) };
+  // A ${NAME} that an api step saves during the run can't be resolved up
+  // front: it is resolved when its own step runs.
+  const savedLater = new Set(steps.filter((s) => s.kind === "api").flatMap((s) => Object.keys(s.save || {})));
+  const deferred = (step) => {
+    const m = typeof step.text === "string" ? ENV_PLACEHOLDER_RE.exec(step.text) : null;
+    return Boolean(m && savedLater.has(m[1]));
+  };
+  const resolvedSteps = steps.map((step) => ({ ...step, text: deferred(step) ? step.text : resolveStepText(step, vars) }));
   // Carry the ORIGINAL (unresolved-text) steps forward for the
   // updatedSteps return value -- we must never write a resolved
   // "${PASSWORD}"-style secret's literal value back out to disk.
@@ -288,10 +305,22 @@ async function runScriptSteps(driver, steps, options) {
   });
   for (let i = 0; i < resolvedSteps.length; i += 1) {
     const step = resolvedSteps[i];
+    if (step.kind === "api") {
+      const r = await executeApiStep(step, { vars, baseUrl: options.apiBaseUrl, fetchFn: options.fetchFn });
+      const label = step.instruction || `${step.method || "GET"} ${step.url}`;
+      step.instruction = step.instruction || label;
+      if (r.ok) { logStep(i, { ...step, instruction: label }, "pass"); continue; }
+      logStep(i, { ...step, instruction: label }, "fail", r.reason);
+      return finish(false, `api step ${i + 1} "${label}" failed: ${r.reason}`);
+    }
     if (step.kind === "wait") {
       await sleepFn(typeof step.durationMs === "number" ? step.durationMs : DEFAULT_WAIT_MS);
       logStep(i, step, "pass");
       continue;
+    }
+    if (deferred(steps[i])) {
+      try { step.text = resolveStepText(steps[i], vars); }
+      catch (err) { logStep(i, step, "fail", err.message); return finish(false, `step ${i + 1} "${step.instruction}" failed: ${err.message}`); }
     }
     const result = await executeSemanticAction(driver, step.instruction, {
       kind: step.kind,

@@ -531,6 +531,43 @@ async function main() {
     });
   });
 
+  await testAsync("undo drops the last step; a test-data NAME is kept as typedParam; an api step records and is skipped by type", async () => {
+    const driver = makeFakeDriver();
+    const recorder = makeFakeRecorder();
+    const port = 18090 + Math.floor(Math.random() * 1000);
+    const http = require("http");
+    const api = http.createServer((q, r) => { r.writeHead(200, { "Content-Type": "application/json" }); r.end(JSON.stringify({ id: "A7" })); });
+    await new Promise((r) => api.listen(0, r));
+    const wss = startLiveView(driver, recorder, port);
+    try {
+      const socket = await connect(port);
+      await nextMessageOfType(socket, "frame");
+      let rec = nextMessageOfType(socket, "step-recorded");
+      socket.send(JSON.stringify({ type: "tap", xRatio: 0.5, yRatio: 0.2 }));
+      await rec;
+      const typed = nextMessageOfType(socket, "text-entered");
+      socket.send(JSON.stringify({ type: "type", value: "bob", param: "USERNAME" }));
+      assert.strictEqual((await typed).stepIndex, 0);
+      assert.strictEqual(recorder.steps[0].typedParam, "USERNAME");
+      const res = nextMessageOfType(socket, "api-result");
+      socket.send(JSON.stringify({ type: "api", record: true, spec: { url: `http://127.0.0.1:${api.address().port}/o`, expect: { json: [{ path: "$.id", exists: true }] }, save: { ORDER_ID: "$.id" } } }));
+      const r1 = await res;
+      assert.strictEqual(r1.ok, true);
+      assert.strictEqual(r1.recorded, true);
+      assert.strictEqual(recorder.steps[1].kind, "api");
+      // typing again still attaches to the field, not the api step
+      const again = nextMessageOfType(socket, "text-entered");
+      socket.send(JSON.stringify({ type: "type", value: "bobby" }));
+      assert.strictEqual((await again).stepIndex, 0);
+      assert.strictEqual(recorder.steps[0].typedParam, undefined);
+      const undone = nextMessageOfType(socket, "step-undone");
+      socket.send(JSON.stringify({ type: "undo" }));
+      assert.strictEqual((await undone).stepCount, 1);
+      assert.deepStrictEqual(recorder.steps.map((x) => x.kind), [undefined]);
+      socket.close();
+    } finally { wss.close(); api.close(); }
+  });
+
   if (process.exitCode) {
     console.error("\nlive-view/server tests FAILED");
     process.exit(1);

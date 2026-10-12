@@ -520,3 +520,31 @@ setImmediate(() => {
     console.log("\ngeneration/pipeline tests passed");
   }
 });
+
+(async () => {
+  // An api step in a mobile flow: emitted as fetch + expects, saves a value, UI inference ignores it.
+  const uiStep = (label) => ({
+    kind: "tap", pageSourceBefore: LOGIN_SCREEN, pageSourceAfter: AFTER_LOGIN_SCREEN,
+    resolvedElement: { strategy: "resource-id", value: "com.testopsmobile.demo:id/login_button", text: label },
+  });
+  const steps = [
+    { ...uiStep("Log In"), typedValue: "bob", typedParam: "USERNAME" },
+    { kind: "api", instruction: "Order exists", method: "GET", url: "https://api.example.com/orders/1", expect: { status: 200, json: [{ path: "$.status", equals: "PAID" }] }, save: { ORDER_ID: "$.id" } },
+    { kind: "api", method: "POST", url: "https://api.example.com/x/${ORDER_ID}", body: { a: 1 } },
+  ];
+  const out = await generateScript(steps);
+  const src = out.scriptSource;
+  assert.ok(src.includes('const USERNAME = "bob";'), src);
+  assert.ok(src.includes("let ORDER_ID;"));
+  assert.ok(src.includes("expect(res.status).toBe(200);"));
+  assert.ok(src.includes('expect(readPath(body, "$.status")).toEqual("PAID");'));
+  assert.ok(src.includes("ORDER_ID = readPath(body"));
+  assert.ok(src.includes("https://api.example.com/x/${ORDER_ID}"));
+  assert.ok(src.includes('"Content-Type": "application/json"'));
+  assert.doesNotThrow(() => new Function("return async () => {" + src.replace(/^describe[\s\S]*$/m, "") + "}"), "helper and declarations are valid JS");
+  assert.deepStrictEqual(out.parameters.map((p) => p.name), ["USERNAME"]);
+  // an api step first must not break name/assertion inference
+  const apiFirst = await generateScript([steps[1], uiStep("Log In")]);
+  assert.ok(apiFirst.testName && apiFirst.testName !== "untitled_recorded_flow", apiFirst.testName);
+  console.log("  ok - mobile api steps: generated fetch block, saved vars, named test-data params");
+})().catch((e) => { console.error("  FAIL -", e.stack); process.exit(1); });

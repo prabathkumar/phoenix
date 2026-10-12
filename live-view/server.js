@@ -16,6 +16,7 @@
  */
 
 const { WebSocketServer } = require("ws");
+const { executeApiStep, validateApiStep } = require("../engine/core/api-step");
 
 const SCREENSHOT_POLL_INTERVAL_MS = 300;
 
@@ -60,6 +61,7 @@ function startLiveView(driver, recorder, port = 8090, platform = "android") {
     // (it leaves out the navigation bar), so every tap landed ~8% too high and
     // LOGIN could be clicked forever without hitting it.
     let frameSize = null;
+    let testData = {}; // named values the tester brought; api steps use them as ${NAME}
     const pollTimer = setInterval(async () => {
       if (stopped || pollInFlight) return;
       pollInFlight = true;
@@ -217,7 +219,7 @@ function startLiveView(driver, recorder, port = 8090, platform = "android") {
         // a field and typing into it is fine -- the field stays focused.
         let currentStep;
         for (let i = recorder.steps.length - 1; i >= 0; i -= 1) {
-          if (recorder.steps[i].kind !== "scroll") { currentStep = recorder.steps[i]; break; }
+          if (recorder.steps[i].kind !== "scroll" && recorder.steps[i].kind !== "api") { currentStep = recorder.steps[i]; break; }
         }
         if (!currentStep) {
           socket.send(JSON.stringify({
@@ -307,7 +309,44 @@ function startLiveView(driver, recorder, port = 8090, platform = "android") {
           await driver.keys(message.value);
         }
         currentStep.typedValue = message.value;
-        socket.send(JSON.stringify({ type: "text-entered", stepIndex: recorder.steps.length - 1 }));
+        // A value picked from the tester's test data keeps its NAME, so the
+        // generated script's parameter is called USERNAME, not field_3.
+        if (message.param) currentStep.typedParam = String(message.param);
+        else delete currentStep.typedParam;
+        socket.send(JSON.stringify({ type: "text-entered", stepIndex: recorder.steps.indexOf(currentStep) }));
+      }
+
+      if (message.type === "test-data") {
+        testData = { ...testData, ...(message.data && typeof message.data === "object" ? message.data : {}) };
+      }
+
+      if (message.type === "undo") {
+        // Drops the last recorded step (the same operation the web recorder has).
+        let removed = 0;
+        if (recorder.steps.length) { recorder.steps.pop(); removed = 1; }
+        socket.send(JSON.stringify({ type: "step-undone", removed, stepCount: recorder.steps.length }));
+      }
+
+      if (message.type === "api") {
+        // An API call made from inside the flow (e.g. check the database
+        // changed). Runs now, shows the response, records as a step when asked.
+        const spec = { kind: "api", ...(message.spec || {}) };
+        const problem = validateApiStep(spec);
+        if (problem) {
+          socket.send(JSON.stringify({ type: "api-result", ok: false, reason: `api step ${problem}`, recorded: false }));
+          return;
+        }
+        const result = await executeApiStep(spec, { vars: testData });
+        let recordedIndex;
+        if (message.record && (result.ok || message.force)) {
+          if (!spec.instruction) spec.instruction = `${spec.method || "GET"} ${spec.url}`;
+          recorder.steps.push(spec);
+          recordedIndex = recorder.steps.length - 1;
+        }
+        socket.send(JSON.stringify({
+          type: "api-result", ok: result.ok, reason: result.reason, status: result.status, durationMs: result.durationMs,
+          response: result.response, saved: result.saved, recorded: recordedIndex !== undefined, stepIndex: recordedIndex,
+        }));
       }
 
       if (message.type === "stop") {

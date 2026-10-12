@@ -20,6 +20,7 @@
  * of `testName`/`assertions` before synthesizeCode() renders them.
  */
 
+const { apiStepLines, API_HELPERS, savedNames } = require("./api-codegen");
 const { DOMParser } = require("@xmldom/xmldom");
 const crypto = require("crypto");
 
@@ -192,6 +193,7 @@ const MASKED_VALUE_RE = /^[•*●·]+$/;
  * rather than just the starting screen's title.
  */
 function inferTestName(steps) {
+  steps = steps.filter((s) => s.kind !== "api");
   if (steps.length === 0) return "untitled_recorded_flow";
 
   // Prefer a real on-screen TEXT over a content-desc: the first content-desc
@@ -244,13 +246,15 @@ function inferAssertions(steps) {
   // value back (and would write a real password into the script).
   const typedValues = new Set(steps.filter((s) => s.typedValue !== undefined && s.typedValue !== null).map((s) => String(s.typedValue)));
   const assertions = [];
-  if (steps.length === 0) return assertions;
+  const firstUi = steps.find((s) => s.kind !== "api");
+  if (!firstUi) return assertions;
 
   // Seeded from the very first screen the session shows, so nothing
   // visible before the flow even starts is later mistaken for "new".
-  const seen = new Set(extractLabels(steps[0].pageSourceBefore).map(labelKey));
+  const seen = new Set(extractLabels(firstUi.pageSourceBefore).map(labelKey));
 
   steps.forEach((step, index) => {
+    if (step.kind === "api") return; // an HTTP call shows nothing on screen
     const after = extractLabels(step.pageSourceAfter);
     const appeared = after.filter((l) => !seen.has(labelKey(l)));
 
@@ -332,6 +336,7 @@ function inferVisualChangeFlags(steps, assertions) {
   const flags = [];
 
   steps.forEach((step, index) => {
+    if (step.kind === "api") return;
     if (assertedSteps.has(index)) return; // already has a real, locator-based assertion
 
     const afterLabels = extractLabels(step.pageSourceAfter);
@@ -364,6 +369,10 @@ function extractParameters(steps) {
     if (step.typedValue === undefined || step.typedValue === null) return;
 
     const el = step.resolvedElement || {};
+    if (step.typedParam) {
+      parameters.push({ stepIndex: index, name: String(step.typedParam), value: step.typedValue });
+      return;
+    }
     const rawName = el.resourceId || el.accessibilityId || el.text || `field_${index}`;
     const name = String(rawName)
       .split("/")
@@ -524,11 +533,26 @@ function synthesizeCode(steps, meta) {
     lines.push("");
   }
 
+  const apiSteps = steps.filter((s) => s.kind === "api");
+  const saved = savedNames(steps);
+  const known = new Set([...parameters.map((p) => toIdentifier(p.name)), ...saved]);
+  if (apiSteps.length > 0) {
+    lines.push("// API steps call an endpoint from inside the flow (e.g. to confirm the database changed).");
+    lines.push(API_HELPERS, "");
+    for (const n of saved) lines.push(`let ${n}; // saved by an API step`);
+    if (saved.length) lines.push("");
+  }
+
   lines.push(`describe("${testName}", () => {`);
   lines.push(`  it("${fnName}", async () => {`);
 
   steps.forEach((step, index) => {
     lines.push(`    // Step ${index + 1}`);
+    if (step.kind === "api") {
+      lines.push(...apiStepLines(step, known));
+      lines.push("");
+      return;
+    }
     const selector = buildSelector(step.resolvedElement, platform);
     const param = paramsByStep.get(index);
 

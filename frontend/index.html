@@ -294,10 +294,44 @@
     color: var(--muted);
     display: none;
   }
+
+  /* ---- unified Web / Mobile start screen, browser bar, guided cards ---- */
+  .upload-card { max-width: 520px; text-align: left; }
+  .upload-card h2, .upload-card p.hint { text-align: center; }
+  .platform-tabs { display: flex; gap: 8px; margin-bottom: 18px; }
+  .platform-tabs button { flex: 1; background: var(--bg); color: var(--muted); border: 1px solid var(--border); padding: 11px; }
+  .platform-tabs button.active { color: var(--text); border-color: var(--accent); background: rgba(255,90,54,0.08); }
+  .field-label { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 16px 0 6px; }
+  .td-row { display: flex; gap: 8px; margin-bottom: 6px; }
+  .td-row input { flex: 1; min-width: 0; }
+  .td-row input.td-name { flex: 0 0 38%; font-family: var(--mono); }
+  .td-row button { padding: 6px 10px; }
+  .small-hint { color: var(--muted); font-size: 12px; margin: 4px 0 0; }
+  .browser-bar { display: none; width: 100%; max-width: 1100px; gap: 6px; margin-bottom: 8px; }
+  .browser-bar input { flex: 1; }
+  .device-frame.web { border-radius: 10px; border-width: 4px; }
+  .device-frame.web img { min-height: 0; max-height: calc(100vh - 150px); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { background: var(--bg); border: 1px solid var(--border); color: var(--text); font-family: var(--mono); font-size: 12px; padding: 4px 8px; border-radius: 999px; }
+  .guide { display: none; margin: 12px 20px 0; padding: 12px 14px; border: 1px solid var(--accent-dim); border-left: 4px solid var(--accent); background: rgba(255,90,54,0.07); border-radius: 10px; font-size: 13px; }
+  .guide.show { display: block; }
+  .guide b { display: block; margin-bottom: 4px; }
+  .guide .why { color: var(--muted); margin-bottom: 8px; }
+  .guide .acts { display: flex; flex-wrap: wrap; gap: 6px; }
+  .guide code { background: var(--panel); padding: 2px 6px; border-radius: 4px; font-family: var(--mono); font-size: 12px; word-break: break-all; }
+  details.api-panel { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--panel); }
+  details.api-panel summary { cursor: pointer; font-size: 13px; font-weight: 600; }
+  .api-grid { display: grid; gap: 6px; margin-top: 8px; }
+  .api-grid textarea, .api-grid select { background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 8px; font-size: 12.5px; font-family: var(--mono); }
+  .api-row { display: flex; gap: 6px; }
+  .api-row input, .api-row select { min-width: 0; }
+  #api-result { font-family: var(--mono); font-size: 12px; white-space: pre-wrap; max-height: 160px; overflow: auto; margin-top: 6px; }
+  .ok-text { color: var(--ok); } .bad-text { color: var(--danger); }
+  .step-row.fragile .step-detail::after { content: " (fragile)"; color: var(--accent); }
+  .layer { font-size: 11px; color: var(--muted); margin-left: auto; padding-left: 8px; }
 </style>
 </head>
 <body>
-
 <header>
   <h1><span>TestOps ai-automate</span> — Record a flow</h1>
   <div class="status">
@@ -305,46 +339,95 @@
     <span id="conn-label">Not connected</span>
   </div>
 </header>
-
 <section class="upload-screen" id="upload-screen">
   <div class="upload-card">
-    <h2>Upload the app to test</h2>
-    <p class="hint">A .apk (Android) or .ipa (iOS) build — TestOps ai-automate uploads it to BrowserStack (or your local Appium host) and starts a session against it.</p>
-    <label class="drop-zone" id="drop-zone" for="app-file-input">
-      <div class="icon">📱</div>
-      <div id="drop-zone-label">Click to choose a file, or drag one here</div>
-      <div class="filename" id="selected-filename"></div>
-      <input type="file" id="app-file-input" accept=".apk,.ipa" />
-    </label>
+    <h2>What are you testing?</h2>
+    <p class="hint">Pick the platform, give it the test data your flow needs, and record by using the app. Both platforms work the same way from here.</p>
+    <div class="platform-tabs">
+      <button class="active" id="tab-web" data-platform="web">🌐 Web</button>
+      <button id="tab-mobile" data-platform="mobile">📱 Mobile</button>
+    </div>
+    <div id="web-panel">
+      <label class="field-label" for="web-url">Start URL</label>
+      <input type="text" id="web-url" placeholder="https://yes.my" style="width:100%" />
+      <p class="small-hint">Opens in a Chromium browser on this machine. No device cost.</p>
+    </div>
+    <div id="mobile-panel" style="display:none;">
+      <label class="drop-zone" id="drop-zone" for="app-file-input">
+        <div class="icon">📱</div>
+        <div id="drop-zone-label">Load an .ipa (iOS) or .apk (Android) — click to choose, or drag it here</div>
+        <div class="filename" id="selected-filename"></div>
+        <input type="file" id="app-file-input" accept=".apk,.ipa" />
+      </label>
+      <p class="small-hint">Uploaded to BrowserStack (or your local Appium host) and started as a session.</p>
+    </div>
+    <span class="field-label">Test data (optional)</span>
+    <div id="td-rows"></div>
+    <button class="btn-secondary" id="td-add" type="button">+ Add a value</button>
+    <p class="small-hint">Named values you can use while recording (e.g. USERNAME, PASSWORD). Typed values become parameters in the generated script.</p>
     <button class="btn-primary" id="upload-start-btn" disabled>Start recording session</button>
     <div id="upload-error"></div>
     <div id="upload-status"></div>
   </div>
 </section>
-
 <main style="display:none;" id="recorder-main">
   <section class="device-pane">
+    <div class="browser-bar" id="browser-bar">
+      <input type="text" id="nav-url" placeholder="Go to URL" />
+      <button class="btn-secondary" id="nav-go">Go</button>
+      <button class="btn-secondary" id="press-enter-btn" title="Press Enter in the focused field">Enter &#8629;</button>
+    </div>
     <div class="device-frame" id="device-frame">
       <div class="placeholder" id="placeholder">Waiting for the device...</div>
     </div>
-
   </section>
-
   <section class="side-pane">
+    <div class="guide" id="guide"></div>
     <div class="controls">
       <div class="type-row">
         <input type="text" id="type-input" placeholder="Type into the focused field, then press Enter" />
         <button class="btn-secondary" id="type-btn">Type</button>
       </div>
+      <div class="chips" id="td-chips"></div>
       <div class="type-row">
-        <button class="btn-secondary" id="scroll-up-btn" title="Scroll the app up (see content above)">&#9650; Scroll up</button>
-        <button class="btn-secondary" id="scroll-down-btn" title="Scroll the app down (see content below)">&#9660; Scroll down</button>
+        <button class="btn-secondary" id="scroll-up-btn" title="Scroll up (see content above)">&#9650; Scroll up</button>
+        <button class="btn-secondary" id="scroll-down-btn" title="Scroll down (see content below)">&#9660; Scroll down</button>
+        <button class="btn-secondary" id="undo-btn" title="Remove the last recorded step">&#8630; Undo</button>
       </div>
+      <div class="type-row" id="ask-ai-row" style="display:none;">
+        <input type="text" id="ai-goal" placeholder="Ask AI to do it, e.g. “sign in and open the dashboard”" />
+        <button class="btn-secondary" id="ai-btn">Ask AI</button>
+      </div>
+      <details class="api-panel" id="api-panel">
+        <summary>Add API check (e.g. confirm the database changed)</summary>
+        <div class="api-grid">
+          <div class="api-row">
+            <select id="api-method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select>
+            <input type="text" id="api-url" placeholder="https://api.example.com/orders/${ORDER_ID}" style="flex:1" />
+          </div>
+          <textarea id="api-headers" rows="2" placeholder="Headers, one per line:&#10;Authorization: Bearer ${API_TOKEN}"></textarea>
+          <textarea id="api-body" rows="2" placeholder="Body (JSON or text, optional)"></textarea>
+          <div class="api-row">
+            <input type="text" id="api-status" placeholder="status (200)" style="width:90px" />
+            <input type="text" id="api-path" placeholder="$.status" style="flex:1" />
+            <input type="text" id="api-equals" placeholder="equals PAID" style="flex:1" />
+          </div>
+          <div class="api-row">
+            <input type="text" id="api-save-name" placeholder="save as NAME" style="flex:0 0 38%" />
+            <input type="text" id="api-save-path" placeholder="$.id" style="flex:1" />
+          </div>
+          <div class="api-row">
+            <button class="btn-secondary" id="api-run">Run</button>
+            <button class="btn-primary" id="api-record">Run &amp; record step</button>
+          </div>
+          <div id="api-result"></div>
+        </div>
+      </details>
       <button class="btn-danger" id="stop-btn" disabled>Stop &amp; Generate Script</button>
     </div>
     <div class="steps-panel">
       <h2>Recorded steps</h2>
-      <div id="steps-list"><p class="empty-hint">Tap the device above to start recording.</p></div>
+      <div id="steps-list"><p class="empty-hint">Click the screen above to start recording.</p></div>
     </div>
     <div class="script-panel">
       <div class="script-panel-header">
@@ -355,28 +438,61 @@
     </div>
   </section>
 </main>
-
 <script>
 (function () {
   const params = new URLSearchParams(location.search);
   const host = params.get("host") || "localhost"; // override with ?host=... to point at a tunnel (e.g. ngrok) instead of your own machine
+  let platform = params.get("platform") === "mobile" ? "mobile" : "web";
+  const $ = (id) => document.getElementById(id);
+  const uploadScreen = $("upload-screen"), recorderMain = $("recorder-main");
+  const dropZone = $("drop-zone"), dropZoneLabel = $("drop-zone-label"), fileInput = $("app-file-input");
+  const selectedFilename = $("selected-filename"), uploadStartBtn = $("upload-start-btn");
+  const uploadError = $("upload-error"), uploadStatus = $("upload-status"), webUrl = $("web-url");
 
-  const uploadScreen = document.getElementById("upload-screen");
-  const recorderMain = document.getElementById("recorder-main");
-  const dropZone = document.getElementById("drop-zone");
-  const dropZoneLabel = document.getElementById("drop-zone-label");
-  const fileInput = document.getElementById("app-file-input");
-  const selectedFilename = document.getElementById("selected-filename");
-  const uploadStartBtn = document.getElementById("upload-start-btn");
-  const uploadError = document.getElementById("upload-error");
-  const uploadStatus = document.getElementById("upload-status");
-  const connLabel0 = document.getElementById("conn-label");
+  // ---- test data editor ----
+  const tdRows = $("td-rows");
+  function addTdRow(name, value) {
+    const row = document.createElement("div");
+    row.className = "td-row";
+    row.innerHTML = '<input type="text" class="td-name" placeholder="NAME" /><input type="text" class="td-value" placeholder="value" /><button class="btn-secondary" type="button" title="Remove">&times;</button>';
+    row.querySelector(".td-name").value = name || "";
+    row.querySelector(".td-value").value = value || "";
+    row.querySelector("button").addEventListener("click", () => row.remove());
+    tdRows.appendChild(row);
+  }
+  $("td-add").addEventListener("click", () => addTdRow());
+  function collectTestData() {
+    const data = {};
+    tdRows.querySelectorAll(".td-row").forEach((row) => {
+      const name = row.querySelector(".td-name").value.trim().toUpperCase().replace(/[^A-Z0-9_]/g, "_");
+      const value = row.querySelector(".td-value").value;
+      if (name && value !== "") data[name] = value;
+    });
+    return data;
+  }
 
-  // Legacy path: run-session.js already started a session at boot the
-  // old (env-var-configured) way, and this page was opened with
-  // ?port=<its live-view port> — skip the upload screen and connect
-  // straight to it, exactly as before the upload flow existed.
+  // ---- platform switch ----
+  function setPlatform(p) {
+    platform = p;
+    $("tab-web").classList.toggle("active", p === "web");
+    $("tab-mobile").classList.toggle("active", p === "mobile");
+    $("web-panel").style.display = p === "web" ? "block" : "none";
+    $("mobile-panel").style.display = p === "mobile" ? "block" : "none";
+    $("upload-start-btn").textContent = p === "web" ? "Open browser and start recording" : "Start recording session";
+    refreshStartEnabled();
+  }
+  function refreshStartEnabled() {
+    uploadStartBtn.disabled = platform === "web" ? !webUrl.value.trim() : !fileInput.files[0];
+  }
+  $("tab-web").addEventListener("click", () => setPlatform("web"));
+  $("tab-mobile").addEventListener("click", () => setPlatform("mobile"));
+  webUrl.addEventListener("input", refreshStartEnabled);
+  webUrl.addEventListener("keydown", (e) => { if (e.key === "Enter" && !uploadStartBtn.disabled) start(); });
+
+  // Legacy path: a session was already started at boot (run-session.js /
+  // run-web-session) and this page was opened with ?port=<live-view port>.
   if (params.get("port")) {
+    platform = params.get("platform") === "web" ? "web" : "mobile";
     connectAndRecord(params.get("port"));
     return;
   }
@@ -386,193 +502,249 @@
     if (!file) return;
     selectedFilename.textContent = file.name;
     dropZoneLabel.textContent = "Selected:";
-    uploadStartBtn.disabled = false;
     uploadError.style.display = "none";
+    refreshStartEnabled();
   });
-
   ["dragover", "dragleave", "drop"].forEach((evt) => {
-    dropZone.addEventListener(evt, (e) => {
-      e.preventDefault();
-      dropZone.classList.toggle("dragover", evt === "dragover");
-    });
+    dropZone.addEventListener(evt, (e) => { e.preventDefault(); dropZone.classList.toggle("dragover", evt === "dragover"); });
   });
   dropZone.addEventListener("drop", (e) => {
-    const file = e.dataTransfer.files[0];
-    if (!file) return;
+    if (!e.dataTransfer.files[0]) return;
     fileInput.files = e.dataTransfer.files;
     fileInput.dispatchEvent(new Event("change"));
   });
+  uploadStartBtn.addEventListener("click", start);
+  setPlatform(platform);
 
-  uploadStartBtn.addEventListener("click", startSessionFromUpload);
+  function showStartFailure(err) {
+    // A guided card instead of a bare error line: what happened, why, what to do.
+    uploadStatus.style.display = "none";
+    uploadError.style.display = "block";
+    uploadError.innerHTML = "";
+    const g = window.guidedStartFailure(err.message || String(err), platform);
+    const card = document.createElement("div");
+    card.className = "guide show";
+    card.style.margin = "0";
+    card.innerHTML = "<b>" + escapeHtml(g.title) + '</b><div class="why">' + escapeHtml(g.why) + "</div>" +
+      (g.command ? "<div><code>" + escapeHtml(g.command) + '</code></div><div class="acts" style="margin-top:8px"><button class="btn-secondary" data-copy>Copy command</button><button class="btn-primary" data-retry>Try again</button></div>' : '<div class="acts"><button class="btn-primary" data-retry>Try again</button></div>');
+    const copy = card.querySelector("[data-copy]");
+    if (copy) copy.addEventListener("click", () => { navigator.clipboard.writeText(g.command); copy.textContent = "Copied!"; });
+    card.querySelector("[data-retry]").addEventListener("click", () => { uploadError.style.display = "none"; start(); });
+    uploadError.appendChild(card);
+    uploadStartBtn.disabled = false;
+    fileInput.disabled = false;
+  }
+  function escapeHtml(str) { const d = document.createElement("div"); d.textContent = str; return d.innerHTML; }
 
-  async function startSessionFromUpload() {
-    const file = fileInput.files[0];
-    if (!file) return;
-
+  async function start() {
     uploadStartBtn.disabled = true;
-    fileInput.disabled = true;
     uploadError.style.display = "none";
     uploadStatus.style.display = "block";
-    uploadStatus.textContent = "Uploading " + file.name + " and starting a session — this can take a minute for a large build...";
-
     try {
-      const formData = new FormData();
-      formData.append("app", file);
-
-      const response = await fetch("/api/sessions", { method: "POST", body: formData });
-      const body = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        throw new Error(body.error || ("Upload failed (HTTP " + response.status + ")"));
+      let response, body;
+      if (platform === "web") {
+        uploadStatus.textContent = "Opening a browser on " + webUrl.value.trim() + "…";
+        response = await fetch("/api/web-sessions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: webUrl.value.trim() }) });
+      } else {
+        const file = fileInput.files[0];
+        if (!file) return;
+        fileInput.disabled = true;
+        uploadStatus.textContent = "Uploading " + file.name + " and starting a session — this can take a minute for a large build...";
+        const formData = new FormData();
+        formData.append("app", file);
+        response = await fetch("/api/sessions", { method: "POST", body: formData });
       }
-
-      uploadStatus.textContent = "Session started (" + body.platform + ") — connecting...";
-      uploadScreen.style.display = "none";
-      recorderMain.style.display = "flex";
-      connectAndRecord(body.port);
+      body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || ("Could not start (HTTP " + response.status + ")"));
+      uploadStatus.textContent = "Session started — connecting...";
+      connectAndRecord(body.port, { testData: collectTestData() });
     } catch (err) {
-      uploadError.textContent = err.message;
-      uploadError.style.display = "block";
-      uploadStatus.style.display = "none";
-      uploadStartBtn.disabled = false;
-      fileInput.disabled = false;
+      showStartFailure(err);
     }
   }
-
-  function connectAndRecord(port) {
+  function connectAndRecord(port, options) {
     uploadScreen.style.display = "none";
     recorderMain.style.display = "flex";
-    runRecorder(host, port);
+    runRecorder(host, port, Object.assign({ platform }, options || {}));
   }
 })();
 
-function runRecorder(host, port) {
+// Turns a start failure into a plain-language card with the next step.
+window.guidedStartFailure = function (message, platform) {
+  const m = String(message);
+  if (/executable doesn't exist|chromium|browserType\.launch|playwright install/i.test(m)) {
+    return { title: "The browser isn't installed on the machine running TestOps", why: "Web recording needs Chromium. Install it once, then try again.", command: "cd " + "web && npx playwright install chromium" };
+  }
+  if (/fetch failed|ECONNREFUSED|ENOTFOUND/i.test(m)) {
+    return { title: "The recorder server couldn't be reached", why: "Make sure the TestOps frontend server is still running, and that this page was opened from it.", command: "cd frontend && node server.js" };
+  }
+  if (/EADDRINUSE/i.test(m)) {
+    return { title: "That port is already in use", why: "An older recorder is still running. Stop it and try again.", command: "lsof -ti :8091 | xargs kill -9" };
+  }
+  if (/browserstack|credentials|unauthorized|401/i.test(m)) {
+    return { title: "BrowserStack didn't accept the credentials", why: "Check BROWSERSTACK_USERNAME and BROWSERSTACK_ACCESS_KEY in the environment the server was started from.", command: "" };
+  }
+  return { title: platform === "web" ? "Couldn't open that page" : "Couldn't start the session", why: m, command: "" };
+};
+
+function runRecorder(host, port, options) {
+  options = options || {};
+  const platform = options.platform || "mobile";
+  const testData = options.testData || {};
   const wsUrl = "ws://" + host + ":" + port;
-
-  const connDot = document.getElementById("conn-dot");
-  const connLabel = document.getElementById("conn-label");
-  const deviceFrame = document.getElementById("device-frame");
-  const placeholder = document.getElementById("placeholder");
-  const stopBtn = document.getElementById("stop-btn");
-  const typeInput = document.getElementById("type-input");
-  const typeBtn = document.getElementById("type-btn");
-  const stepsList = document.getElementById("steps-list");
-  const scriptOutput = document.getElementById("script-output");
-  const copyBtn = document.getElementById("copy-btn");
-  const scrollUpBtn = document.getElementById("scroll-up-btn");
-  const scrollDownBtn = document.getElementById("scroll-down-btn");
-
+  const $ = (id) => document.getElementById(id);
+  const connDot = $("conn-dot"), connLabel = $("conn-label"), deviceFrame = $("device-frame"), placeholder = $("placeholder");
+  const stopBtn = $("stop-btn"), typeInput = $("type-input"), typeBtn = $("type-btn"), stepsList = $("steps-list");
+  const scriptOutput = $("script-output"), copyBtn = $("copy-btn"), scrollUpBtn = $("scroll-up-btn"), scrollDownBtn = $("scroll-down-btn");
+  const guide = $("guide"), undoBtn = $("undo-btn");
   let img = null;
   let lastScrollAt = 0;
-  let stepCount = 0;
   let stopped = false;
+  let lastTap = null;
+  const rows = []; // rows[stepIndex] -> DOM row
+
+  if (platform === "web") {
+    deviceFrame.classList.add("web");
+    $("browser-bar").style.display = "flex";
+    $("ask-ai-row").style.display = "flex";
+    placeholder.textContent = "Opening the page…";
+  }
 
   const socket = new WebSocket(wsUrl);
-
   function setConnected(connected, label) {
     connDot.classList.toggle("connected", connected);
     connLabel.textContent = label;
   }
+  function send(message) {
+    if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
+  }
+
+  // ---- guided cards: what happened, why, and buttons for the next step ----
+  function showGuide(title, why, actions) {
+    guide.innerHTML = "";
+    const b = document.createElement("b"); b.textContent = title; guide.appendChild(b);
+    if (why) { const w = document.createElement("div"); w.className = "why"; w.textContent = why; guide.appendChild(w); }
+    const acts = document.createElement("div"); acts.className = "acts";
+    (actions || []).concat([{ label: "Dismiss", run: null }]).forEach((a) => {
+      const btn = document.createElement("button");
+      btn.className = a.primary ? "btn-primary" : "btn-secondary";
+      btn.textContent = a.label;
+      btn.addEventListener("click", () => { hideGuide(); if (a.run) a.run(); });
+      acts.appendChild(btn);
+    });
+    guide.appendChild(acts);
+    guide.classList.add("show");
+  }
+  function hideGuide() { guide.classList.remove("show"); guide.innerHTML = ""; }
+  function retryTap() { if (lastTap) send({ type: "tap", xRatio: lastTap.xRatio, yRatio: lastTap.yRatio }); }
+  function askAiAbout(text) { if (platform === "web") { const box = $("ai-goal"); box.value = text; box.focus(); } }
 
   socket.addEventListener("open", () => {
     setConnected(true, "Connected — waiting for the first frame");
+    if (Object.keys(testData).length) send({ type: "test-data", data: testData });
+    renderChips();
   });
-
   socket.addEventListener("close", () => {
     setConnected(false, stopped ? "Session finished" : "Disconnected");
     stopBtn.disabled = true;
+    if (!stopped) showGuide("The recording session ended", "The browser or device closed, or the server was restarted. Steps recorded so far were not saved.", [{ label: "Start a new session", primary: true, run: () => location.reload() }]);
   });
-
   socket.addEventListener("error", () => {
-    setConnected(false, "Connection error — is run-session.js running on port " + port + "?");
+    setConnected(false, "Connection error — is the recorder server running on port " + port + "?");
   });
 
   socket.addEventListener("message", (event) => {
     const message = JSON.parse(event.data);
-
     if (message.type === "frame") {
-      renderFrame(message.screenshotBase64);
+      renderFrame(message.screenshotBase64, message.mime);
       setConnected(true, "Live");
       stopBtn.disabled = false;
     }
-
+    if (message.type === "page") {
+      if (message.url && document.activeElement !== $("nav-url")) $("nav-url").value = message.url;
+    }
     if (message.type === "step-recorded") {
-      stepCount = message.stepIndex + 1;
-      addStepRow(stepCount, "tap", describeElement(message.resolvedElement));
+      hideGuide();
+      const kind = message.kind || "tap";
+      const row = addStepRow(message.stepIndex, kind, stepText(kind, message), message.fragile);
+      if (message.fragile) {
+        showGuide("That locator is fragile", "No stable name, label or id was found for what you clicked, so the step relies on its position on the page and may break when the page changes.", [
+          { label: "Keep it", run: null },
+          { label: "Undo this step", run: () => send({ type: "undo" }) },
+          { label: "Ask AI to find a better one", run: () => askAiAbout("Click " + (message.resolvedElement && message.resolvedElement.text || "the same element")) },
+        ]);
+      }
+      return row;
     }
-
-    if (message.type === "scroll-recorded") {
-      stepCount = message.stepIndex + 1;
-      addStepRow(0, "scroll", message.direction);
-    }
-
+    if (message.type === "scroll-recorded") addStepRow(message.stepIndex, "scroll", message.direction);
     if (message.type === "text-entered") {
-      addStepRow(0, "type", typeInput.value);
+      addStepRow(message.stepIndex, "type", typeInput.value);
       typeInput.value = "";
     }
-
-    if (message.type === "session-finished") {
-      setConnected(true, "Generating script…");
-      stopBtn.disabled = true;
+    if (message.type === "step-undone") {
+      for (let i = 0; i < (message.removed || 0); i++) { const r = rows.pop(); if (r) r.remove(); }
+      if (!rows.length) stepsList.innerHTML = '<p class="empty-hint">Click the screen above to start recording.</p>';
     }
-
+    if (message.type === "select-options") {
+      showGuide("Choose an option for “" + (message.instruction || "the dropdown") + "”", "Dropdowns can't be clicked through in the mirrored page, so pick the value here.",
+        (message.options || []).slice(0, 12).map((o) => ({ label: o.label, run: () => send({ type: "select", label: o.label }) })));
+    }
+    if (message.type === "api-result") showApiResult(message);
+    if (message.type === "session-finished") { setConnected(true, "Generating script…"); stopBtn.disabled = true; }
     if (message.type === "script-generated") {
       stopped = true;
       scriptOutput.textContent = message.scriptSource;
       copyBtn.style.display = "inline-block";
       setConnected(true, "Done — \"" + message.testName + "\" (" + message.assertionCount + " assertion(s))");
     }
-
     if (message.type === "generation-failed") {
       setConnected(false, "Generation failed: " + message.message);
+      showGuide("Couldn't generate the script", message.message || "", []);
     }
-
-    if (message.type === "busy") {
-      // The previous tap/scroll is still being recorded (BrowserStack is slow);
-      // the server refused this one rather than piling it up.
-      setConnected(true, message.message || "Still recording the previous step - wait a few seconds.");
-      return;
-    }
+    if (message.type === "busy") { setConnected(true, message.message || "Still recording the previous step - wait a few seconds."); return; }
     if (message.type === "action-error") {
-      // A tap the device itself rejected (e.g. an unsupported mobile
-      // command on this device/driver build). The server survives and
-      // the tap was NOT recorded -- say so instead of silently doing nothing.
-      setConnected(true, "That tap failed on the device: " + (message.message || "unknown error"));
+      setConnected(true, "That action failed: " + (message.message || "unknown error"));
+      showGuide("That didn't work", message.message || "The page or device rejected the action. Nothing was recorded.", [
+        { label: "Retry", primary: true, run: retryTap },
+        { label: "Scroll down & retry", run: () => { send({ type: "scroll", direction: "down" }); setTimeout(retryTap, 1200); } },
+        ...(platform === "web" ? [{ label: "Ask AI to do it", run: () => askAiAbout("") }] : []),
+      ]);
     }
-
     if (message.type === "type-error") {
-      // Server rejected this keystroke (e.g. typed before any tap was
-      // recorded) — surface why instead of leaving the tester wondering
-      // where their text went. Deliberately doesn't clear typeInput.value
-      // or the connection status's "Live" state: the session is fine,
-      // this one action just didn't have a step to attach to yet.
       setConnected(true, message.message || "Couldn't record that text entry.");
+      showGuide("Click a field first", message.message || "Click the input you want to type into, then type again.", []);
     }
+    if (message.type === "ai-progress") setConnected(true, "AI: " + (message.message || "working…"));
+    if (message.type === "ai-finished") setConnected(true, "AI finished: " + (message.message || ""));
   });
 
-  function renderFrame(base64) {
+  function stepText(kind, m) {
+    const name = describeElement(m.resolvedElement);
+    if (kind === "navigate") return "Opened <code>" + escapeHtml(name || m.instruction || "page") + "</code>";
+    if (kind === "select") return "Chose <code>" + escapeHtml(m.option || name) + "</code>";
+    if (kind === "press") return "Pressed <code>" + escapeHtml(name || "Enter") + "</code>";
+    if (kind === "api") return "API <code>" + escapeHtml(m.instruction || "") + "</code>";
+    return name ? "Tapped <code>" + escapeHtml(name) + "</code>" : "Tapped an element";
+  }
+
+  function renderFrame(base64, mime) {
     if (!img) {
       placeholder.remove();
       img = document.createElement("img");
       img.addEventListener("click", onDeviceClick);
       deviceFrame.appendChild(img);
     }
-    img.src = "data:image/png;base64," + base64;
+    img.src = "data:" + (mime || "image/png") + ";base64," + base64;
   }
-
   function onDeviceClick(event) {
     if (stopped) return;
     const rect = img.getBoundingClientRect();
     const xRatio = (event.clientX - rect.left) / rect.width;
     const yRatio = (event.clientY - rect.top) / rect.height;
-
     showTapMarker(event.clientX - rect.left, event.clientY - rect.top);
+    lastTap = { xRatio, yRatio };
     send({ type: "tap", xRatio, yRatio });
   }
-
-  // Scrolling the app. The mouse wheel over the device image (and the two
-  // buttons) send a "scroll" message; the server swipes the real device and
-  // records it as a step. Throttled: one wheel flick = one swipe, not dozens.
   function requestScroll(direction) {
     if (stopped) return;
     const now = Date.now();
@@ -589,7 +761,7 @@ function runRecorder(host, port) {
   }, { passive: false });
   scrollUpBtn.addEventListener("click", () => requestScroll("up"));
   scrollDownBtn.addEventListener("click", () => requestScroll("down"));
-
+  undoBtn.addEventListener("click", () => { hideGuide(); send({ type: "undo" }); });
   function showTapMarker(x, y) {
     const marker = document.createElement("div");
     marker.className = "tap-marker";
@@ -598,58 +770,109 @@ function runRecorder(host, port) {
     deviceFrame.appendChild(marker);
     setTimeout(() => marker.remove(), 600);
   }
-
-  // Short human name for a tapped element: its text / description, else the
-  // tail of its resource-id, else nothing (generic wording).
   function describeElement(el) {
     if (!el) return "";
     const name = el.text || el.contentDesc || el.accessibilityId ||
       (el.resourceId ? String(el.resourceId).split("/").pop().split(":id/").pop() : "");
     return String(name || "").slice(0, 40);
   }
-
-  function addStepRow(_index, kind, typedValue) {
+  function addStepRow(stepIndex, kind, detailText, fragile) {
     if (stepsList.querySelector(".empty-hint")) stepsList.innerHTML = "";
-    // Rows are numbered by how many are listed, so a typed value or a scroll
-    // no longer repeats the number of the tap it belongs to.
-    const index = stepsList.querySelectorAll(".step-row").length + 1;
-    const row = document.createElement("div");
-    row.className = "step-row";
     const detail = kind === "type"
-      ? "Typed <code>" + escapeHtml(typedValue || "") + "</code>"
-      : kind === "scroll"
-        ? "Scrolled " + escapeHtml(typedValue || "")
-        : (typedValue ? "Tapped <code>" + escapeHtml(typedValue) + "</code>" : "Tapped an element");
-    row.innerHTML = '<span class="step-index">' + index + '</span><span class="step-detail">' + detail + "</span>";
+      ? "Typed <code>" + escapeHtml(detailText || "") + "</code>"
+      : kind === "scroll" ? "Scrolled " + escapeHtml(detailText || "") : detailText;
+    let index = typeof stepIndex === "number" ? stepIndex : rows.length;
+    const html = '<span class="step-index">' + (index + 1) + '</span><span class="step-detail">' + detail + "</span>";
+    // A typed value replaces the click that focused its field (same step index).
+    if (rows[index]) { rows[index].innerHTML = html; rows[index].classList.toggle("fragile", !!fragile); return rows[index]; }
+    const row = document.createElement("div");
+    row.className = "step-row" + (fragile ? " fragile" : "");
+    row.innerHTML = html;
     stepsList.appendChild(row);
+    rows[rows.length] = row;
     stepsList.scrollTop = stepsList.scrollHeight;
+    return row;
   }
+  function escapeHtml(str) { const div = document.createElement("div"); div.textContent = str; return div.innerHTML; }
 
-  function escapeHtml(str) {
-    const div = document.createElement("div");
-    div.textContent = str;
-    return div.innerHTML;
+  // ---- typing + test data ----
+  function renderChips() {
+    const chips = $("td-chips");
+    chips.innerHTML = "";
+    Object.keys(testData).forEach((name) => {
+      const c = document.createElement("button");
+      c.className = "chip";
+      c.type = "button";
+      c.textContent = "Use " + name;
+      c.title = "Types the saved value into the focused field and records it as the parameter " + name;
+      c.addEventListener("click", () => { typeInput.value = testData[name]; send({ type: "type", value: testData[name], param: name }); });
+      chips.appendChild(c);
+    });
   }
-
-  function send(message) {
-    if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
-  }
-
   typeBtn.addEventListener("click", submitType);
-  typeInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") submitType();
-  });
+  typeInput.addEventListener("keydown", (e) => { if (e.key === "Enter") submitType(); });
   function submitType() {
     const value = typeInput.value;
     if (!value) return;
-    send({ type: "type", value });
+    // If the value equals a saved test-data value, record it as that parameter.
+    const param = Object.keys(testData).find((n) => testData[n] === value);
+    send(param ? { type: "type", value, param } : { type: "type", value });
+  }
+  $("press-enter-btn").addEventListener("click", () => send({ type: "press", key: "Enter" }));
+  $("nav-go").addEventListener("click", () => send({ type: "navigate", url: $("nav-url").value }));
+  $("nav-url").addEventListener("keydown", (e) => { if (e.key === "Enter") send({ type: "navigate", url: $("nav-url").value }); });
+  $("ai-btn").addEventListener("click", askAi);
+  $("ai-goal").addEventListener("keydown", (e) => { if (e.key === "Enter") askAi(); });
+  function askAi() {
+    const goal = $("ai-goal").value.trim();
+    if (!goal) return;
+    setConnected(true, "AI is working on: " + goal);
+    send({ type: "ai-goal", goal });
   }
 
-  stopBtn.addEventListener("click", () => {
-    stopBtn.disabled = true;
-    send({ type: "stop" });
-  });
+  // ---- API check ----
+  function buildApiSpec() {
+    const spec = { method: $("api-method").value, url: $("api-url").value.trim() };
+    const headers = {};
+    $("api-headers").value.split("\n").forEach((line) => { const i = line.indexOf(":"); if (i > 0) headers[line.slice(0, i).trim()] = line.slice(i + 1).trim(); });
+    if (Object.keys(headers).length) spec.headers = headers;
+    const body = $("api-body").value.trim();
+    if (body) { try { spec.body = JSON.parse(body); } catch { spec.body = body; } }
+    const expect = {};
+    const st = $("api-status").value.trim();
+    if (st) expect.status = Number(st);
+    const path = $("api-path").value.trim();
+    if (path) {
+      const eq = $("api-equals").value;
+      const check = { path };
+      if (eq !== "") { let v = eq; try { v = JSON.parse(eq); } catch { /* keep as text */ } check.equals = v; } else check.exists = true;
+      expect.json = [check];
+    }
+    if (Object.keys(expect).length) spec.expect = expect;
+    const sn = $("api-save-name").value.trim().toUpperCase().replace(/[^A-Z0-9_]/g, "_"), sp = $("api-save-path").value.trim();
+    if (sn && sp) spec.save = { [sn]: sp };
+    return spec;
+  }
+  $("api-run").addEventListener("click", () => send({ type: "api", spec: buildApiSpec(), record: false }));
+  $("api-record").addEventListener("click", () => send({ type: "api", spec: buildApiSpec(), record: true }));
+  function showApiResult(m) {
+    const out = $("api-result");
+    const head = (m.ok ? "✓ passed" : "✗ failed") + (m.status ? " — HTTP " + m.status : "") + (m.durationMs ? " (" + m.durationMs + " ms)" : "");
+    out.innerHTML = '<span class="' + (m.ok ? "ok-text" : "bad-text") + '">' + escapeHtml(head) + "</span>" +
+      (m.reason ? "\n" + escapeHtml(m.reason) : "") +
+      (m.saved && Object.keys(m.saved).length ? "\nsaved: " + escapeHtml(JSON.stringify(m.saved)) : "") +
+      (m.response && m.response.bodyPreview ? "\n" + escapeHtml(String(m.response.bodyPreview).slice(0, 600)) : "") +
+      (m.recorded ? "\nrecorded as step " + ((m.stepIndex || 0) + 1) : "");
+    if (m.recorded) addStepRow(m.stepIndex, "api", "API check recorded");
+    if (!m.ok && !m.recorded) {
+      showGuide("The API check failed", m.reason || "The response didn't match what you expected.", [
+        { label: "Record it anyway", run: () => send({ type: "api", spec: buildApiSpec(), record: true, force: true }) },
+        { label: "Edit and run again", primary: true, run: () => { $("api-panel").open = true; } },
+      ]);
+    }
+  }
 
+  stopBtn.addEventListener("click", () => { stopBtn.disabled = true; send({ type: "stop" }); });
   copyBtn.addEventListener("click", () => {
     navigator.clipboard.writeText(scriptOutput.textContent).then(() => {
       copyBtn.textContent = "Copied!";
@@ -658,6 +881,5 @@ function runRecorder(host, port) {
   });
 }
 </script>
-
 </body>
 </html>

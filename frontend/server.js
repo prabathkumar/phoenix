@@ -96,11 +96,9 @@ const server = http.createServer((req, res) => {
   }
 
   if (req.method === "GET" && req.url.split("?")[0] === "/web-record") {
-    fs.readFile(path.join(__dirname, "web-record.html"), "utf8", (err, content) => {
-      if (err) { res.writeHead(500); res.end("Failed to read web-record.html: " + err.message); return; }
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(content);
-    });
+    // The web recorder is the same page as the mobile one now.
+    res.writeHead(302, { Location: "/?platform=web" });
+    res.end();
     return;
   }
 

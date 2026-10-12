@@ -78,3 +78,9 @@ again.
 See `docs/TESTOPS_MOBILE_SPEC.md` §6 for what TestOps ai-automate's own semantic layer
 does and doesn't do yet, and the README's "AI question" section for the
 Act 1 / Act 2 framing this comparison sits alongside.
+
+## Update (October 2026)
+
+Since this comparison: one recorder for web and mobile, `api` steps for in-flow validation, and the
+Guided → Synthetic → Semantic (with vision AI) → AI ladder that promotes fixes back into deterministic
+scripts. See [`LAYERS.md`](LAYERS.md).

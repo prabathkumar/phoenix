@@ -247,3 +247,10 @@ an installed runtime — `xcrun simctl list runtimes` to check).
   the real target field wasn't revealed yet (a tab/toggle needed
   tapping first). Check the step trace for what happened right before
   it.
+
+## API steps in a test case (October 2026)
+
+In `test-case` mode a step can be `{"kind":"api", ...}`: it calls an endpoint between UI steps (for
+example to confirm the database changed), checks the response, and can `save` values that later
+steps use as `${NAME}`. A failing check fails the case with `api step N "label" failed: reason`.
+Root-level `testData` supplies named values. See [`LAYERS.md`](LAYERS.md).

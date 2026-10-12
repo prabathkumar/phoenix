@@ -381,3 +381,13 @@ hardware yet** — only against faked WebDriver sessions in unit tests
 
 This keeps "TestOps integrates quickly" and "nothing ships unproven"
 both true at once, rather than trading one off against the other.
+
+## Step kinds, test data and layer reporting (October 2026)
+
+Fields TestOps's UI and backend should now expect in a test case and in a run result:
+
+- **`api` step** (any platform): `method`, `url`, `headers`, `body`, `expect {status, json[{path, equals|contains|exists|matches}], bodyContains, maxMs}`, `save {NAME: "$.path"}`. Later steps use `${NAME}`. Secret header values are redacted in results.
+- **`testData`** at the root of a test case: `{NAME: value}`. Steps reference `${NAME}`; runners resolve test data, then values saved by `api` steps, then environment variables.
+- **`resolvedBy`** on each step result (`synthetic | semantic | ai | guided`) and a `resolvedBy` tally on the run result. A suite drifting towards `semantic` needs its patches reviewed.
+- **`patches`** on a run result: `{index, layer, from, to | replaceWith, evidence, promotable, instruction}`. Show them for review; applying a promotable patch writes the new `selector` (or replacement steps) into the test case. Nothing is applied automatically except by an explicit persist.
+- **Platforms:** `android | ios | web`, same result contract. The web recorder is a Chromium on the server running the frontend (see `SETUP.md`).

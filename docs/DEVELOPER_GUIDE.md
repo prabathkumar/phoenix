@@ -102,11 +102,13 @@ needed, and run it the same way you'd run any WebdriverIO Android test.
 
 ## Recording a web flow
 
-Websites use the same idea at **`/web-record`** (for example
-`http://localhost:8091/web-record`). It needs Chromium on the machine running
+Websites use the same recorder page as mobile: open `http://localhost:8091`, choose
+**Web** on the start screen (`/web-record` redirects there). It needs Chromium on the machine running
 `frontend/server.js`: `cd web && npm install && npx playwright install chromium`.
 
-1. Enter the page to start from and click **Start recording**. A browser is
+0. Optional: add **test data** (named values such as USERNAME) on the start screen. A saved value
+   appears as a **Use USERNAME** button; typing it records a named parameter in the script.
+1. Enter the page to start from and click **Open browser and start recording**. A browser is
    mirrored in the page.
 2. Click, scroll with the wheel, and type: click a field, type in the box in the
    side panel and press **Type**. **Enter ↵** presses Enter in that field.
@@ -171,3 +173,19 @@ File uploads, iframes and new-tab flows are not recorded yet.
   accessibility tree for that screen (`adb shell uiautomator dump`, or
   ask whoever has server access to check `generated/<name>.test.js`
   alongside the recorded session).
+
+### When something goes wrong while recording
+Failures show a **guided card** with the next step instead of an error line: a failed click offers
+Retry, Scroll down & retry and Ask AI; a fragile locator offers Keep or Undo; a missing Chromium
+or unreachable server shows the exact command to copy. **Undo** removes the last step on web and mobile.
+
+### Checking a result with an API call
+Open **Add API check** to call an endpoint from inside the flow (for example to confirm the
+database changed): choose method and URL (`${NAME}` works), optionally a status and one JSON-path
+check, and optionally **save** a value for later steps. **Run** shows the real response;
+**Run & record step** adds it to the script. Works for web and mobile.
+
+### Ask AI, and what the layers do
+**Ask AI** (web) gives the AI layer a goal; what it does is added as normal steps you can undo. On
+replay, a step whose locator breaks falls from Synthetic to Semantic, then AI, then Guided, and fixes
+come back as patches you approve. See [`LAYERS.md`](LAYERS.md).

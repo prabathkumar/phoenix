@@ -185,3 +185,10 @@ confirm before leaning on it operationally.
 ## 5. iOS test-case parity, and what it means for this training loop
 
 `test-cases/addons.ios.json` (see `docs/STATUS.md`'s "iOS parity for `test-cases/addons.json`" entry) is new this session, authored the same semantic-instruction way as every Android test case, with no selectors pre-filled. It has never actually run, so none of the mechanisms in §1/§2 above -- execution logging, dead-selector/expect-failed exclusion, positive replay -- have anything to learn from it yet; all of that starts the first time it's actually executed against real iOS hardware, exactly the same bootstrapping `addons.json` itself went through from its own first blind draft (`4f5be37`) onward. Nothing about those mechanisms needed to change for iOS specifically -- `generation/execution-log.js` and `generation/semantic-act.js`'s exclusion logic are already platform-agnostic (keyed on `instruction` + `kind`, not on any Android-specific selector shape), so the same training loop will apply to iOS executions once there are any to log.
+
+## The ladder is the improvement loop (October 2026)
+
+Besides prompt-level feedback, the layer ladder turns each rescue into a reviewable improvement:
+a step rescued by Semantic, AI or a person produces a **patch** (new locator or new steps) with
+evidence, which promotes the fix into the Synthetic layer once approved. This is how a suite gets
+more deterministic over time without model weights changing. See [`LAYERS.md`](LAYERS.md).

@@ -186,3 +186,15 @@ Three genuinely new, previously-undocumented gaps, none of them resolver bugs:
 - **Test-case JSON → Git push/versioning** (stage 2) — no design yet.
 - **Script and results → FrothAI push** (stages 3, 10, 12) — no design yet; needs a decision on what FrothAI actually consumes (raw logs? structured summaries? both?).
 - **"Record this step" wiring** (stage 8) — already scoped in the table above, now confirmed as the single highest-leverage gap: it's the one piece that turns every resolver/loop failure this session found into a 30-second tester fix instead of a developer ticket.
+
+## Recorder start screen, guided cards and patch review (October 2026)
+
+Screens to add to the library → cycle → app → run flow:
+
+1. **Start recording.** Platform switch: **Web** (URL) or **Mobile** (load an .ipa/.apk). Then optional **test data** (named values). Both lead to the same recorder: live stage, steps list, script panel.
+2. **Guided cards.** Any failure while recording or replaying shows what happened, why, and buttons: Retry, Scroll & retry, Ask AI, Undo, Keep, Record anyway, Copy fix command.
+3. **Add API check** panel inside the recorder (run live, show response, record as a step).
+4. **Run report** shows which layer resolved each step (Synthetic / Semantic / AI / Guided).
+5. **Patch review.** After a run, list proposed patches with the evidence for each; Apply writes the fix into the test case (never automatic).
+
+See [`LAYERS.md`](LAYERS.md) for the model behind these screens.

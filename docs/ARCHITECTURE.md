@@ -66,7 +66,7 @@ flowchart LR
 
 The four AI layers (guided recording, semantic resolution, vision fusion,
 autonomous loop) sit on the **mobile** path; see
-[`diagrams/architecture.svg`](diagrams/architecture.svg). The web path is
+[`diagrams/architecture.png`](diagrams/architecture.png). The web path is
 deliberately deterministic: locators come from the page's own DOM, with no model
 call while recording. The web runner can still fall back to the semantic
 resolver (`generation/webview-act.js`) for a step that has an `instruction` but

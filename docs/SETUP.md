@@ -344,3 +344,16 @@ Appium server, so it doesn't prove the end-to-end path. There is
 currently no CI job that exercises `run-session.js` or the embedded
 path against a real emulator; that verification is manual (see the
 README's "Appium fork work" section for how it was last confirmed).
+
+## Semantic and AI layers on web (optional)
+
+Replay needs no model. The **Semantic** fallback (with its vision add-on), the **AI** goal loop and
+**Ask AI** call the local model: run Ollama (`ollama serve`) and set `TESTOPS_MOBILE_OLLAMA_HOST` if it
+is not on `http://localhost:11434`. A vision-capable model enables screenshots; text-only models still
+work (the screenshot is skipped automatically, or pass `--no-vision`). Without Ollama the recorder shows
+a guided card saying so; Synthetic replay is unaffected.
+
+## Keeping Playwright and Appium current
+
+Run `node scripts/check-upgrades.js` at the start of each sprint and before a release, and follow
+[`UPGRADING.md`](UPGRADING.md) when something is behind.

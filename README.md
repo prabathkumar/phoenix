@@ -3,7 +3,7 @@
 [![Test](https://github.com/prabathkumar/phoenix/actions/workflows/test.yml/badge.svg)](https://github.com/prabathkumar/phoenix/actions/workflows/test.yml)
 [![Deploy frontend](https://github.com/prabathkumar/phoenix/actions/workflows/deploy-frontend.yml/badge.svg)](https://github.com/prabathkumar/phoenix/actions/workflows/deploy-frontend.yml)
 
-Proprietary test-recording and generation engine for TestOps - mobile (Android/iOS) and web.
+Proprietary test-recording and generation engine for TestOps - mobile (Android/iOS) and web, from one recorder, with four layers wired as a ladder: **Guided → Synthetic → Semantic (with vision AI) → AI**.
 
 Testers record a flow once, inside TestOps — no Appium Inspector, no local install, no separate device-farm dashboard. TestOps ai-automate captures the session and generates a working automated script. Built on a fork of Appium's core engine (Apache 2.0), extended with an AI-native layer Appium doesn't have.
 
@@ -13,6 +13,8 @@ Testers record a flow once, inside TestOps — no Appium Inspector, no local ins
 |---|---|---|
 | [`docs/TESTOPS_MOBILE_SPEC.md`](docs/TESTOPS_MOBILE_SPEC.md) | Anyone wanting the full picture | The original spec: why guided-first, the Act 1/2/3 roadmap, what each phase is and isn't |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Engineering, integrators | How the mobile and web recorders, generators and runners fit together: diagrams, protocols, step format, design decisions |
+| [`docs/LAYERS.md`](docs/LAYERS.md) | Everyone | The four layers as a ladder (falling down, promoting up), API steps, test data, the Surface, safety rails, how to use it |
+| [`docs/UPGRADING.md`](docs/UPGRADING.md) | Engineering | When Playwright/Appium ship upgrades we upgrade too: the check script and the routine |
 | [`docs/STATUS.md`](docs/STATUS.md) | Engineering — the source of truth | Every capability, every real bug found and fixed with root cause and evidence, what's still open. If a claim anywhere else in these docs needs checking, this is where it's backed up |
 | [`docs/SETUP.md`](docs/SETUP.md) | An infra engineer standing TestOps ai-automate up | Local Appium host vs. BrowserStack, credentials, env vars, one checklist from a cold machine |
 | [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) | A tester or dev recording a flow | Walkthrough: record once in the browser, get a runnable script back |
@@ -98,7 +100,7 @@ Full sequence diagram, the spawn-vs-embedded tradeoffs, and setup commands for e
 
 The diagram above is the guided-recording pipeline (Act 1) in isolation. TestOps ai-automate is actually four layers stacked on the same engine, each one shipped and proven at a different stage — the picture below is the whole thing:
 
-![TestOps ai-automate architecture — Guided layer, Semantic layer, Vision fusion, Autonomous loop](docs/diagrams/architecture.svg)
+![TestOps ai-automate architecture — one recorder for web and mobile; Guided, Synthetic, Semantic (with vision AI) and AI as one ladder](docs/diagrams/architecture.png)
 
 - **1. Guided layer (Act 1) — shipped.** A human walks the flow once, live, in the browser. `capture/recorder.js` records each tap/type/scroll as an exact, deterministic selector; `generation/pipeline.js` infers assertions from the real diff and synthesizes a runnable script. No AI judgment at runtime — this is the proven, ship-today path.
 - **2. Semantic layer (Act 2) — shipped, proven on real hardware.** A plain-language instruction ("tap the LOGIN button") replaces a hand-authored selector. `generation/semantic-act.js`'s `resolveSemanticAction()` grounds the live accessibility tree into a numbered element list and asks the local model to pick one — or say "unresolved," never guess. `engine/semantic-act-executor.js` acts live via the same WebDriver calls the guided path uses, and diffs the screen before/after to know what really happened. This layer also self-heals live: a tap that produces "No visible change" triggers one automatic retry, excluding the dead element, before anything is reported — no log, no human, no separate chat needed. `engine/auto-heal.js` is where this layer and layer 1 meet: a guided script's recorded selector falls back to a fresh semantic resolution if it stops matching, or starts matching the wrong element.

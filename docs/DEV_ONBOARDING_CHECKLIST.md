@@ -1,7 +1,7 @@
 # Developer onboarding — end-to-end test checklist, block by block
 
 For the team starting on this codebase Wednesday. This maps directly onto
-the architecture diagram (`docs/diagrams/architecture.svg`): one section per
+the architecture diagram (`docs/diagrams/architecture.png`): one section per
 block, each with (1) the automated tests that already exist and how to run
 them, (2) a **manual test case with real evidence** — an actual bug this
 exact block caused in production use, so "why does this check matter" has a

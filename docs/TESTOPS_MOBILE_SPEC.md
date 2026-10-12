@@ -57,7 +57,7 @@ Three components, built in this order.
 - Saved directly as a TestOps test case. No export/import step.
 
 ### 4.4 Web recorder (added October 2026)
-- The same record-once loop for websites: a local Chromium is mirrored in the browser (`/web-record`), the tester clicks, types, presses Enter and picks dropdown options, and every action becomes a step.
+- The same record-once loop for websites: a local Chromium is mirrored in the same recorder page the mobile flow uses (choose **Web** on the start screen), the tester clicks, types, presses Enter and picks dropdown options, and every action becomes a step.
 - Locators are resolved from the page's own DOM and verified against the live page (data-testid > role+name > label > id > text > css path; pinned with `nth` when not unique), so no model call is needed while recording.
 - Output: a standalone Playwright script and a test-case JSON that `web/run-web-test-case.js` replays through the same pass/fail contract as mobile.
 - Detail, protocols and design decisions: [`ARCHITECTURE.md`](ARCHITECTURE.md) section 3. Known limits (file uploads, iframes, new-tab flows) are listed there and in [`STATUS.md`](STATUS.md).
@@ -134,3 +134,8 @@ half of TestOps to reach it.
 ---
 
 *This is a starting spec, not a finished one — meant to hand to engineering as the basis for sprint planning, not as final architecture.*
+
+### 4.5 One recorder, four layers (added October 2026)
+- The recorder is one page for web and mobile: choose Web (URL) or Mobile (.ipa/.apk), bring named test data, record; failures show guided cards (retry, scroll and retry, ask AI, undo, fix commands).
+- `api` steps call an endpoint from inside any flow (DB validation) with response checks and saved values.
+- The layers are named **Guided → Synthetic → Semantic (with vision AI) → AI** and wired as a ladder: a failing step falls down, and the fix is promoted back up as an evidence-gated patch. See [`LAYERS.md`](LAYERS.md).

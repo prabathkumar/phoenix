@@ -251,6 +251,23 @@ test("codegen emits parameters, locators and assertions", () => {
     loop.ws.close(); loop.site.server.close(); await loop.session.close();
   });
 
+  await test("a styled toggle records its outermost clickable ancestor; a click inside an iframe is not recorded", async () => {
+    const HTML = `<!doctype html><title>Chat</title><body style="margin:0;font:18px sans-serif">
+<div id="chat-toggle" style="position:absolute;left:20px;top:20px;width:80px;height:80px;cursor:pointer" onclick="document.getElementById('m').textContent='Chat opened'"><img alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" style="width:60px;height:60px;margin:10px"></div>
+<iframe id="ai-frame" srcdoc="<p>inside</p>" style="position:absolute;left:200px;top:20px;width:300px;height:200px"></iframe>
+<p id="m" style="position:absolute;left:20px;top:300px"></p></body>`;
+    const c = await open(HTML);
+    c.tap(60, 60);
+    await c.waitFor((m) => m.type === "step-recorded" && m.kind === "tap");
+    assert.deepStrictEqual(c.steps().find((x) => x.kind === "tap").selector, { strategy: "css", value: "#chat-toggle" });
+    const count = c.steps().length;
+    c.tap(300, 100);
+    const err = await c.waitFor((m) => m.type === "action-error" && m.code === "iframe");
+    assert.ok(/embedded frame/.test(err.message));
+    assert.strictEqual(c.steps().length, count, "nothing is recorded for the iframe click");
+    c.ws.close(); c.site.server.close(); await c.session.close();
+  });
+
   if (failed) { console.error("\nweb recorder tests FAILED"); process.exit(1); }
   console.log("\nweb recorder tests passed"); process.exit(0);
 })();

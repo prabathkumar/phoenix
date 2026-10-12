@@ -150,7 +150,9 @@ async function startWebLiveView({ port, startUrl, name, browser, headless, aiLoo
         announceStep(index, recorder.steps[index], { name: recorder.steps[index].url });
       } else if (message.type === "tap") {
         const result = await recorder.click(Number(message.xRatio), Number(message.yRatio));
-        if (result.pendingSelect) {
+        if (result.iframe) {
+          send({ type: "action-error", code: "iframe", message: "That is an embedded frame (for example a chat widget). The click was made, but clicks inside a frame can't be recorded yet." });
+        } else if (result.pendingSelect) {
           send({ type: "select-options", ...result.pendingSelect });
         } else {
           announceStep(result.index, result.step, { name: elementName(result.descriptor), fragile: result.fragile });

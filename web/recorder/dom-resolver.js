@@ -13,6 +13,22 @@ function ELEMENT_AT_POINT(point) {
   var start = document.elementFromPoint(point.x, point.y);
   if (!start) return null;
   var el = start.closest(INTERACTIVE) || start;
+  // Nothing semantically interactive under the pointer (a click handler on a <div>, an
+  // icon inside a styled toggle): act on the OUTERMOST ancestor that still shows the
+  // pointer cursor, so the step targets the control (#chat-toggle), not its icon (img).
+  // Limited to a few levels and to small elements so a page-wide container never wins.
+  if (el === start && start.tagName !== "IFRAME") {
+    var area = window.innerWidth * window.innerHeight;
+    var best = null;
+    var node = start;
+    for (var depth = 0; node && node.nodeType === 1 && node !== document.body && node !== document.documentElement && depth < 5; depth++) {
+      var r0 = node.getBoundingClientRect();
+      if (window.getComputedStyle(node).cursor !== "pointer" || r0.width * r0.height > area * 0.4) break;
+      best = node;
+      node = node.parentElement;
+    }
+    if (best) el = best;
+  }
   // A <label> wrapping/pointing at a control: act on the control.
   if (el.tagName === "LABEL") {
     var ctl = el.control || el.querySelector("input,select,textarea");

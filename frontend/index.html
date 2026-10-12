@@ -702,6 +702,14 @@ function runRecorder(host, port, options) {
       showGuide("Couldn't generate the script", message.message || "", []);
     }
     if (message.type === "busy") { setConnected(true, message.message || "Still recording the previous step - wait a few seconds."); return; }
+    if (message.type === "action-error" && message.code === "iframe") {
+      setConnected(true, "Click inside an embedded frame - not recorded");
+      showGuide("Not recorded: that's inside an embedded frame", message.message || "", [
+        ...(platform === "web" ? [{ label: "Ask AI to do it", primary: true, run: () => askAiAbout("") }] : []),
+        { label: "Undo last step", run: () => send({ type: "undo" }) },
+      ]);
+      return;
+    }
     if (message.type === "action-error") {
       setConnected(true, "That action failed: " + (message.message || "unknown error"));
       showGuide("That didn't work", message.message || "The page or device rejected the action. Nothing was recorded.", [

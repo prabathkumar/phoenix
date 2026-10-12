@@ -100,6 +100,16 @@ class WebRecorder {
       };
     }
 
+    // Clicks INSIDE an embedded frame (a chat widget, a payment form) cannot be recorded:
+    // the page can't see into it. Still perform the click so the mirror stays in step with
+    // what the tester is doing, but record nothing and say why.
+    if (descriptor && descriptor.tag === "iframe") {
+      await this.page.mouse.click(point.x, point.y);
+      await this._settle();
+      this._lastTap = null;
+      return { iframe: true, descriptor };
+    }
+
     const urlBefore = this.page.url();
     const before = await this._lines();
 

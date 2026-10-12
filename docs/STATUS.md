@@ -985,7 +985,8 @@ Not done, stated plainly:
 - The mobile Guided cards for "tap failed" use the same page, but the mobile server does not yet send fragile-locator flags.
 
 ### Docker Chromium and WebdriverIO 10 (2026-10-12)
-- The Docker image now installs Chromium (Playwright's own version, in `/ms-playwright`), exposes ports 8092-8099 for concurrent web recordings, and compose sets `shm_size: 1gb`. **Not build-verified** (sandbox cannot reach Docker Hub): run the smoke test in `TESTOPS_MOBILE_DOCKER.md`.
+- The Docker image now installs Chromium (Playwright's own version, in `/ms-playwright`), exposes ports 8092-8099 for concurrent web recordings, and compose sets `shm_size: 1gb`. **Build verified on the owner's Mac (2026-10-12, 83 s incl. the Chromium layer)**; a web recording inside the running container produced a working 16-step yes.my script. Everything else in this paragraph was confirmed by that run.
 - Abandoned web recordings are closed after 60 s so a container cannot accumulate browsers.
 - WebdriverIO upgraded 8.46 to 10.0.2 (needs Node 22.19+). No code changes: `require()` of the ES-module package works on Node 22.12+. `engine/test/webdriverio-compat.test.js` guards the calls we make; **not yet exercised against real BrowserStack/Appium**: run one smoke session before relying on it.
+- Found from that recording: a chat widget was recorded as `unnamed img` plus a click on its `<iframe>`. Fixed: a non-semantic element now resolves to the outermost `cursor:pointer` ancestor (`#yes-chat-toggle`), and a click inside an iframe is performed but not recorded, with a guided card explaining why. Known limit unchanged: nothing inside an iframe can be recorded (use Ask AI or add the step by hand).
 

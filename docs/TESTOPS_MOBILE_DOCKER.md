@@ -138,3 +138,12 @@ anyone ever runs the connector.
   If TestOps prefers their own registry (ECR, Harbor, Docker Hub, GCR)
   instead, swapping it in only touches `docker-publish.yml`'s login/push
   steps — see `docs/RELEASING.md`'s own notes on that.
+
+## What is not in the image: the web recorder's browser
+
+The image copies `web/` (the web test-case runner and the web recorder code), but
+it does not contain Chromium, so `/web-record` and `web/run-web-test-case.js`
+cannot launch a browser inside the container. Run the web recorder on a machine
+with Chromium (see [`SETUP.md`](SETUP.md#web-recorder-prerequisites-only-if-testers-will-record-websites)).
+To containerize it later, add `npx playwright install --with-deps chromium` to the
+Dockerfile.

@@ -1,15 +1,15 @@
-# Project TestOps ai-automate — TestOps ai-automate
+# TestOps ai-automate — product spec
 
-**Codename:** TestOps ai-automate
-**Product name (external):** TestOps ai-automate
+**Repo / codename:** phoenix
+**Product name:** TestOps ai-automate (formerly "TestOps Mobile"; now covers mobile and web)
 **Owner:** Prabath / FrothTestOps
-**Status:** Stage 0 — not yet started
+**Status:** Stage 0 shipped; guided recording, semantic layer and the web recorder are live. See [`STATUS.md`](STATUS.md) for current state and [`ARCHITECTURE.md`](ARCHITECTURE.md) for how it fits together.
 
 ---
 
 ## 1. What TestOps ai-automate is
 
-A proprietary mobile test-recording and generation engine for TestOps. Testers never touch Appium Inspector, never install anything locally, never see BrowserStack directly. They open TestOps, pick an app, record a flow once inside the product, and get a working automated script out the other end.
+A proprietary test-recording and generation engine for TestOps, for mobile apps (Android/iOS) and, since October 2026, websites. Testers never touch Appium Inspector, never install anything locally, never see BrowserStack directly. They open TestOps, pick an app, record a flow once inside the product, and get a working automated script out the other end.
 
 Underneath, TestOps ai-automate is built on a fork of Appium's core engine, extended with an AI-native layer that Appium doesn't have. Appium is Apache 2.0 licensed — forking, modifying, and closing the source of changes is legally clean.
 
@@ -55,6 +55,12 @@ Three components, built in this order.
 - Output: a named, commented, parameterized script with inferred assertions (diff accessibility tree/screenshot before vs. after each step to propose what to assert).
 - Runs once, on "Stop" — not live during recording (see prior discussion on why post-processing beats real-time generation: the model needs the whole flow in view to write a coherent script, not just react to isolated taps).
 - Saved directly as a TestOps test case. No export/import step.
+
+### 4.4 Web recorder (added October 2026)
+- The same record-once loop for websites: a local Chromium is mirrored in the browser (`/web-record`), the tester clicks, types, presses Enter and picks dropdown options, and every action becomes a step.
+- Locators are resolved from the page's own DOM and verified against the live page (data-testid > role+name > label > id > text > css path; pinned with `nth` when not unique), so no model call is needed while recording.
+- Output: a standalone Playwright script and a test-case JSON that `web/run-web-test-case.js` replays through the same pass/fail contract as mobile.
+- Detail, protocols and design decisions: [`ARCHITECTURE.md`](ARCHITECTURE.md) section 3. Known limits (file uploads, iframes, new-tab flows) are listed there and in [`STATUS.md`](STATUS.md).
 
 ---
 

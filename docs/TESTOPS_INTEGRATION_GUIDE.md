@@ -54,6 +54,18 @@ storage/UI you want around it without guessing at field names.
 | `resolvedSelector` | `{strategy, value}` | no — written BY TestOps ai-automate, not by a tester | A selector the engine proved correct on a prior real run; replayed directly (no AI call) until it misses. Your UI can show this read-only as "last known locator," but should never let a tester hand-edit it — it's machine-learned state, not authored content. |
 | `note` | string | no | Free-text engineering commentary (why a step exists/was changed) — present throughout `test-cases/*.json` in this repo for audit-trail purposes; optional for your own authored test cases. |
 
+#### Web test cases
+
+A test case with `"platform": "web"` (and optional `"baseUrl"`) uses the same
+JSON shape with web step kinds: `navigate`, `tap`, `type`, `select`, `press`,
+`scroll`, `wait`, `tapIfExists` and `assert`. A web `selector` is
+`{strategy, value}` with strategy `css | xpath | text | label | testid | role`
+(`role` also carries `role` and optionally `exact`), and any selector may carry
+`nth`. `expect: {appeared[], disappeared[]}` works as on mobile. The web recorder
+(`/web-record`) produces these files; `web/run-web-test-case.js` runs them and
+reports through the same result contract below. Full table in
+[`ARCHITECTURE.md`](ARCHITECTURE.md#4-test-case-json-and-runners).
+
 ### B. Execution result (what a run produces)
 
 **Per-iteration result** (`run-batch-executions.js`'s `runOneTestCaseIteration`/`runIteration`):

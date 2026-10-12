@@ -100,6 +100,30 @@ describe("login", () => {
 Copy the script into your test suite, adjust naming/assertions as
 needed, and run it the same way you'd run any WebdriverIO Android test.
 
+## Recording a web flow
+
+Websites use the same idea at **`/web-record`** (for example
+`http://localhost:8091/web-record`). It needs Chromium on the machine running
+`frontend/server.js`: `cd web && npm install && npx playwright install chromium`.
+
+1. Enter the page to start from and click **Start recording**. A browser is
+   mirrored in the page.
+2. Click, scroll with the wheel, and type: click a field, type in the box in the
+   side panel and press **Type**. **Enter ↵** presses Enter in that field.
+3. For a dropdown, click it and pick an option from the list that appears (the
+   browser's own dropdown popup is not visible in the mirror).
+4. Click **Stop & generate** for a Playwright script and a test-case JSON. Copy
+   either. Replay the JSON with
+   `node web/run-web-test-case.js your-flow.json --headed`.
+
+What to expect in the output: scrolls and repeated clicks on the same element
+are left out; assertions are limited to stable text (no prices, addresses or
+FAQ questions); locators prefer a role and name (`getByRole("button", { name:
+"eSIM", exact: true })`) and add `.nth(n)` when several elements match. A click
+on an element with no readable name falls back to a positional css path, which
+breaks if the site's layout changes: re-record those on a labelled element.
+File uploads, iframes and new-tab flows are not recorded yet.
+
 ## Tips
 
 - **A flow that fails partway through recording** (the app crashes, the

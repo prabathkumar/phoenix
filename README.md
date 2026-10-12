@@ -12,6 +12,7 @@ Testers record a flow once, inside TestOps — no Appium Inspector, no local ins
 | Doc | For | What's in it |
 |---|---|---|
 | [`docs/TESTOPS_MOBILE_SPEC.md`](docs/TESTOPS_MOBILE_SPEC.md) | Anyone wanting the full picture | The original spec: why guided-first, the Act 1/2/3 roadmap, what each phase is and isn't |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Engineering, integrators | How the mobile and web recorders, generators and runners fit together: diagrams, protocols, step format, design decisions |
 | [`docs/STATUS.md`](docs/STATUS.md) | Engineering — the source of truth | Every capability, every real bug found and fixed with root cause and evidence, what's still open. If a claim anywhere else in these docs needs checking, this is where it's backed up |
 | [`docs/SETUP.md`](docs/SETUP.md) | An infra engineer standing TestOps ai-automate up | Local Appium host vs. BrowserStack, credentials, env vars, one checklist from a cold machine |
 | [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) | A tester or dev recording a flow | Walkthrough: record once in the browser, get a runnable script back |
@@ -50,7 +51,7 @@ flowchart LR
         UI["TestOps UI\n(live device mirror)"]
     end
 
-    subgraph TestOps ai-automate["TestOps ai-automate"]
+    subgraph Core["TestOps ai-automate"]
         LV["live-view/\nWebSocket server"]
         ENG["engine/\nAppium session + driver layer"]
         CAP["capture/\nSessionRecorder\n(tap → locator resolution)"]
@@ -62,6 +63,12 @@ flowchart LR
         A11Y["Accessibility tree\n+ screenshots"]
     end
 
+    subgraph Web["Web (web/recorder/)"]
+        WLV["web-live-view.js\nWebSocket"]
+        WREC["web-recorder.js + dom-resolver.js\nclick to verified locator"]
+        CHR["Local Chromium\n(Playwright)"]
+    end
+
     UI <-- "screen frames / tap events" --> LV
     LV --> CAP
     CAP --> ENG
@@ -70,7 +77,13 @@ flowchart LR
     A11Y --> CAP
     CAP -- "recorded steps" --> GEN
     GEN -- "generated script" --> UI
+
+    UI <-- "frames / clicks" --> WLV
+    WLV --> WREC <--> CHR
+    WREC -- "Playwright script + test-case JSON" --> UI
 ```
+
+Full architecture, sequence diagrams for both recording paths, and the design decisions: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 **Engine session flow.** Every entry point (`run-session.js` and friends) drives the same four-step lifecycle against the device — session start → screenshot → accessibility tree → tap → teardown — over one of two architectures that coexist on purpose:
 

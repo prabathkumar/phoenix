@@ -35,6 +35,12 @@ function scriptedModel() {
 }
 
 (async () => {
+  // The web tests need a real Chromium. CI installs one; a machine without one skips them loudly.
+  let haveBrowser = true;
+  try { const b = await require("../english-endpoint").loadPlaywright().chromium.launch({ executablePath: process.env.TESTOPS_MOBILE_WEB_CHROMIUM_PATH || undefined }); await b.close(); }
+  catch (e) { haveBrowser = false; console.log(`  SKIPPED web tests - no browser available (${String(e.message).split("\n")[0]})`); }
+  const webTest = (name, fn) => (haveBrowser ? test(name, fn) : Promise.resolve());
+
   const site = http.createServer((_q, res) => { res.writeHead(200, { "Content-Type": "text/html" }); res.end(PAGE); });
   await new Promise((r) => site.listen(0, r));
   const siteUrl = `http://127.0.0.1:${site.address().port}/`;
@@ -61,7 +67,7 @@ function scriptedModel() {
 
   const STEPS = "Enter ${PHONE} in the phone field\nEnter ${PASSWORD} in the password field\nClick the login button\nCheck that the account page is showing";
 
-  await test("web: the English runs in a real browser, passes, and the secret never crosses the wire", async () => {
+  await webTest("web: the English runs in a real browser, passes, and the secret never crosses the wire", async () => {
     const r = await start({ platform: "web", url: siteUrl, steps: STEPS, testData: { PHONE: "0116611", PASSWORD: "s3cret!" } });
     assert.strictEqual(r.status, 200);
     const evs = await events((await r.json()).runId);
@@ -73,7 +79,7 @@ function scriptedModel() {
     assert.deepStrictEqual(evs.filter((e) => e.type === "step-started").map((e) => e.text), STEPS.split("\n"));
   });
 
-  await test("web: wrong test data fails at the check step, with the reason, and nothing after it runs", async () => {
+  await webTest("web: wrong test data fails at the check step, with the reason, and nothing after it runs", async () => {
     const r = await start({ platform: "web", url: siteUrl, steps: STEPS, testData: { PHONE: "0116611", PASSWORD: "wrong" } });
     const end = finish(await events((await r.json()).runId));
     assert.strictEqual(end.status, "failed");
@@ -81,14 +87,14 @@ function scriptedModel() {
     assert.match(end.steps[3].reason, /welcome text is not showing/);
   });
 
-  await test("web: a missing test-data value is reported before the browser does anything", async () => {
+  await webTest("web: a missing test-data value is reported before the browser does anything", async () => {
     const r = await start({ platform: "web", url: siteUrl, steps: STEPS, testData: { PHONE: "1" } });
     const end = finish(await events((await r.json()).runId));
     assert.strictEqual(end.status, "failed");
     assert.match(end.reason, /\$\{PASSWORD\}/);
   });
 
-  await test("web: an unreachable URL fails the run with a message instead of hanging", async () => {
+  await webTest("web: an unreachable URL fails the run with a message instead of hanging", async () => {
     const r = await start({ platform: "web", url: "http://127.0.0.1:1/", steps: "Click the login button", testData: {} });
     const end = finish(await events((await r.json()).runId));
     assert.strictEqual(end.status, "failed");

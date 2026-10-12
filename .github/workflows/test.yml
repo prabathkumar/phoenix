@@ -23,6 +23,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      # One failing package must not cancel the others - a cancelled job tells you nothing.
+      fail-fast: false
       matrix:
         package: [capture, generation, engine, live-view, frontend, web, root]
     steps:
@@ -77,6 +79,16 @@ jobs:
         if: matrix.package == 'frontend'
         working-directory: capture
         run: npm install
+
+      # frontend/ also serves the web recorder and the "Run from English" page, which load
+      # web/ (ws, playwright) and drive a real Chromium in their tests - same cross-require
+      # reason as the generation/capture installs above, plus the browser itself.
+      - name: Install web dependencies and Chromium (frontend serves the web recorder)
+        if: matrix.package == 'frontend'
+        working-directory: web
+        run: |
+          npm install
+          npx playwright install --with-deps chromium
 
       - name: Run ${{ matrix.package }} tests
         if: matrix.package != 'root'

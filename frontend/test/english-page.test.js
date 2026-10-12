@@ -33,7 +33,9 @@ const model = async (prompt) => {
   });
   await new Promise((r) => app.listen(0, r));
 
-  const browser = await chromium.launch({ executablePath: process.env.TESTOPS_MOBILE_WEB_CHROMIUM_PATH || undefined });
+  let browser;
+  try { browser = await chromium.launch({ executablePath: process.env.TESTOPS_MOBILE_WEB_CHROMIUM_PATH || undefined }); }
+  catch (e) { console.log(`  SKIPPED english page test - no browser available (${String(e.message).split("\n")[0]})`); app.close(); site.close(); return; }
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   const errors = []; page.on("pageerror", (e) => errors.push(e.message));
   try {

@@ -2,6 +2,7 @@
  * Records a manual browsing session as steps in the SAME format
  * web/web-test-case-runner.js replays. Works against any Playwright page.
  */
+const { resolveSelector, allMatches } = require("./locate");
 const { ELEMENT_AT_POINT, buildWebSelectorCandidates, describeElement } = require("./dom-resolver");
 const { locatorFor } = require("../web-test-case-runner");
 const { executeApiStep, validateApiStep } = require("../../engine/core/api-step");
@@ -71,42 +72,12 @@ class WebRecorder {
    * non-unique match is pinned with `nth` rather than silently clicking the
    * wrong twin (nav link vs. page link with the same text, duplicate ids...).
    */
-  async _resolveSelector(descriptor, point) {
-    const candidates = buildWebSelectorCandidates(descriptor);
-    if (!candidates.length) return { selector: null, fragile: true };
-    try {
-      let bestPinned = null;
-      for (let i = 0; i < candidates.length; i += 1) {
-        const cand = candidates[i];
-        // The last candidate is a positional css path: only worth using when no
-        // semantic locator (role/label/id/text) matched the element at all.
-        if (i === candidates.length - 1 && bestPinned) break;
-        // count matches and where the target sits among them
-        const loc = this._allMatches(cand);
-        const info = await loc.evaluateAll((els) => ({ count: els.length, index: els.findIndex((e) => e.hasAttribute("data-tm-target")) })).catch(() => null);
-        if (!info || info.index < 0) continue;
-        if (info.count === 1) return { selector: cand, fragile: i === candidates.length - 1 };
-        if (!bestPinned || info.count < bestPinned.count) bestPinned = { cand, count: info.count, index: info.index };
-      }
-      return bestPinned
-        ? { selector: { ...bestPinned.cand, nth: bestPinned.index }, fragile: false }
-        : { selector: candidates[candidates.length - 1], fragile: true };
-    } finally {
-      await this.page.evaluate(() => document.querySelectorAll("[data-tm-target]").forEach((n) => n.removeAttribute("data-tm-target"))).catch(() => {});
-    }
+  async _resolveSelector(descriptor) {
+    return resolveSelector(this.page, descriptor);
   }
 
-  /** Locator for ALL matches of a candidate (no nth/first applied). */
   _allMatches(sel) {
-    const page = this.page;
-    switch (sel.strategy) {
-      case "css": return page.locator(sel.value);
-      case "text": return page.getByText(sel.value, { exact: false });
-      case "label": return page.getByLabel(sel.value);
-      case "testid": return page.getByTestId(sel.value);
-      case "role": return page.getByRole(sel.role, { name: sel.value, exact: sel.exact === true });
-      default: return page.locator(sel.value);
-    }
+    return allMatches(this.page, sel);
   }
 
   /** @param {number} xRatio 0..1 of the rendered viewport  @param {number} yRatio */

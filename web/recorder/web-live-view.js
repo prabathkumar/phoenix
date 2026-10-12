@@ -28,6 +28,9 @@ const { WebSocketServer } = require("ws");
 const { WebRecorder } = require("./web-recorder");
 const { toTestCase, toPlaywrightScript, inferWebFlowName } = require("./web-codegen");
 
+const { createPlaywrightSurface } = require("../surface/playwright-surface");
+const { runGoalLoop } = require("../../engine/core/goal-loop");
+
 const FRAME_INTERVAL_MS = 250;
 const VIEWPORT = { width: 1280, height: 800 };
 
@@ -51,10 +54,29 @@ function countAssertions(steps) {
 }
 
 /**
+ * "Ask AI": the AI layer works toward a goal in the live page; what it does is
+ * appended to the recording as ordinary steps the tester can undo. Pass your own
+ * `aiLoop` to startWebLiveView to replace it (tests do).
+ */
+async function defaultAiLoop({ goal, page, recorder, send, announce }) {
+  if (!goal.trim()) throw new Error("Tell the AI what to do first.");
+  const result = await runGoalLoop(createPlaywrightSurface(page), goal, {
+    vision: true,
+    onProgress: (p) => send({ type: "ai-progress", message: p.message, step: p.step }),
+  });
+  for (const { step } of result.steps) {
+    recorder.steps.push({ ...step, resolvedBy: "ai" });
+    announce(recorder.steps.length - 1, step, { name: step.instruction });
+  }
+  recorder._lastTap = null;
+  send({ type: "ai-finished", success: result.success, message: result.reason, stepsAdded: result.steps.length });
+}
+
+/**
  * @param {{port:number, startUrl?:string, name?:string, browser?:Object, headless?:boolean, aiLoop?:Function}} opts
  * @returns {Promise<{wss:Object, port:number, recorder:Object, page:Object, close:Function}>}
  */
-async function startWebLiveView({ port, startUrl, name, browser, headless, aiLoop } = {}) {
+async function startWebLiveView({ port, startUrl, name, browser, headless, aiLoop = defaultAiLoop } = {}) {
   const ownsBrowser = !browser;
   const b = browser || (await launchBrowser({ headless }));
   const context = await b.newContext({ viewport: VIEWPORT });
@@ -170,7 +192,8 @@ async function startWebLiveView({ port, startUrl, name, browser, headless, aiLoo
         });
       } else if (message.type === "ai-goal") {
         if (typeof aiLoop !== "function") throw new Error("The AI goal loop is not enabled on this server.");
-        await aiLoop({ goal: String(message.goal || ""), page, recorder, send });
+        send({ type: "ai-progress", message: "starting…" });
+        await aiLoop({ goal: String(message.goal || ""), page, recorder, send, announce: announceStep });
       }
     } catch (err) {
       send({ type: "action-error", code: err.code, message: err.message });

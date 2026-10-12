@@ -231,6 +231,26 @@ test("codegen emits parameters, locators and assertions", () => {
     c.ws.close(); c.site.server.close();
   });
 
+  await test("Ask AI: with the model unreachable it ends with a clear ai-finished (no steps lost), and a scripted loop adds steps", async () => {
+    const down = await open(PAGE);
+    // No Ollama runs in the test environment, so the real default loop reports the model as unreachable.
+    down.send({ type: "ai-goal", goal: "sign in" });
+    const fin = await down.waitFor((m) => m.type === "ai-finished");
+    assert.strictEqual(fin.success, false);
+    assert.ok(/model call failed/.test(fin.message), fin.message);
+    down.ws.close(); down.site.server.close(); await down.session.close();
+
+    const loop = await open(PAGE, null, { aiLoop: async ({ recorder, send, announce }) => {
+      recorder.steps.push({ kind: "tap", instruction: "Click Sign in", selector: { strategy: "role", role: "button", value: "Sign in", exact: true } });
+      announce(recorder.steps.length - 1, recorder.steps[recorder.steps.length - 1], { name: "Sign in" });
+      send({ type: "ai-finished", success: true, message: "ok", stepsAdded: 1 });
+    } });
+    loop.send({ type: "ai-goal", goal: "sign in" });
+    await loop.waitFor((m) => m.type === "ai-finished" && m.success);
+    assert.strictEqual(loop.steps()[loop.steps().length - 1].instruction, "Click Sign in");
+    loop.ws.close(); loop.site.server.close(); await loop.session.close();
+  });
+
   if (failed) { console.error("\nweb recorder tests FAILED"); process.exit(1); }
   console.log("\nweb recorder tests passed"); process.exit(0);
 })();

@@ -715,7 +715,17 @@ function runRecorder(host, port, options) {
       showGuide("Click a field first", message.message || "Click the input you want to type into, then type again.", []);
     }
     if (message.type === "ai-progress") setConnected(true, "AI: " + (message.message || "working…"));
-    if (message.type === "ai-finished") setConnected(true, "AI finished: " + (message.message || ""));
+    if (message.type === "ai-finished") {
+      setConnected(true, "AI " + (message.success ? "finished" : "stopped") + ": " + (message.message || ""));
+      if (!message.success) {
+        const m = String(message.message || "");
+        const modelDown = /model call failed|fetch failed|ECONNREFUSED/i.test(m);
+        showGuide(modelDown ? "The AI model isn't reachable" : "The AI couldn't finish that", modelDown
+          ? "The AI layer needs the local model (Ollama) running. Start it (ollama serve), then ask again. Anything it did before stopping was kept as steps; use Undo to remove them."
+          : m + (message.stepsAdded ? " Steps it already did were kept; use Undo to remove them." : ""),
+          [{ label: "Ask again", primary: true, run: () => $("ai-goal").focus() }, { label: "Undo last step", run: () => send({ type: "undo" }) }]);
+      }
+    }
   });
 
   function stepText(kind, m) {

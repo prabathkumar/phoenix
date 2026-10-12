@@ -42,6 +42,9 @@ const { verifyExpectedOutcome, validateExpectShape } = require("../generation/ou
 const { SERIALIZE_DOM_SCRIPT } = require("../generation/webview-snapshot");
 const { resolveWebviewAction: defaultResolveAction } = require("../generation/webview-act");
 
+const { climbLadder, applyPatches } = require("./web-ladder");
+const { createPlaywrightSurface } = require("./surface/playwright-surface");
+
 const WEB_KINDS = new Set(["navigate", "tap", "type", "select", "press", "scroll", "wait", "tapIfExists", "assert", "api"]);
 const DEFAULT_WAIT_MS = 1000;
 const ACTION_TIMEOUT_MS = 10000;
@@ -147,6 +150,13 @@ async function runWebSteps(page, steps, options = {}) {
   const results = [];
   const updatedSteps = steps.map((s) => ({ ...s }));
   let runError;
+  // The ladder (Synthetic -> Semantic -> AI -> Guided) is on unless a caller injected
+  // its own resolver (tests, legacy callers) or turned it off.
+  const ladderOn = options.ladder !== false && !options.resolveAction;
+  const surface = ladderOn ? options.surface || createPlaywrightSurface(page) : null;
+  const patches = [];
+  const pastFailures = [];
+  let lastDiff = { appeared: [], disappeared: [] };
 
   try {
     validateWebSteps(steps, testCase || "web test case");
@@ -161,6 +171,22 @@ async function runWebSteps(page, steps, options = {}) {
       const t0 = Date.now();
       const record = (status, extra = {}) =>
         results.push({ index: i, kind: step.kind, instruction: step.instruction || step.url || step.kind, status, durationMs: Date.now() - t0, ...extra });
+      // Fall down the ladder for this step. true = rescued (recorded), false = not rescued.
+      const viaLadder = async (failedSelector, reason) => {
+        if (!ladderOn || step.kind === "tapIfExists" || !step.instruction) return { rescued: false, reason };
+        const r = await climbLadder({
+          surface, step, index: i, ctx: { failedSelector, reason, pageDiff: lastDiff, pastFailures },
+          options: { ai: options.ai, vision: options.vision, callModel: options.callModel, onGuided: options.onGuided, onProgress: options.onProgress },
+        });
+        if (r.ok) {
+          patches.push(r.patch);
+          record("pass", { resolvedBy: r.layer, ...(r.patch.to ? { selector: r.patch.to } : {}), healed: { from: failedSelector, promotable: r.patch.promotable } });
+          return { rescued: true };
+        }
+        if (r.skipped) { record("skipped", { reason: r.reason }); return { rescued: true }; }
+        pastFailures.push({ instruction: step.instruction, reason: r.reason || reason });
+        return { rescued: false, reason: `${reason}; tried ${r.tried.join(" > ")}: ${r.reason}` };
+      };
 
       try {
         if (step.kind === "api") {
@@ -211,6 +237,13 @@ async function runWebSteps(page, steps, options = {}) {
         // tap | type | tapIfExists
         let selector = step.kind === "tapIfExists" ? step.selector : step.selector || step.resolvedSelector;
         let usedCache = Boolean(selector) && selector === step.resolvedSelector;
+        if (!selector && ladderOn && step.kind !== "tapIfExists") {
+          const r = await viaLadder(undefined, "no recorded locator");
+          if (r.rescued) continue;
+          if (step.optional) { record("skipped", { reason: r.reason }); continue; }
+          record("fail", { reason: `could not resolve: ${r.reason}` });
+          break;
+        }
         if (!selector) {
           const dom = await page.evaluate(SERIALIZE_DOM_SCRIPT);
           const res = await resolveAction(dom, step.instruction, { kind: step.kind === "type" ? "type" : "tap" });
@@ -232,18 +265,29 @@ async function runWebSteps(page, steps, options = {}) {
           try { await locator.first().waitFor({ state: "attached", timeout: ACTION_TIMEOUT_MS }); present = true; } catch { /* still absent */ }
         }
         if (!present) {
+          const why = `element not found (${selector.strategy}: ${selector.value})`;
+          const r = await viaLadder(selector, why);
+          if (r.rescued) continue;
           if (step.optional) { record("skipped", { reason: "element not present" }); continue; }
-          record("fail", { selector, reason: `element not found (${selector.strategy}: ${selector.value})` });
+          record("fail", { selector, reason: r.reason });
           break;
         }
 
         const before = step.expect ? await visibleLines(page) : null;
         const beforeAny = await visibleLines(page);
-        if (step.kind === "type") await locator.first().fill(step.text, { timeout: ACTION_TIMEOUT_MS });
-        else if (step.kind === "select") await locator.first().selectOption({ label: step.option }, { timeout: ACTION_TIMEOUT_MS });
-        else await locator.first().click({ timeout: ACTION_TIMEOUT_MS });
+        try {
+          if (step.kind === "type") await locator.first().fill(step.text, { timeout: ACTION_TIMEOUT_MS });
+          else if (step.kind === "select") await locator.first().selectOption({ label: step.option }, { timeout: ACTION_TIMEOUT_MS });
+          else await locator.first().click({ timeout: ACTION_TIMEOUT_MS });
+        } catch (actErr) {
+          // The element exists but cannot be acted on (covered, detached, ...): same ladder.
+          const r = await viaLadder(selector, String(actErr.message).split("\n")[0]);
+          if (r.rescued) continue;
+          throw new Error(r.reason);
+        }
         try { await page.waitForLoadState("load", { timeout: 3000 }); } catch { /* no navigation */ }
         const afterAny = await visibleLines(page);
+        lastDiff = { appeared: afterAny.filter((l) => !beforeAny.includes(l)), disappeared: beforeAny.filter((l) => !afterAny.includes(l)) };
 
         if (step.expect) {
           const verification = verifyExpectedOutcome(diffLines(before, afterAny), step.expect);
@@ -257,7 +301,7 @@ async function runWebSteps(page, steps, options = {}) {
         if (step.kind !== "tapIfExists" && (usedCache || step.expect || changed || step.kind === "type")) {
           updatedSteps[i] = { ...updatedSteps[i], resolvedSelector: selector };
         }
-        record("pass", { selector });
+        record("pass", { selector, resolvedBy: step.kind === "tapIfExists" ? "synthetic" : usedCache ? "synthetic" : step.selector ? "synthetic" : "semantic" });
       } catch (err) {
         if (step.optional) { record("skipped", { reason: err.message }); continue; }
         record("fail", { reason: err.message });
@@ -269,7 +313,14 @@ async function runWebSteps(page, steps, options = {}) {
   }
 
   const result = buildTestResult({ platform: "web", testCase, steps: results, startedAt, finishedAt: Date.now(), error: runError });
-  return { ...result, updatedSteps };
+  return { ...result, updatedSteps, patches, healedSteps: applyPatches(steps, patches), resolvedBy: tally(results) };
+}
+
+/** How many steps each layer resolved - the headline of a run's health. */
+function tally(results) {
+  const out = {};
+  results.forEach((r) => { if (r.resolvedBy) out[r.resolvedBy] = (out[r.resolvedBy] || 0) + 1; });
+  return out;
 }
 
 /**

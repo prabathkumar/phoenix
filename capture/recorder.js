@@ -20,6 +20,9 @@ const { DOMParser } = require("@xmldom/xmldom");
 // Same rule generation/pipeline.js's isBlank()/cleanLabel() apply to labels
 // pulled from the same accessibility trees for assertions.
 const INVISIBLE_CHARS_RE = /[​‌‍﻿]/g;
+// Labels a TextInputLayout draws around its field: not the thing a tester taps.
+const DECORATION_ID_RE = /(^|[:/_])(textinput_(error|helper_text|counter|placeholder|prefix|suffix)|error|helper)$/i;
+const EDITABLE_CLASS_RE = /(EditText|AutoCompleteTextView|XCUIElementTypeTextField|XCUIElementTypeSecureTextField|XCUIElementTypeTextView)$/;
 
 /**
  * @typedef {Object} CapturedStep
@@ -301,8 +304,20 @@ function resolveElementAtCoordinate(coordinate, pageSourceXml) {
     attr(node, "clickable") === "true";
   // Never climb to a screen-sized container (the app root also carries a name).
   const largestArea = rectArea(candidates[candidates.length - 1].rect);
+  // Material TextInputLayout puts an error / helper / counter label next to its
+  // input, and its bounds can overlap the field. Such a label is the SMALLEST
+  // element under the tap, but it is not what the tester meant: its text appears
+  // and disappears with validation, and typing into it only works by accident.
+  // So: an editable field under the tap wins, then any non-decoration element.
+  const isDecoration = ({ node }) =>
+    DECORATION_ID_RE.test(attr(node, "resource-id")) && attr(node, "clickable") !== "true";
+  const isEditable = ({ node }) => EDITABLE_CLASS_RE.test(node.tagName || "");
+  const usable = (c) => isUseful(c) && rectArea(c.rect) <= largestArea / 2;
   const { node: element, rect } =
-    candidates.find((c) => isUseful(c) && rectArea(c.rect) <= largestArea / 2) || candidates[0];
+    candidates.find((c) => usable(c) && isEditable(c)) ||
+    candidates.find((c) => usable(c) && !isDecoration(c)) ||
+    candidates.find(usable) ||
+    candidates[0];
 
   // Trims and treats a whitespace-only value the same as a missing one --
   // seen for real against a BrowserStack-recorded iOS app (BitBar Sample

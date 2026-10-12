@@ -366,6 +366,13 @@ test("extractParameters names parameters from the field's resource-id, stripped 
   assert.strictEqual(parameters[1].value, "hunter2");
 });
 
+test("extractParameters turns camelCase widget ids into readable names (etUserIdTextInput -> user_id)", () => {
+  const mk = (resourceId) => [{ typedValue: "x", resolvedElement: { resourceId } }];
+  assert.strictEqual(extractParameters(mk("com.ytlcomms.ymca:id/etUserIdTextInput"))[0].name, "user_id");
+  assert.strictEqual(extractParameters(mk("com.app:id/etUserPassTextInput"))[0].name, "user_pass");
+  assert.strictEqual(extractParameters(mk("app:id/email_input"))[0].name, "email");
+});
+
 test("buildSelector maps each locator strategy to a WebdriverIO selector", () => {
   assert.strictEqual(buildSelector({ strategy: "accessibility-id", value: "Login" }), "~Login");
   assert.strictEqual(buildSelector({ strategy: "xpath", value: "/hierarchy[1]/a[1]" }), "/hierarchy[1]/a[1]");

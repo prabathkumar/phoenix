@@ -263,3 +263,22 @@ test("a tap on an unnamed screen-sized container (e.g. an on-screen keypad with 
   assert.strictEqual(r.strategy, "coordinate");
   assert.strictEqual(r.value, "300,1900");
 });
+
+test("a tap on a TextInputLayout field picks the editable input, not the error label that overlaps it", () => {
+  const xml = `<hierarchy><node class="android.widget.FrameLayout" bounds="[0,0][1080,2400]">
+    <node class="com.google.android.material.textfield.TextInputLayout" bounds="[84,400][996,640]">
+      <node class="android.widget.EditText" resource-id="com.ytlcomms.ymca:id/etUserIdTextInput" bounds="[84,400][996,560]"/>
+      <node class="android.widget.TextView" resource-id="com.ytlcomms.ymca:id/textinput_error" text="Please enter your User ID." bounds="[84,500][996,560]"/>
+    </node></node></hierarchy>`;
+  const r = resolveElementAtCoordinate({ x: 500, y: 530 }, xml);
+  assert.strictEqual(r.strategy, "resource-id");
+  assert.strictEqual(r.value, "com.ytlcomms.ymca:id/etUserIdTextInput");
+});
+
+test("an error label is still chosen when it is the only named thing under the tap", () => {
+  const xml = `<hierarchy><node class="android.widget.FrameLayout" bounds="[0,0][1080,2400]">
+    <node class="android.widget.TextView" resource-id="app:id/textinput_error" text="Required" bounds="[84,500][996,560]"/>
+  </node></hierarchy>`;
+  const r = resolveElementAtCoordinate({ x: 500, y: 530 }, xml);
+  assert.strictEqual(r.value, "app:id/textinput_error");
+});

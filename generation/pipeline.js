@@ -374,13 +374,20 @@ function extractParameters(steps) {
       return;
     }
     const rawName = el.resourceId || el.accessibilityId || el.text || `field_${index}`;
-    const name = String(rawName)
+    // "etUserIdTextInput" -> "user_id"; "email_input" -> "email". Split camelCase
+    // first, then drop the widget-kind words (et/edit/text/input/field) at the ends.
+    const words = String(rawName)
       .split("/")
       .pop()
+      .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
       .replace(/[^a-zA-Z0-9]+/g, "_")
-      .replace(/_?input$|_?field$|_?edit(text)?$/i, "")
-      .replace(/^_+|_+$/g, "")
-      .toLowerCase() || `field_${index}`;
+      .toLowerCase()
+      .split("_")
+      .filter(Boolean);
+    const KIND = new Set(["et", "edit", "text", "input", "field", "edittext", "textinput"]);
+    while (words.length > 1 && KIND.has(words[words.length - 1])) words.pop();
+    while (words.length > 1 && KIND.has(words[0])) words.shift();
+    const name = words.join("_") || `field_${index}`;
 
     parameters.push({ stepIndex: index, name, value: step.typedValue });
   });

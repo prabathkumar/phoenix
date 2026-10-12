@@ -286,6 +286,17 @@ verification, result), not a single merged runtime. The vision and loop layers
 are mobile-only so far; bringing semantic self-heal and the loop to the web
 runner is the natural next step.
 
+## 5b. The layers as one ladder (Guided, Synthetic, Semantic, AI)
+
+The recorder page is one page for both platforms; the web live view speaks the mobile live-view
+protocol, so the same stage, steps panel and guided cards drive either. Beneath it, how a step is
+done is a ladder: Synthetic (recorded locator) falls to Semantic (instruction to element, with vision),
+then AI (goal loop), then Guided (a person); every rescue proposes a patch that promotes the fix
+back up into the Synthetic layer, gated on evidence. Semantic, AI and the ladder are written once
+against `engine/core/surface.js`; `web/surface/` is the Playwright adapter and an Appium adapter is
+the planned second one. `api` steps (`engine/core/api-step.js`) work in any flow. Full description:
+[`LAYERS.md`](LAYERS.md). Engine upgrades: [`UPGRADING.md`](UPGRADING.md).
+
 ## 6. Key design decisions
 
 | Decision | Why |

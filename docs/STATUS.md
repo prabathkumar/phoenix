@@ -968,3 +968,18 @@ real websites) and fixing what the logs and generated scripts showed.
 **Still open:** replay of a recorded Android script on BrowserStack to confirm
 pass/fail; local Android emulator recording (a BrowserStack step takes 10-15 s);
 the TestOps write API and frothAI contract; Flutter element identification.
+
+
+## Unified recorder, API steps, test data and the layer ladder (2026-10-12)
+
+Shipped and tested (all suites green; browser tests need Chromium):
+- One recorder page for Web and Mobile (platform switch, URL or app upload, named test data, guided cards, Undo, Add API check). `/web-record` redirects to `/?platform=web`; `web-record.html` removed.
+- Web live view speaks the mobile protocol (+ `undo`, `test-data`, `api`, `ai-goal`, `fragile`, error codes). Mobile live view gained `undo`, test-data names (`typedParam`) and `api`.
+- `api` step kind (shared runner code), generated for Playwright and for the mobile WebdriverIO script; values saved by one step are `${NAME}` in later steps.
+- Layers renamed and wired: Guided, Synthetic, Semantic (with vision AI), AI (`docs/LAYERS.md`). Web has the full ladder, `resolvedBy` per step, evidence-gated promotion patches (`--persist`), `web/run-web-loop.js`, and Ask AI in the page.
+- `docs/UPGRADING.md` and `scripts/check-upgrades.js`: when Playwright/Appium ship, we upgrade deliberately. First run found WebdriverIO 8.46 vs 10.0 available (a major; not yet taken).
+
+Not done, stated plainly:
+- The Semantic/AI/ladder code has been proven against scripted models on real Chromium, not yet against a real Ollama model on a real site.
+- Mobile on Appium still uses its own Semantic/AI code; the Appium `Surface` adapter (and mobile ladder rungs) is the next step and needs hardware.
+- The mobile Guided cards for "tap failed" use the same page, but the mobile server does not yet send fragile-locator flags.

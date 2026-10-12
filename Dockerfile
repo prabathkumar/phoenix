@@ -22,7 +22,12 @@
 #
 # What you get from this image: the live-view WebSocket server, session
 # recorder, script generator, and the tester-facing frontend, all built and
-# ready to run against whatever Appium server you point them at.
+# ready to run against whatever Appium server you point them at - plus Chromium,
+# so the web recorder and web replay (Playwright) work inside the container too.
+# Up to 8 web recordings at once (ports 8092-8099).
+#
+# NOT build-verified from this sandbox (it cannot reach Docker Hub or the Playwright
+# CDN): run `docker build .` and the smoke test in docs/TESTOPS_MOBILE_DOCKER.md once.
 
 # Pinned to an exact upstream version tag AND content digest, not the
 # floating "22-slim" tag -- "latest"/"22-slim" can silently change under us
@@ -94,6 +99,16 @@ RUN npm install --prefix engine --omit=dev \
  && npm install --prefix frontend --omit=dev \
  && npm install --prefix web --omit=dev
 
+# Chromium for the web recorder and web replay (Playwright). `npm install` does not
+# fetch a browser, so install it here, AFTER the web dependencies and BEFORE the source
+# is copied: this ~400MB layer is cached until web/package*.json changes. It is installed
+# by the exact Playwright version in web/package-lock.json, so browser and library always
+# match (see docs/UPGRADING.md: bump Playwright, rebuild, this follows). A shared path
+# keeps the browser readable if the container is ever run as a non-root user.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN cd web && npx playwright install --with-deps chromium \
+ && rm -rf /var/lib/apt/lists/*
+
 # Now bring in the actual source.
 COPY engine/ ./engine/
 COPY capture/ ./capture/
@@ -105,15 +120,11 @@ COPY run-session.js ./run-session.js
 COPY run-batch-executions.js ./run-batch-executions.js
 COPY test-cases/ ./test-cases/
 
-# Web (Playwright) runs need a browser binary, which `npm install` does NOT
-# fetch: in a container, run `cd web && npx playwright install --with-deps chromium`
-# (or point TESTOPS_MOBILE_WEB_CHROMIUM_PATH at an existing Chromium). Not baked
-# in here -- it adds ~400MB and mobile-only deployments never need it.
-# (Dockerfile changes in this commit are not build-verified: the sandbox can't
-# reach Docker Hub -- run `docker build .` once before relying on it.)
-
-# live-view + frontend ports (see .env.example for what each does).
-EXPOSE 8090 8091
+# live-view + frontend ports (see .env.example for what each does), plus a small range
+# for web recordings: each browser the web recorder opens mirrors itself over its own
+# WebSocket port, and only published ports are reachable from outside the container.
+ENV TESTOPS_MOBILE_WEB_PORT_RANGE=8092-8099
+EXPOSE 8090 8091 8092-8099
 
 # TESTOPS_MOBILE_STAGE0_APP_PATH must point at a .apk reachable from wherever the
 # Appium server this container talks to actually runs — not from inside

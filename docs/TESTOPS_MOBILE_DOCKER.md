@@ -139,11 +139,25 @@ anyone ever runs the connector.
   instead, swapping it in only touches `docker-publish.yml`'s login/push
   steps — see `docs/RELEASING.md`'s own notes on that.
 
-## What is not in the image: the web recorder's browser
+## The web recorder inside the image
 
-The image copies `web/` (the web test-case runner and the web recorder code), but
-it does not contain Chromium, so the **Web** option of the recorder and `web/run-web-test-case.js`
-cannot launch a browser inside the container. Run the web recorder on a machine
-with Chromium (see [`SETUP.md`](SETUP.md#web-recorder-prerequisites-only-if-testers-will-record-websites)).
-To containerize it later, add `npx playwright install --with-deps chromium` to the
-Dockerfile.
+The image includes **Chromium** (installed by the Playwright version in `web/package-lock.json`,
+into `/ms-playwright`), so the **Web** option of the recorder and `web/run-web-test-case.js` work in
+the container. It adds roughly 400 MB, in its own cached layer.
+
+Things that matter when running it:
+- **Ports.** Each open web recording mirrors itself over its own WebSocket port. The image sets
+  `TESTOPS_MOBILE_WEB_PORT_RANGE=8092-8099` (up to 8 recordings at once) and exposes that range;
+  with `docker run` publish it: `-p 8090:8090 -p 8091:8091 -p 8092-8099:8092-8099`
+  (`docker-compose.yml` already does). The recorder page is on 8091.
+- **Shared memory.** Chromium crashes with Docker's default 64 MB `/dev/shm`; compose sets
+  `shm_size: 1gb`. With `docker run` add `--shm-size=1g`.
+- **Abandoned recordings.** If a tester closes the tab without pressing Stop, the browser is closed
+  after 60 s (`TESTOPS_MOBILE_WEB_ABANDON_MS` to change).
+- **Not build-verified from the sandbox** (no Docker Hub / Playwright CDN access). Smoke test once:
+
+```bash
+docker build -t testops-mobile:latest .
+docker run --rm -p 8091:8091 -p 8092-8099:8092-8099 --shm-size=1g testops-mobile:latest node frontend/server.js
+# open http://localhost:8091, choose Web, enter https://example.com, click the page, Stop & generate
+```

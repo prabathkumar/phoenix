@@ -983,3 +983,9 @@ Not done, stated plainly:
 - The Semantic/AI/ladder code has been proven against scripted models on real Chromium, not yet against a real Ollama model on a real site.
 - Mobile on Appium still uses its own Semantic/AI code; the Appium `Surface` adapter (and mobile ladder rungs) is the next step and needs hardware.
 - The mobile Guided cards for "tap failed" use the same page, but the mobile server does not yet send fragile-locator flags.
+
+### Docker Chromium and WebdriverIO 10 (2026-10-12)
+- The Docker image now installs Chromium (Playwright's own version, in `/ms-playwright`), exposes ports 8092-8099 for concurrent web recordings, and compose sets `shm_size: 1gb`. **Not build-verified** (sandbox cannot reach Docker Hub): run the smoke test in `TESTOPS_MOBILE_DOCKER.md`.
+- Abandoned web recordings are closed after 60 s so a container cannot accumulate browsers.
+- WebdriverIO upgraded 8.46 to 10.0.2 (needs Node 22.19+). No code changes: `require()` of the ES-module package works on Node 22.12+. `engine/test/webdriverio-compat.test.js` guards the calls we make; **not yet exercised against real BrowserStack/Appium**: run one smoke session before relying on it.
+

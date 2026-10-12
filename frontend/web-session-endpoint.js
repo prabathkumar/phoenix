@@ -8,12 +8,26 @@ const { startWebLiveView } = require("../web/recorder/web-live-view");
 
 const live = new Set();
 
-function freePort() {
+function tryListen(port) {
   return new Promise((resolve, reject) => {
     const srv = net.createServer();
     srv.once("error", reject);
-    srv.listen(0, () => { const { port } = srv.address(); srv.close(() => resolve(port)); });
+    srv.listen(port, () => { const { port: got } = srv.address(); srv.close(() => resolve(got)); });
   });
+}
+
+/**
+ * A free port for the live-view WebSocket. Locally any port will do (random). In a
+ * container only published ports are reachable, so TESTOPS_MOBILE_WEB_PORT_RANGE
+ * ("8092-8099") restricts the choice to the range the image exposes.
+ */
+async function freePort(range = process.env.TESTOPS_MOBILE_WEB_PORT_RANGE) {
+  const m = String(range || "").match(/^(\d+)-(\d+)$/);
+  if (!m) return tryListen(0);
+  for (let p = Number(m[1]); p <= Number(m[2]); p += 1) {
+    try { return await tryListen(p); } catch { /* busy: try the next one */ }
+  }
+  throw new Error(`no free port in ${range} - close an open web recording or widen TESTOPS_MOBILE_WEB_PORT_RANGE`);
 }
 
 function readJson(req) {
@@ -40,4 +54,4 @@ async function handleStartWebSession(req, res, start = startWebLiveView) {
   }
 }
 
-module.exports = { handleStartWebSession };
+module.exports = { handleStartWebSession, freePort };

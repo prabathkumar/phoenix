@@ -28,3 +28,7 @@ ships an upgrade, we upgrade too - on purpose, in one small change, with proof.
   code lives behind `live-view/` and `engine/`. Upgrades are confined there.
 - Tap injection (W3C actions) and screenshot size handling on Appium.
 - Playwright locator semantics (`getByRole` name matching, `.nth`).
+
+## Notes from past upgrades
+- **WebdriverIO 8 to 10 (2026-10-12).** Version 9+ is ES-module-only and needs Node 22.19+. Our CommonJS code still loads it with `require()` (Node 22.12+ can require ES modules), so no code changed. `engine/test/webdriverio-compat.test.js` runs the calls we make (session, screenshot, source, window size, pointer actions, execute, keys, element lookup) against a fake W3C server; a WebdriverIO upgrade must keep it green. Real-device behaviour still needs one BrowserStack smoke.
+- **Playwright** and the Chromium in the Docker image move together: the image installs the browser with the Playwright version in `web/package-lock.json`, so bump, rebuild, done.

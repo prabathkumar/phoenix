@@ -27,7 +27,7 @@ TestOps ai-automate's live-view WebSocket (`TESTOPS_MOBILE_LIVE_VIEW_PORT`).
 
 ## Web recorder prerequisites (only if testers will record websites)
 
-The web recorder (`/web-record`) needs no device and no Appium. It launches a
+The web recorder (the **Web** option on the recorder page) needs no device and no Appium. It launches a
 Chromium on the machine running `frontend/server.js`:
 
 ```bash
@@ -35,12 +35,12 @@ cd web && npm install && npx playwright install chromium
 ```
 
 To use a Chromium you already have, set `TESTOPS_MOBILE_WEB_CHROMIUM_PATH` to its
-executable. The Docker image does not include a browser, so run the web recorder
-on a developer machine or a host image that has one.
+executable. The Docker image includes Chromium (see `TESTOPS_MOBILE_DOCKER.md` for the ports and
+shared-memory settings it needs).
 
 ## 1. Prerequisites on the device host
 
-- Node.js 20+
+- Node.js 22.19+ (WebdriverIO 10 requires it; the Docker image already has 22.23)
 - Android SDK (`ANDROID_HOME` set, `platform-tools` and a `build-tools`
   version on PATH — Appium's UiAutomator2 driver needs `adb` and
   `aapt2`)

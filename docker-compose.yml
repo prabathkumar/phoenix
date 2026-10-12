@@ -31,6 +31,10 @@ services:
     ports:
       - "8090:8090"
       - "8091:8091"
+      # one port per concurrent web recording (Chromium mirror), see the Dockerfile
+      - "8092-8099:8092-8099"
+    # Chromium is crash-prone with Docker's default 64MB /dev/shm
+    shm_size: "1gb"
     restart: unless-stopped
 
 volumes:

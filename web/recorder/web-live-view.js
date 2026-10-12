@@ -202,14 +202,24 @@ async function startWebLiveView({ port, startUrl, name, browser, headless, aiLoo
     }
   }
 
+  // A tester who closes the tab without pressing Stop must not leave a browser running
+  // forever (in a container that is a leak): give a reload a minute, then clean up.
+  const ABANDON_MS = Number(process.env.TESTOPS_MOBILE_WEB_ABANDON_MS) || 60000;
+  let abandonTimer = null;
+
   wss.on("connection", (socket) => {
     client = socket;
+    if (abandonTimer) { clearTimeout(abandonTimer); abandonTimer = null; }
     socket.on("message", (data) => {
       let msg;
       try { msg = JSON.parse(String(data)); } catch { return; }
       handle(msg);
     });
-    socket.on("close", () => { if (client === socket) client = null; });
+    socket.on("close", () => {
+      if (client !== socket) return;
+      client = null;
+      if (!stopped) { abandonTimer = setTimeout(shutdown, ABANDON_MS); abandonTimer.unref(); }
+    });
     announcePage();
   });
 

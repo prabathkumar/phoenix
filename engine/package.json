@@ -2,17 +2,20 @@
   "name": "@testops-mobile/engine",
   "version": "0.0.1",
   "private": true,
-  "description": "TestOps ai-automate engine — session and driver layer. Starts as a thin wrapper around Appium's core + uiautomator2/xcuitest drivers; the fork happens here once Stage 0's single-session milestone is proven.",
-  "comment_appium": "Two DIFFERENT ways to run Appium's driver live side by side here, each with its own rule about project dependencies — do not mix them up: (1) stage0-session.js / run-session.js SPAWN a separately-running `appium` CLI server and talk to it over HTTP via webdriverio. That CLI manages its own drivers via `appium driver install uiautomator2` and writes its own tracking block into THIS package.json — appium/appium-uiautomator2-driver must NOT be listed here as project dependencies for that path, or the CLI's peer requirement (appium@^3.0.0-rc.2) conflicts with a pinned older version (ERESOLVE). (2) embedded-session.js / embedded-session-stage0.js require appium-uiautomator2-driver DIRECTLY in-process — no separate `appium` server, no CLI, no driver-install step. That path needs appium + appium-uiautomator2-driver listed as normal dependencies below (`npm install` in this directory is enough; do not also run `appium driver install` for this path, there is no CLI server to install it into).",
+  "description": "TestOps ai-automate engine \u2014 session and driver layer. Starts as a thin wrapper around Appium's core + uiautomator2/xcuitest drivers; the fork happens here once Stage 0's single-session milestone is proven.",
+  "comment_appium": "Two DIFFERENT ways to run Appium's driver live side by side here, each with its own rule about project dependencies \u2014 do not mix them up: (1) stage0-session.js / run-session.js SPAWN a separately-running `appium` CLI server and talk to it over HTTP via webdriverio. That CLI manages its own drivers via `appium driver install uiautomator2` and writes its own tracking block into THIS package.json \u2014 appium/appium-uiautomator2-driver must NOT be listed here as project dependencies for that path, or the CLI's peer requirement (appium@^3.0.0-rc.2) conflicts with a pinned older version (ERESOLVE). (2) embedded-session.js / embedded-session-stage0.js require appium-uiautomator2-driver DIRECTLY in-process \u2014 no separate `appium` server, no CLI, no driver-install step. That path needs appium + appium-uiautomator2-driver listed as normal dependencies below (`npm install` in this directory is enough; do not also run `appium driver install` for this path, there is no CLI server to install it into).",
   "dependencies": {
-    "webdriverio": "^8.0.0",
+    "webdriverio": "^10.0.2",
     "appium": "^3.8.0",
     "appium-uiautomator2-driver": "^8.7.0"
   },
   "scripts": {
-    "test": "node test/remote-provider.test.js && node test/session.test.js && node test/session-pool.test.js && node test/session-manager.test.js && node test/semantic-act-executor.test.js && node test/semantic-loop.test.js && node test/auto-heal.test.js && node test/webview-context.test.js && node test/locator-store.test.js && node test/test-case-runner-confidence-gate.test.js && node test/attach-session.test.js && node test/test-result.test.js && node test/test-case-runner-result-contract.test.js && node test/git-sync.test.js && node test/testops-adapter.test.js && node test/api-step.test.js && node test/test-case-runner-api.test.js",
+    "test": "node test/remote-provider.test.js && node test/session.test.js && node test/session-pool.test.js && node test/session-manager.test.js && node test/semantic-act-executor.test.js && node test/semantic-loop.test.js && node test/auto-heal.test.js && node test/webview-context.test.js && node test/locator-store.test.js && node test/test-case-runner-confidence-gate.test.js && node test/attach-session.test.js && node test/test-result.test.js && node test/test-case-runner-result-contract.test.js && node test/git-sync.test.js && node test/testops-adapter.test.js && node test/api-step.test.js && node test/test-case-runner-api.test.js && node test/webdriverio-compat.test.js",
     "stage0": "node stage0-session.js",
     "embedded-stage0": "node embedded-session-stage0.js",
     "ios-stage0": "node ios-stage0-session.js"
+  },
+  "engines": {
+    "node": ">=22.19.0"
   }
 }

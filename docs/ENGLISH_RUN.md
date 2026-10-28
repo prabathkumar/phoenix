@@ -28,3 +28,7 @@ Both cards need the model reachable (`ollama serve`, see SETUP). Mobile also nee
 ## Not done yet
 - Mobile does not yet share the web ladder (no `resolvedBy` tally, no promotable patches); it uses its own loop until an Appium surface adapter exists.
 - A run's result is shown, not saved as a test case; "save this as a replayable script" is the next step.
+
+## Test data
+
+Each card can generate the data it can make up and ask only for the rest; see [TEST_DATA.md](TEST_DATA.md). The API card runs API steps, an OpenAPI file or a Postman collection from this server.

@@ -14,6 +14,7 @@ Testers record a flow once, inside TestOps — no Appium Inspector, no local ins
 | [`docs/TESTOPS_MOBILE_SPEC.md`](docs/TESTOPS_MOBILE_SPEC.md) | Anyone wanting the full picture | The original spec: why guided-first, the Act 1/2/3 roadmap, what each phase is and isn't |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Engineering, integrators | How the mobile and web recorders, generators and runners fit together: diagrams, protocols, step format, design decisions |
 | [`docs/LAYERS.md`](docs/LAYERS.md) | Everyone | The four layers as a ladder (falling down, promoting up), API steps, test data, the Surface, safety rails, how to use it |
+| [`docs/TEST_DATA.md`](docs/TEST_DATA.md) | Testers, engineering | The test data layer: generate or upload data for web, API and mobile, ask only for what cannot be made up, where it is stored, API bodies and bad-body cases, OpenAPI/Postman import |
 | [`docs/UPGRADING.md`](docs/UPGRADING.md) | Engineering | When Playwright/Appium ship upgrades we upgrade too: the check script and the routine |
 | [`docs/STATUS.md`](docs/STATUS.md) | Engineering — the source of truth | Every capability, every real bug found and fixed with root cause and evidence, what's still open. If a claim anywhere else in these docs needs checking, this is where it's backed up |
 | [`docs/SETUP.md`](docs/SETUP.md) | An infra engineer standing TestOps ai-automate up | Local Appium host vs. BrowserStack, credentials, env vars, one checklist from a cold machine |
@@ -223,3 +224,6 @@ For running the engine directly and the public GitHub Pages URL, see [`docs/STAT
 
 ## Run from English
 Write a test in plain English with a URL (web) or app (mobile) and named test data, and the AI runs it: open `/english`. See [docs/ENGLISH_RUN.md](docs/ENGLISH_RUN.md).
+
+## Test data
+Before a run, the test data layer fills every `${NAME}` it can (emails, phones, dates, amounts, a new user's password) and asks only for what must already exist in your system (logins, existing IDs, OTPs, tokens), or lets you skip them to test bad logins only. It works on all three cards on `/english` (Web, Mobile, API), saves per project (`test-data/`, with logins encrypted under `TESTOPS_SECRETS_KEY`), and for API tests generates request bodies, runs the bad-body cases, and imports OpenAPI or Postman files. Opt-in; existing tests run as before. See [docs/TEST_DATA.md](docs/TEST_DATA.md).

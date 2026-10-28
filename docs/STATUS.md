@@ -12,6 +12,7 @@ touches it.
 
 ## Contents
 
+- [Test data layer](#test-data-layer)
 - [Handoff to the dev team](#handoff-to-the-dev-team)
 - [The "AI" question, answered precisely](#the-ai-question-answered-precisely)
 - [Recording and script generation](#recording-and-script-generation)
@@ -26,6 +27,22 @@ touches it.
 - [iOS support](#ios-support)
 - [Remote provider: BrowserStack App Automate](#remote-provider-browserstack-app-automate-for-when-theres-no-local-device-host)
 - [Running the Android engine directly (spawn path)](#running-the-android-engine-directly-spawn-path)
+
+## Test data layer
+
+Added on branch `test-data-layer` (see [TEST_DATA.md](TEST_DATA.md) for the design and API).
+
+| Piece | Where | State |
+|---|---|---|
+| Classify, generate (seeded), variants, uploads, plan, masking | `engine/core/testdata.js` | unit-tested (`engine/test/testdata.test.js`) |
+| Per-project Test Data file + AES-256-GCM saved logins | `engine/core/testdata-store.js` | tested through the endpoint |
+| Plan / save / saved / api-plan / api-cases-run routes | `frontend/testdata-endpoint.js` | tested (`frontend/test/testdata-endpoint.test.js`) |
+| English run: `dataMode`, refuses to start while a must-exist value is missing | `frontend/english-endpoint.js` | tested, opt-in |
+| API steps: `generateBody`, `negative`, `testDataLayer` option | `engine/test-case-runner.js`, `engine/core/api-cases.js` | tested (`test-case-runner-api`, `api-cases`) |
+| OpenAPI 3 and Postman v2 import | `engine/core/api-import.js` | tested |
+| Web, Mobile and API cards: Generate test data, project, Save | `frontend/english.html` | checked in a real Chromium; not run against a live app or device |
+
+Open: "Create it for me" (sign-up page or API to add a test user) is offered but does nothing yet; Excel upload (CSV/JSON work); negative-case batches are run from the API card and `runApiCases`, not from `run-batch-executions.js`; not exercised against a real BrowserStack device. Never run in Docker from the sandbox (no daemon): build and smoke-test once per [TESTOPS_MOBILE_DOCKER.md](TESTOPS_MOBILE_DOCKER.md).
 
 ## Handoff to the dev team
 

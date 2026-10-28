@@ -78,6 +78,11 @@ Check that the account page is showing</textarea></div>
     <div><label for="api-steps">Steps (JSON list), an OpenAPI file or a Postman collection</label>
 <textarea id="api-steps" placeholder='[{"kind":"api","method":"POST","url":"/signup","generateBody":true,"negative":true,"body":{"email":"a@b.c"},"expect":{"status":201}}]'></textarea></div>
     <div><label for="api-data">Values only you have (NAME=value, one per line, e.g. API_TOKEN=...)</label><textarea id="api-data" aria-label="api test data"></textarea></div>
+    <div class="gen"><button class="link preview" type="button" id="api-preview">Generate test data</button>
+      <div class="plan" id="api-plan" aria-live="polite"></div>
+      <div><label for="api-project">Project (to save and reuse this data)</label><input type="text" class="project" id="api-project" placeholder="e.g. CH-TestOps" />
+        <label class="chk"><input type="checkbox" class="savelogins" id="api-savelogins" /> also save my tokens and passwords, encrypted</label>
+        <button class="link save" type="button" id="api-save">Save test data</button> <span class="saved-note" id="api-note" aria-live="polite"></span></div></div>
     <label class="chk"><input type="checkbox" id="api-neg" /> also run the bad-body cases (missing, empty, wrong type)</label>
     <button class="run" type="button" id="api-run">Run API test</button>
     <div class="results" id="api-results" aria-live="polite"></div>
@@ -176,7 +181,7 @@ Check that the home screen is showing</textarea></div>
       box.appendChild(row);
     });
     if (!plan.fields.length) box.textContent = "No ${NAME} values in these steps.";
-    else if (!plan.ready) box.appendChild(el("div", "need", "Type the missing values in the table above (or tick skip) before running."));
+    else if (!plan.ready) box.appendChild(el("div", "need", "Type the missing values above (or tick skip) before running."));
   }
   function dataFields(card) {
     if (card.querySelector(".datamode").value !== "generate") return {};
@@ -257,19 +262,43 @@ Check that the home screen is showing</textarea></div>
   document.querySelectorAll(".card:not(#api)").forEach(wire);
 
   (function () {
-    var btn = document.getElementById("api-run"), out = document.getElementById("api-results");
+    var card = document.getElementById("api"), btn = document.getElementById("api-run"), out = document.getElementById("api-results");
     if (!btn) return;
     function show(cls, title, why) { var v = el("div", "verdict " + cls, title); if (why) v.appendChild(el("div", "why", why)); out.appendChild(v); }
+    function read() {
+      var raw = document.getElementById("api-steps").value.trim(), parsed, b = { baseUrl: document.getElementById("api-url").value.trim(), negative: document.getElementById("api-neg").checked, provided: {}, testData: {} };
+      try { parsed = JSON.parse(raw); } catch (e) { return { error: "The steps are not valid JSON: " + e.message }; }
+      if (Array.isArray(parsed)) b.steps = parsed; else if (parsed && parsed.openapi) b.openapi = parsed; else if (parsed && parsed.item) b.postman = parsed; else return { error: "That is not a step list, an OpenAPI file or a Postman collection." };
+      document.getElementById("api-data").value.split(/\r?\n/).forEach(function (l) { var i = l.indexOf("="); if (i > 0) { var k = l.slice(0, i).trim(); b.provided[k] = l.slice(i + 1); b.testData[k] = l.slice(i + 1); } });
+      b.choices = card._choices || {}; b.seed = card._seed || undefined;
+      var proj = document.getElementById("api-project").value.trim(); if (proj) b.project = proj;
+      return { body: b };
+    }
+    function post(path, body) { return fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then(function (r) { return r.json(); }); }
+    document.getElementById("api-preview").addEventListener("click", function () {
+      var box = document.getElementById("api-plan"), r = read();
+      if (r.error) { box.textContent = r.error; return; }
+      post("/api/test-data/api-plan", r.body).then(function (j) {
+        if (j.error) { box.textContent = j.error; return; }
+        showPlan(card, j);
+        if (j.negativeCases && j.negativeCases.length) box.appendChild(el("div", "", j.negativeCases.length + " bad-body cases will run if you tick the box below."));
+      }).catch(function (err) { box.textContent = "The server could not be reached: " + err.message; });
+    });
+    document.getElementById("api-save").addEventListener("click", function () {
+      var note = document.getElementById("api-note"), r = read();
+      if (r.error) { note.textContent = r.error; return; }
+      if (!r.body.project) { note.textContent = "Type a project name first."; return; }
+      r.body.saveLogins = document.getElementById("api-savelogins").checked;
+      post("/api/test-data/save", r.body).then(function (j) {
+        note.textContent = j.error ? j.error : "Saved." + (j.logins && j.logins.length ? " Logins saved (hidden): " + j.logins.join(", ") + "." : "") + (j.note ? " " + j.note : "");
+      }).catch(function (err) { note.textContent = "The server could not be reached: " + err.message; });
+    });
     btn.addEventListener("click", function () {
       out.textContent = "";
-      var raw = document.getElementById("api-steps").value.trim(), parsed;
-      try { parsed = JSON.parse(raw); } catch (e) { show("failed", "Could not start", "The steps are not valid JSON: " + e.message); return; }
-      var body = { baseUrl: document.getElementById("api-url").value.trim(), negative: document.getElementById("api-neg").checked, testData: {} };
-      if (Array.isArray(parsed)) body.steps = parsed; else if (parsed && parsed.openapi) body.openapi = parsed; else if (parsed && parsed.item) body.postman = parsed; else { show("failed", "Could not start", "That is not a step list, an OpenAPI file or a Postman collection."); return; }
-      document.getElementById("api-data").value.split(/\r?\n/).forEach(function (l) { var i = l.indexOf("="); if (i > 0) body.testData[l.slice(0, i).trim()] = l.slice(i + 1); });
+      var r = read();
+      if (r.error) { show("failed", "Could not start", r.error); return; }
       btn.disabled = true; btn.textContent = "Running…";
-      fetch("/api/api-cases/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
-        .then(function (r) { return r.json(); })
+      post("/api/api-cases/run", r.body)
         .then(function (j) {
           if (j.error) { show("failed", "Could not start", j.error); return; }
           show(j.failed ? "failed" : "passed", j.failed ? j.failed + " of " + (j.passed + j.failed) + " cases failed" : "All " + j.passed + " cases passed");

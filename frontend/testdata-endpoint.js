@@ -61,6 +61,12 @@ function buildPlan(body, { env = process.env } = {}) {
   return { plan };
 }
 
+/** Steps from a list, an OpenAPI file or a Postman collection. Throws a plain Error. */
+function resolveApiSteps(body) {
+  const imp = require("../engine/core/api-import");
+  return body.openapi ? imp.stepsFromOpenApi(body.openapi, { only: body.only }) : body.postman ? imp.stepsFromPostman(body.postman) : body.steps;
+}
+
 function readJson(req) {
   return new Promise((resolve, reject) => {
     let body = "";
@@ -88,7 +94,10 @@ async function handleApiPlan(req, res) {
   const json = (code, obj) => { res.writeHead(code, { "Content-Type": "application/json; charset=utf-8" }); res.end(JSON.stringify(obj)); };
   let body;
   try { body = await readJson(req); } catch (e) { return json(400, { error: `Bad request: ${e.message}` }); }
-  if (!Array.isArray(body.steps) || !body.steps.length) return json(400, { error: "Send the test case's steps as a list." });
+  let steps;
+  try { steps = resolveApiSteps(body); } catch (e) { return json(400, { error: e.message }); }
+  if (!Array.isArray(steps) || !steps.length) return json(400, { error: "Send the test case's steps as a list, or an OpenAPI file or Postman collection." });
+  body = { ...body, steps };
   const { plan, error } = buildPlan(body);
   if (error) return json(400, { error });
   const prepared = td.prepareApiSteps(body.steps, { seed: plan.seed });
@@ -108,10 +117,7 @@ async function handleApiRun(req, res) {
   let body;
   try { body = await readJson(req); } catch (e) { return json(400, { error: `Bad request: ${e.message}` }); }
   let steps;
-  try {
-    const imp = require("../engine/core/api-import");
-    steps = body.openapi ? imp.stepsFromOpenApi(body.openapi, { only: body.only }) : body.postman ? imp.stepsFromPostman(body.postman) : body.steps;
-  } catch (e) { return json(400, { error: e.message }); }
+  try { steps = resolveApiSteps(body); } catch (e) { return json(400, { error: e.message }); }
   if (!Array.isArray(steps) || !steps.length) return json(400, { error: "Give the steps as a list, or an OpenAPI file or Postman collection." });
   if (steps.some((s) => !s || typeof s !== "object")) return json(400, { error: "Every step must be an object." });
   const baseUrl = typeof body.baseUrl === "string" ? body.baseUrl.trim() : "";
@@ -138,7 +144,11 @@ async function handleSave(req, res) {
   let body;
   try { body = await readJson(req); } catch (e) { return json(400, { error: `Bad request: ${e.message}` }); }
   try { store.safeProject(body.project); } catch (e) { return json(400, { error: e.message }); }
-  if (!String(body.steps || "").trim()) return json(400, { error: "Write at least one step in English first." });
+  if (body.openapi || body.postman || Array.isArray(body.steps)) {
+    // API case: plan over the bodies the layer generates, so their ${NAME}s are covered.
+    try { const steps = resolveApiSteps(body); body = { ...body, steps: td.prepareApiSteps(steps, { seed: body.seed || "save" }).steps }; } catch (e) { return json(400, { error: e.message }); }
+  }
+  if (!String(body.steps || "").trim()) return json(400, { error: "Write at least one step first." });
   // Plan from what was typed only: do not re-save what already came from the store.
   const { plan, error } = buildPlan({ ...body, project: undefined });
   if (error) return json(400, { error });

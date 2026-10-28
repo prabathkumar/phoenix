@@ -169,6 +169,26 @@ const STEPS = "Enter ${LOGIN_PHONE} in the phone field\nEnter ${LOGIN_PASSWORD} 
     target.close();
   }));
 
+  await test("api: save a project with a token, then run it with nothing typed; openapi works for plan and save", () => withEnvCleared(async () => {
+    process.env.TESTOPS_SECRETS_KEY = "a-long-test-passphrase";
+    const seenAuth = [];
+    const target = http.createServer((rq, rs) => { seenAuth.push(rq.headers.authorization); rs.writeHead(200, { "Content-Type": "application/json" }); rs.end("{}"); });
+    await new Promise((r) => target.listen(0, r));
+    const baseUrl = `http://127.0.0.1:${target.address().port}`;
+    const openapi = { openapi: "3.0.0", security: [{ b: [] }], paths: { "/me": { get: { responses: { 200: {} } } } } };
+    const plan = await post("/api/test-data/api-plan", { openapi });
+    assert.deepStrictEqual(plan.body.needsYou, ["API_TOKEN"]);
+    const saved = await post("/api/test-data/save", { project: "API1", openapi, provided: { API_TOKEN: "tok-9876" }, saveLogins: true });
+    assert.deepStrictEqual(saved.body.logins, ["API_TOKEN"]);
+    const onDisk = fs.readdirSync(dir).map((f) => fs.readFileSync(path.join(dir, f), "utf8")).join("\n");
+    assert.ok(!onDisk.includes("tok-9876"));
+    const run = await post("/api/api-cases/run", { openapi, baseUrl, project: "API1" });
+    assert.strictEqual(run.status, 200, JSON.stringify(run.body));
+    assert.strictEqual(seenAuth[0], "Bearer tok-9876");
+    assert.ok(!JSON.stringify(run.body).includes("tok-9876"));
+    target.close();
+  }));
+
   fs.rmSync(dir, { recursive: true, force: true });
   app.close();
   if (failed) { console.error(`\n${failed} failed`); process.exit(1); }

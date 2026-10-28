@@ -14,7 +14,7 @@
 const td = require("../engine/core/testdata");
 const store = require("../engine/core/testdata-store");
 
-const stepLines = (steps) => String(steps || "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+const stepLines = (steps) => Array.isArray(steps) ? steps : String(steps || "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
 
 /**
  * Shared by the plan endpoint and the English run start.
@@ -80,6 +80,24 @@ async function handlePlan(req, res) {
   return json(200, { ...td.describePlan(plan), saved: plan.savedNames, ...(plan.upload ? { upload: plan.upload } : {}) });
 }
 
+/**
+ * POST /api/test-data/api-plan {steps:[api steps], seed?, provided?, project?, negative?}
+ * -> {seed, ready, needsYou, fields, steps (bodies filled; secrets stay ${NAME}), negativeCases:[{name}]}
+ */
+async function handleApiPlan(req, res) {
+  const json = (code, obj) => { res.writeHead(code, { "Content-Type": "application/json; charset=utf-8" }); res.end(JSON.stringify(obj)); };
+  let body;
+  try { body = await readJson(req); } catch (e) { return json(400, { error: `Bad request: ${e.message}` }); }
+  if (!Array.isArray(body.steps) || !body.steps.length) return json(400, { error: "Send the test case's steps as a list." });
+  const { plan, error } = buildPlan(body);
+  if (error) return json(400, { error });
+  const prepared = td.prepareApiSteps(body.steps, { seed: plan.seed });
+  // Names inside generated bodies are found by planning again on the prepared steps.
+  const { plan: full } = buildPlan({ ...body, steps: prepared.steps, seed: plan.seed });
+  const cases = body.negative ? td.negativeApiCases(body.steps, { seed: plan.seed }) : [];
+  return json(200, { ...td.describePlan(full), saved: full.savedNames, steps: prepared.steps, negativeCases: cases.map((c) => ({ name: c.name })) });
+}
+
 /** POST /api/test-data/save {project, steps, provided, choices, seed, saveLogins?} */
 async function handleSave(req, res) {
   const json = (code, obj) => { res.writeHead(code, { "Content-Type": "application/json; charset=utf-8" }); res.end(JSON.stringify(obj)); };
@@ -113,4 +131,4 @@ function handleSaved(req, res) {
   } catch (e) { return json(500, { error: e.message }); }
 }
 
-module.exports = { handlePlan, handleSave, handleSaved, buildPlan, stepLines };
+module.exports = { handlePlan, handleApiPlan, handleSave, handleSaved, buildPlan, stepLines };

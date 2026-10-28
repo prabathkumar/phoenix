@@ -37,6 +37,33 @@ const ok = async () => ({ success: true, selector: { strategy: "id", value: "a" 
     assert.strictEqual(r.steps.length, 1);
   });
 
+  await test("test-data layer: fills a flagged body, refuses to start while a must-exist value is missing", async () => {
+    let seen;
+    const srv2 = http.createServer((req, res) => { let b = ""; req.on("data", (c) => (b += c)); req.on("end", () => { seen = b; res.writeHead(200, { "Content-Type": "application/json" }); res.end("{}"); }); });
+    await new Promise((r) => srv2.listen(0, r));
+    const base2 = `http://127.0.0.1:${srv2.address().port}`;
+    const steps = [{ kind: "api", method: "POST", url: "/signup", generateBody: true, body: { email: "a@b.c", token: "t" }, expect: { status: 200 } }];
+    const run = (testData) => runScriptSteps({}, steps, { platform: "android", executeSemanticAction: ok, sleepFn: async () => {}, apiBaseUrl: base2, testData, testDataLayer: { seed: "s" } });
+    delete process.env.TOKEN;
+    const blocked = await run({});
+    assert.strictEqual(blocked.success, false);
+    assert.match(blocked.detail, /need: TOKEN/);
+    assert.strictEqual(seen, undefined);
+    const done = await run({ TOKEN: "abc" });
+    assert.strictEqual(done.success, true, done.detail);
+    const sent = JSON.parse(seen);
+    assert.strictEqual(sent.token, "abc");
+    assert.match(sent.email, /@example\.com$/);
+    assert.ok("generateBody" in done.updatedSteps[0]); // the file's steps keep the flag, never the generated values
+    assert.strictEqual(done.updatedSteps[0].body.email, "a@b.c");
+    srv2.close();
+  });
+
+  await test("without testDataLayer a flagged step is untouched", async () => {
+    const r = await runScriptSteps({}, [{ kind: "api", method: "POST", url: `${base}/create`, generateBody: true, body: { email: "a@b.c" }, expect: { status: 200 } }], { platform: "android", executeSemanticAction: ok, sleepFn: async () => {} });
+    assert.strictEqual(r.success, true, r.detail);
+  });
+
   srv.close();
   console.log("\nmobile api-step tests passed");
   process.exit(0);

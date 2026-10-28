@@ -275,6 +275,19 @@ async function runScriptSteps(driver, steps, options) {
   const { platform, executeSemanticAction, sleepFn = defaultSleep } = options;
   // Shared across the run: test data in, values saved by api steps out.
   const vars = { ...(options.testData || {}) };
+  // Optional test-data layer (docs/TEST_DATA.md): fills api bodies flagged
+  // "generateBody" and refuses to start while a must-exist value is missing.
+  // Absent => behaviour is exactly as before.
+  const originalSteps = steps;
+  if (options.testDataLayer) {
+    const td = require("./core/testdata");
+    const prepared = td.prepareApiSteps(steps, { seed: options.testDataLayer.seed || "default" });
+    steps = prepared.steps;
+    const missing = td.requiredNames(steps, { env: { ...process.env, ...vars } }).filter((n) => prepared.needsYou.includes(n) || td.classify(n).mustExist);
+    if (missing.length) {
+      return { success: false, detail: `Before this can run I need: ${missing.join(", ")}. These must already exist in your system, so they cannot be made up.`, updatedSteps: originalSteps.map((x) => ({ ...x })), steps: [] };
+    }
+  }
   // A ${NAME} that an api step saves during the run can't be resolved up
   // front: it is resolved when its own step runs.
   const savedLater = new Set(steps.filter((s) => s.kind === "api").flatMap((s) => Object.keys(s.save || {})));
@@ -286,7 +299,7 @@ async function runScriptSteps(driver, steps, options) {
   // Carry the ORIGINAL (unresolved-text) steps forward for the
   // updatedSteps return value -- we must never write a resolved
   // "${PASSWORD}"-style secret's literal value back out to disk.
-  const updatedSteps = steps.map((step) => ({ ...step }));
+  const updatedSteps = originalSteps.map((step) => ({ ...step }));
   let lastResult;
   // Per-step outcomes in the shared pass/fail contract (engine/test-result.js).
   // Additive: `success`/`detail`/`updatedSteps` below are unchanged.

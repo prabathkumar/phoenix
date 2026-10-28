@@ -289,6 +289,50 @@ function requiredNames(steps, { env = process.env } = {}) {
   return seen.filter((n) => !(typeof env[n] === "string" && env[n].length));
 }
 
+// ---------------------------------------------------------------- api test-case steps
+const NEGATIVE_STATUSES = [400, 401, 403, 404, 409, 415, 422];
+
+/**
+ * Opt-in per step: an api step with `"generateBody": true` has its `body` read
+ * as a sample (plus optional `schema` and `hints`) and replaced with generated
+ * values. Must-exist fields stay as ${NAME} and resolve like any test data.
+ * Steps without the flag are returned untouched.
+ * @returns {{steps:Object[], needsYou:string[]}}
+ */
+function prepareApiSteps(steps, { seed = "default" } = {}) {
+  const needsYou = [];
+  const out = (steps || []).map((step, i) => {
+    if (!step || step.kind !== "api" || !step.generateBody) return step;
+    const { body, needsYou: n } = generateBody(step.body === undefined ? {} : step.body, { schema: step.schema, hints: step.hints || {}, seed: `${seed}:${i}` });
+    needsYou.push(...n);
+    const { generateBody: _g, schema: _s, hints: _h, negative: _n, ...rest } = step;
+    return { ...rest, body };
+  });
+  return { steps: out, needsYou: [...new Set(needsYou)] };
+}
+
+/**
+ * Negative cases for api steps flagged `"negative": true` (with generateBody):
+ * one case per bad body (a field missing, empty, or the wrong type). Each case
+ * is a full step list where that one step expects a 4xx and nothing is saved.
+ * @returns {{name:string, steps:Object[]}[]}
+ */
+function negativeApiCases(steps, { seed = "default", statuses = NEGATIVE_STATUSES } = {}) {
+  const prepared = prepareApiSteps(steps, { seed }).steps;
+  const cases = [];
+  (steps || []).forEach((step, i) => {
+    if (!step || step.kind !== "api" || !step.generateBody || !step.negative) return;
+    const label = step.instruction || `${String(step.method || "GET").toUpperCase()} ${step.url}`;
+    for (const m of bodyMutations(prepared[i].body)) {
+      const { save: _save, ...rest } = prepared[i];
+      const copy = prepared.map((x) => (x && x.kind === "api" ? { ...x } : x));
+      copy[i] = { ...rest, instruction: `${label}: ${m.name}`, body: m.body, expect: { status: statuses } };
+      cases.push({ name: `${label}: ${m.name}`, steps: copy.slice(0, i + 1) });
+    }
+  });
+  return cases;
+}
+
 // ---------------------------------------------------------------- the plan
 /**
  * @param {Object} opts
@@ -427,7 +471,7 @@ function fromFile(file, { provided = {}, hints = {}, canCreate = false } = {}) {
 
 module.exports = {
   classify, generate, variantsFor, generateBody, bodyMutations,
-  requiredNames, planTestData, describePlan,
+  requiredNames, planTestData, describePlan, prepareApiSteps, negativeApiCases,
   parseUploaded, checkUpload, toFile, fromFile,
   fromTemplate, snake,
 };

@@ -179,5 +179,35 @@ test("toFile never writes secrets; fromFile repeats the same data", () => {
   assert.throws(() => td.fromFile({}), /not a test-data/);
 });
 
+test("prepareApiSteps: only flagged steps change; must-exist stays a placeholder", () => {
+  const steps = [
+    { kind: "api", method: "POST", url: "/signup", generateBody: true, body: { email: "a@b.c", password: "x" }, hints: { PASSWORD: { existing: false } } },
+    { kind: "api", method: "POST", url: "/login", body: { u: "${LOGIN_PHONE}" } },
+    { kind: "api", method: "POST", url: "/pay", generateBody: true, body: { token: "t", amount: 5 } },
+  ];
+  const r = td.prepareApiSteps(steps, { seed: "s" });
+  assert.match(r.steps[0].body.email, /@example\.com$/);
+  assert.ok(r.steps[0].body.password.length >= 14);
+  assert.deepStrictEqual(r.steps[1], steps[1]);
+  assert.strictEqual(r.steps[2].body.token, "${TOKEN}");
+  assert.deepStrictEqual(r.needsYou, ["TOKEN"]);
+  assert.ok(!("generateBody" in r.steps[0]));
+  assert.deepStrictEqual(td.prepareApiSteps(steps, { seed: "s" }), r);
+});
+
+test("negativeApiCases: one case per bad body, expects a 4xx, saves nothing, stops at that step", () => {
+  const steps = [
+    { kind: "api", method: "POST", url: "/a", body: { k: 1 } },
+    { kind: "api", method: "POST", url: "/signup", generateBody: true, negative: true, save: { ID: "$.id" }, instruction: "Sign up", body: { email: "a@b.c" } },
+    { kind: "api", method: "GET", url: "/after" },
+  ];
+  const cases = td.negativeApiCases(steps, { seed: "s" });
+  assert.deepStrictEqual(cases.map((c) => c.name), ["Sign up: missing email", "Sign up: wrong type for email", "Sign up: empty email"]);
+  const last = cases[0].steps[cases[0].steps.length - 1];
+  assert.strictEqual(cases[0].steps.length, 2);
+  assert.ok(!("email" in last.body) && !("save" in last));
+  assert.ok(last.expect.status.includes(422));
+});
+
 if (failed) { console.log(`\n${failed} failed`); process.exit(1); }
 console.log("\nall testdata tests passed");

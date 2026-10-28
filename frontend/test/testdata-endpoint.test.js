@@ -2,7 +2,7 @@
 const assert = require("assert");
 const http = require("http");
 const os = require("os"), path = require("path"), fs = require("fs");
-const { handlePlan, handleSave, handleSaved } = require("../testdata-endpoint");
+const { handlePlan, handleApiPlan, handleSave, handleSaved } = require("../testdata-endpoint");
 const { createEnglishEndpoint } = require("../english-endpoint");
 
 let failed = 0;
@@ -18,6 +18,7 @@ const STEPS = "Enter ${LOGIN_PHONE} in the phone field\nEnter ${LOGIN_PASSWORD} 
   });
   const app = http.createServer((req, res) => {
     if (req.method === "POST" && req.url === "/api/test-data/plan") return handlePlan(req, res);
+    if (req.method === "POST" && req.url === "/api/test-data/api-plan") return handleApiPlan(req, res);
     if (req.method === "POST" && req.url === "/api/test-data/save") return handleSave(req, res);
     if (req.method === "GET" && req.url.startsWith("/api/test-data/saved")) return handleSaved(req, res);
     if (req.method === "POST" && req.url === "/api/english-runs") return ep.handleStart(req, res);
@@ -135,6 +136,18 @@ const STEPS = "Enter ${LOGIN_PHONE} in the phone field\nEnter ${LOGIN_PASSWORD} 
   await test("save: bad project names are refused", async () => {
     for (const p of ["../x", "a/b", "", " "]) assert.strictEqual((await post("/api/test-data/save", { project: p, steps: STEPS })).status, 400);
   });
+
+  await test("api-plan: bodies filled, token asked for, negative cases listed", () => withEnvCleared(async () => {
+    delete process.env.TOKEN;
+    const steps = [{ kind: "api", method: "POST", url: "/pay", generateBody: true, negative: true, body: { email: "a@b.c", token: "t", note: "x" } }];
+    const r = await post("/api/test-data/api-plan", { steps, seed: "s", negative: true });
+    assert.strictEqual(r.status, 200);
+    assert.deepStrictEqual(r.body.needsYou, ["TOKEN"]);
+    assert.strictEqual(r.body.steps[0].body.token, "${TOKEN}");
+    assert.match(r.body.steps[0].body.email, /@example\.com$/);
+    assert.ok(r.body.negativeCases.some((c) => /missing email/.test(c.name)));
+    assert.strictEqual((await post("/api/test-data/api-plan", { steps: [] })).status, 400);
+  }));
 
   fs.rmSync(dir, { recursive: true, force: true });
   app.close();

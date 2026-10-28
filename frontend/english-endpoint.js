@@ -159,7 +159,7 @@ function createEnglishEndpoint(deps = {}) {
       const { plan, error } = buildPlan({
         steps, mode: body.dataMode, upload: body.dataUpload, fill: body.dataFill !== "false" && body.dataFill !== false,
         provided: testData, choices: parseObj(body.dataChoices), hints: parseObj(body.dataHints),
-        canCreate: body.dataCanCreate === true || body.dataCanCreate === "true", seed: body.dataSeed,
+        project: body.dataProject || undefined, canCreate: body.dataCanCreate === true || body.dataCanCreate === "true", seed: body.dataSeed,
       });
       if (error) { discard(upload); return json(res, 400, { error }); }
       if (!plan.ready) {

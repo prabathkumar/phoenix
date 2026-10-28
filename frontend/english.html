@@ -39,7 +39,7 @@
   .verdict { padding:10px 12px; border-radius:8px; font-size:14px; font-weight:600; }
   .verdict.passed { background:#143324; color:var(--ok); } .verdict.failed { background:#3a1b19; color:var(--danger); }
   .verdict .why { font-weight:400; margin-top:4px; white-space:pre-wrap; word-break:break-word; }
-  .gen select { width:100%; } .plan { margin-top:8px; font-size:12.5px; } .plan .f { display:flex; gap:8px; align-items:center; padding:4px 0; border-top:1px solid #2a2f3a; } .plan .f b { flex:1; font-weight:500; } .plan .need { color:var(--danger); }
+  .gen .chk { display:block; font-size:12px; } .gen select { width:100%; } .plan { margin-top:8px; font-size:12.5px; } .plan .f { display:flex; gap:8px; align-items:center; padding:4px 0; border-top:1px solid #2a2f3a; } .plan .f b { flex:1; font-weight:500; } .plan .need { color:var(--danger); }
   code { font-family:var(--mono); background:#0f1115; padding:1px 5px; border-radius:4px; }
 </style>
 </head>
@@ -64,6 +64,9 @@ Check that the account page is showing</textarea></div>
     <div class="gen"><label>Test data source</label>
       <select class="datamode" aria-label="test data source"><option value="">Use my values only</option><option value="generate">Auto-generate what can be made up</option></select>
       <button class="link preview" type="button">Generate test data</button>
+      <div><label>Project (to save and reuse this data)</label><input type="text" class="project" placeholder="e.g. CH-TestOps" aria-label="project name" />
+        <label class="chk"><input type="checkbox" class="savelogins" /> also save my passwords, encrypted</label>
+        <button class="link save" type="button">Save test data</button> <span class="saved-note" aria-live="polite"></span></div>
       <div class="plan" aria-live="polite"></div></div>
     <button class="run" type="button">Run web test</button>
     <div class="results"></div>
@@ -84,6 +87,9 @@ Check that the home screen is showing</textarea></div>
     <div class="gen"><label>Test data source</label>
       <select class="datamode" aria-label="test data source"><option value="">Use my values only</option><option value="generate">Auto-generate what can be made up</option></select>
       <button class="link preview" type="button">Generate test data</button>
+      <div><label>Project (to save and reuse this data)</label><input type="text" class="project" placeholder="e.g. CH-TestOps" aria-label="project name" />
+        <label class="chk"><input type="checkbox" class="savelogins" /> also save my passwords, encrypted</label>
+        <button class="link save" type="button">Save test data</button> <span class="saved-note" aria-live="polite"></span></div>
       <div class="plan" aria-live="polite"></div></div>
     <button class="run" type="button">Run mobile test</button>
     <div class="hint">Uses a BrowserStack session for the length of the run.</div>
@@ -143,7 +149,7 @@ Check that the home screen is showing</textarea></div>
   }
 
   function planBody(card, stepsText) {
-    return { steps: stepsText, provided: readData(card), choices: card._choices || {}, seed: card._seed || undefined };
+    return { steps: stepsText, provided: readData(card), choices: card._choices || {}, seed: card._seed || undefined, project: card.querySelector(".project").value.trim() || undefined };
   }
   function showPlan(card, plan) {
     var box = card.querySelector(".plan"); box.textContent = "";
@@ -164,12 +170,21 @@ Check that the home screen is showing</textarea></div>
   }
   function dataFields(card) {
     if (card.querySelector(".datamode").value !== "generate") return {};
-    return { dataMode: "generate", dataSeed: card._seed || "", dataChoices: card._choices || {} };
+    return { dataMode: "generate", dataSeed: card._seed || "", dataChoices: card._choices || {}, dataProject: card.querySelector(".project").value.trim() };
   }
   function wire(card) {
     var btn = card.querySelector(".run"), isWeb = card.id === "web";
     Object.keys(DEFAULTS).forEach(function (k) { addRow(card, k, DEFAULTS[k]); });
     card.querySelector(".add").addEventListener("click", function () { addRow(card, "", ""); });
+    card.querySelector(".save").addEventListener("click", function () {
+      var note = card.querySelector(".saved-note"), b = planBody(card, card.querySelector("textarea").value);
+      if (!b.project) { note.textContent = "Type a project name first."; return; }
+      b.project = b.project; b.saveLogins = card.querySelector(".savelogins").checked;
+      fetch("/api/test-data/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) })
+        .then(function (r) { return r.json(); })
+        .then(function (j) { note.textContent = j.error ? j.error : "Saved." + (j.logins && j.logins.length ? " Logins saved (hidden): " + j.logins.join(", ") + "." : "") + (j.note ? " " + j.note : ""); })
+        .catch(function (err) { note.textContent = "The server could not be reached: " + err.message; });
+    });
     card.querySelector(".preview").addEventListener("click", function () {
       card.querySelector(".datamode").value = "generate";
       fetch("/api/test-data/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(planBody(card, card.querySelector("textarea").value)) })

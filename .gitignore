@@ -18,3 +18,4 @@ locator-store.db-*
 training-data/
 engine/training-data/
 generation/training-data/
+/test-data/*.secrets.json

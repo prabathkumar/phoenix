@@ -98,6 +98,40 @@ async function handleApiPlan(req, res) {
   return json(200, { ...td.describePlan(full), saved: full.savedNames, steps: prepared.steps, negativeCases: cases.map((c) => ({ name: c.name })) });
 }
 
+/**
+ * POST /api/api-cases/run {steps | openapi | postman, only?, baseUrl, testData?, negative?, seed?, project?}
+ * Runs the API test case (and its generated negative cases) against baseUrl, from this server.
+ * Refuses to start, naming the fields, while a must-exist value (a token, a login) is missing.
+ */
+async function handleApiRun(req, res) {
+  const json = (code, obj) => { res.writeHead(code, { "Content-Type": "application/json; charset=utf-8" }); res.end(JSON.stringify(obj)); };
+  let body;
+  try { body = await readJson(req); } catch (e) { return json(400, { error: `Bad request: ${e.message}` }); }
+  let steps;
+  try {
+    const imp = require("../engine/core/api-import");
+    steps = body.openapi ? imp.stepsFromOpenApi(body.openapi, { only: body.only }) : body.postman ? imp.stepsFromPostman(body.postman) : body.steps;
+  } catch (e) { return json(400, { error: e.message }); }
+  if (!Array.isArray(steps) || !steps.length) return json(400, { error: "Give the steps as a list, or an OpenAPI file or Postman collection." });
+  if (steps.some((s) => !s || typeof s !== "object")) return json(400, { error: "Every step must be an object." });
+  const baseUrl = typeof body.baseUrl === "string" ? body.baseUrl.trim() : "";
+  if (baseUrl && !/^https?:\/\//i.test(baseUrl)) return json(400, { error: "The API address must start with http:// or https://." });
+  if (!baseUrl && steps.some((s) => s.kind === "api" && typeof s.url === "string" && !/^[a-z][a-z0-9+.-]*:/i.test(s.url) && !/^\$\{/.test(s.url))) return json(400, { error: "An API address is required because the steps use relative paths." });
+  const seedIn = typeof body.seed === "string" && body.seed ? body.seed : undefined;
+  const first = buildPlan({ steps, provided: body.testData, project: body.project, seed: seedIn, choices: body.choices });
+  if (first.error) return json(400, { error: first.error });
+  const prepared = td.prepareApiSteps(steps, { seed: first.plan.seed });
+  const { plan, error } = buildPlan({ steps: prepared.steps, provided: body.testData, project: body.project, seed: first.plan.seed, choices: body.choices });
+  if (error) return json(400, { error });
+  const missing = plan.needsYou;
+  if (missing.length) return json(400, { error: `Before this can run I need: ${missing.join(", ")}. These must already exist in your system, so I cannot make them up. Type them, save them, or choose skip.`, needsYou: missing });
+  const { runApiCases } = require("../engine/core/api-cases");
+  const { redact } = require("../engine/core/english");
+  const r = await runApiCases({ steps, testData: plan.values, baseUrl: baseUrl || undefined, seed: plan.seed, negative: body.negative === true });
+  const clean = (x) => ({ ...x, detail: redact(x.detail, plan.values) });
+  return json(200, { ...r, main: clean(r.main), negatives: r.negatives.map(clean), stepCount: steps.length });
+}
+
 /** POST /api/test-data/save {project, steps, provided, choices, seed, saveLogins?} */
 async function handleSave(req, res) {
   const json = (code, obj) => { res.writeHead(code, { "Content-Type": "application/json; charset=utf-8" }); res.end(JSON.stringify(obj)); };
@@ -131,4 +165,4 @@ function handleSaved(req, res) {
   } catch (e) { return json(500, { error: e.message }); }
 }
 
-module.exports = { handlePlan, handleApiPlan, handleSave, handleSaved, buildPlan, stepLines };
+module.exports = { handlePlan, handleApiPlan, handleApiRun, handleSave, handleSaved, buildPlan, stepLines };

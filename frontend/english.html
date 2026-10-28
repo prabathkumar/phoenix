@@ -72,6 +72,16 @@ Check that the account page is showing</textarea></div>
     <div class="results"></div>
   </section>
 
+  <section class="card" id="api">
+    <h2>API <span class="tag">calls from this server</span></h2>
+    <div><label for="api-url">API address</label><input type="text" id="api-url" placeholder="https://api.example.com" /></div>
+    <div><label for="api-steps">Steps (JSON list), an OpenAPI file or a Postman collection</label>
+<textarea id="api-steps" placeholder='[{"kind":"api","method":"POST","url":"/signup","generateBody":true,"negative":true,"body":{"email":"a@b.c"},"expect":{"status":201}}]'></textarea></div>
+    <div><label for="api-data">Values only you have (NAME=value, one per line, e.g. API_TOKEN=...)</label><textarea id="api-data" aria-label="api test data"></textarea></div>
+    <label class="chk"><input type="checkbox" id="api-neg" /> also run the bad-body cases (missing, empty, wrong type)</label>
+    <button class="run" type="button" id="api-run">Run API test</button>
+    <div class="results" id="api-results" aria-live="polite"></div>
+  </section>
   <section class="card" id="mobile">
     <h2>Mobile <span class="tag">real device on BrowserStack</span></h2>
     <div><label for="mobile-app">App build (.apk or .ipa)</label><input type="file" id="mobile-app" accept=".apk,.ipa" /><div class="hint">Or paste an already-uploaded app URL below (it starts with bs://).</div></div>
@@ -244,7 +254,32 @@ Check that the home screen is showing</textarea></div>
         }).catch(function (err) { fail("The server could not be reached: " + err.message); });
     });
   }
-  document.querySelectorAll(".card").forEach(wire);
+  document.querySelectorAll(".card:not(#api)").forEach(wire);
+
+  (function () {
+    var btn = document.getElementById("api-run"), out = document.getElementById("api-results");
+    if (!btn) return;
+    function show(cls, title, why) { var v = el("div", "verdict " + cls, title); if (why) v.appendChild(el("div", "why", why)); out.appendChild(v); }
+    btn.addEventListener("click", function () {
+      out.textContent = "";
+      var raw = document.getElementById("api-steps").value.trim(), parsed;
+      try { parsed = JSON.parse(raw); } catch (e) { show("failed", "Could not start", "The steps are not valid JSON: " + e.message); return; }
+      var body = { baseUrl: document.getElementById("api-url").value.trim(), negative: document.getElementById("api-neg").checked, testData: {} };
+      if (Array.isArray(parsed)) body.steps = parsed; else if (parsed && parsed.openapi) body.openapi = parsed; else if (parsed && parsed.item) body.postman = parsed; else { show("failed", "Could not start", "That is not a step list, an OpenAPI file or a Postman collection."); return; }
+      document.getElementById("api-data").value.split(/\r?\n/).forEach(function (l) { var i = l.indexOf("="); if (i > 0) body.testData[l.slice(0, i).trim()] = l.slice(i + 1); });
+      btn.disabled = true; btn.textContent = "Running…";
+      fetch("/api/api-cases/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (j.error) { show("failed", "Could not start", j.error); return; }
+          show(j.failed ? "failed" : "passed", j.failed ? j.failed + " of " + (j.passed + j.failed) + " cases failed" : "All " + j.passed + " cases passed");
+          show(j.main.success ? "passed" : "failed", "Main case", j.main.detail);
+          j.negatives.forEach(function (n) { show(n.success ? "passed" : "failed", n.name, n.success ? "" : n.detail); });
+        })
+        .catch(function (err) { show("failed", "Could not start", "The server could not be reached: " + err.message); })
+        .then(function () { btn.disabled = false; btn.textContent = "Run API test"; });
+    });
+  })();
 })();
 </script>
 </body>

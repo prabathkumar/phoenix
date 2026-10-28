@@ -41,8 +41,9 @@ const model = async (prompt) => {
   try {
     await page.goto(`http://127.0.0.1:${app.address().port}/english`);
 
-    // Two independent cards, each with English, target and test data.
-    assert.strictEqual(await page.locator(".card").count(), 2);
+    // Web and Mobile are independent cards with English, target and test data; API is a third, separate card.
+    assert.strictEqual(await page.locator(".card").count(), 3);
+    assert.strictEqual(await page.locator("#api #api-run").count(), 1);
     assert.strictEqual(await page.locator("#web .data-row").count(), 2);
     assert.strictEqual(await page.locator("#web .data-row input[type=password]").count(), 1, "the password value is masked");
 

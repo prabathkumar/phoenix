@@ -203,7 +203,7 @@ const SCHEMA_FORMAT_KIND = { email: "email", date: "date", "date-time": "date", 
 function generateBody(sample, { schema, seed = "default", hints = {} } = {}) {
   const needsYou = [];
   const walk = (value, sch, key, path) => {
-    const type = (sch && sch.type) || (Array.isArray(value) ? "array" : value === null ? "string" : typeof value);
+    const type = (sch && (sch.type || (sch.properties ? "object" : sch.items ? "array" : undefined))) || (Array.isArray(value) ? "array" : value === null ? "string" : typeof value);
     if (type === "object") {
       const props = (sch && sch.properties) || {};
       const keys = new Set([...Object.keys(props), ...Object.keys(value && typeof value === "object" ? value : {})]);

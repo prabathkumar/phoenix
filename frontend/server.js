@@ -104,6 +104,11 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (req.method === "POST" && req.url === "/api/api-cases/run") {
+    require("./testdata-endpoint").handleApiRun(req, res);
+    return;
+  }
+
   if (req.method === "POST" && req.url === "/api/test-data/api-plan") {
     require("./testdata-endpoint").handleApiPlan(req, res);
     return;

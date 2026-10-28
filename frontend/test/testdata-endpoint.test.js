@@ -2,7 +2,7 @@
 const assert = require("assert");
 const http = require("http");
 const os = require("os"), path = require("path"), fs = require("fs");
-const { handlePlan, handleApiPlan, handleSave, handleSaved } = require("../testdata-endpoint");
+const { handlePlan, handleApiPlan, handleApiRun, handleSave, handleSaved } = require("../testdata-endpoint");
 const { createEnglishEndpoint } = require("../english-endpoint");
 
 let failed = 0;
@@ -19,6 +19,7 @@ const STEPS = "Enter ${LOGIN_PHONE} in the phone field\nEnter ${LOGIN_PASSWORD} 
   const app = http.createServer((req, res) => {
     if (req.method === "POST" && req.url === "/api/test-data/plan") return handlePlan(req, res);
     if (req.method === "POST" && req.url === "/api/test-data/api-plan") return handleApiPlan(req, res);
+    if (req.method === "POST" && req.url === "/api/api-cases/run") return handleApiRun(req, res);
     if (req.method === "POST" && req.url === "/api/test-data/save") return handleSave(req, res);
     if (req.method === "GET" && req.url.startsWith("/api/test-data/saved")) return handleSaved(req, res);
     if (req.method === "POST" && req.url === "/api/english-runs") return ep.handleStart(req, res);
@@ -147,6 +148,25 @@ const STEPS = "Enter ${LOGIN_PHONE} in the phone field\nEnter ${LOGIN_PASSWORD} 
     assert.match(r.body.steps[0].body.email, /@example\.com$/);
     assert.ok(r.body.negativeCases.some((c) => /missing email/.test(c.name)));
     assert.strictEqual((await post("/api/test-data/api-plan", { steps: [] })).status, 400);
+  }));
+
+  await test("api-cases/run: runs good and bad bodies from an OpenAPI file, asks first for missing values", () => withEnvCleared(async () => {
+    const target = http.createServer((rq, rs) => { let b = ""; rq.on("data", (c) => (b += c)); rq.on("end", () => { let j; try { j = JSON.parse(b); } catch { /* none */ } const ok = j && typeof j.email === "string" && /@/.test(j.email); rs.writeHead(ok ? 201 : 422, { "Content-Type": "application/json" }); rs.end("{}"); }); });
+    await new Promise((r) => target.listen(0, r));
+    const baseUrl = `http://127.0.0.1:${target.address().port}`;
+    const openapi = { openapi: "3.0.0", paths: { "/u": { post: { summary: "Create", requestBody: { content: { "application/json": { schema: { type: "object", properties: { email: { type: "string", format: "email" } } } } } }, responses: { 201: {} } } } } };
+    const r = await post("/api/api-cases/run", { openapi, baseUrl, negative: true, seed: "z" });
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.body.failed, 0, JSON.stringify(r.body));
+    assert.strictEqual(r.body.negatives.length, 3);
+    const secured = { openapi: { openapi: "3.0.0", security: [{ b: [] }], paths: { "/me": { get: { responses: { 200: {} } } } } }, baseUrl };
+    const blocked = await post("/api/api-cases/run", secured);
+    assert.strictEqual(blocked.status, 400);
+    assert.deepStrictEqual(blocked.body.needsYou, ["API_TOKEN"]);
+    assert.strictEqual((await post("/api/api-cases/run", { ...secured, testData: { API_TOKEN: "t0ken-secret" } })).status, 200);
+    assert.strictEqual((await post("/api/api-cases/run", { steps: [{ kind: "api", url: "/x" }] })).status, 400);
+    assert.strictEqual((await post("/api/api-cases/run", { steps: [], baseUrl })).status, 400);
+    target.close();
   }));
 
   fs.rmSync(dir, { recursive: true, force: true });

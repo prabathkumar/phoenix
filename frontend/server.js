@@ -104,6 +104,11 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (req.method === "POST" && req.url === "/api/test-data/plan") {
+    require("./testdata-endpoint").handlePlan(req, res);
+    return;
+  }
+
   if (req.method === "GET" && /^\/api\/english-runs\/[^/]+\/events$/.test(req.url)) {
     require("./english-endpoint").handleEvents(req, res, decodeURIComponent(req.url.split("/")[3]));
     return;

@@ -63,3 +63,5 @@ method, URL, headers, body, checks (status, JSON path equals/contains/exists/mat
 maxMs) and `save` values that later steps use as `${NAME}`. In the recorder: **Add API check**
 runs it live, shows the response, and records it. Test data is a set of named values the tester
 brings on the start screen; typing one records a named parameter (`USERNAME`), not `field_3`.
+
+See also: [Test data layer](TEST_DATA.md), which fills `${NAME}` values before a run (generate, upload, or ask only for what cannot be made up).

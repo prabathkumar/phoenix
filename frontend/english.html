@@ -39,6 +39,7 @@
   .verdict { padding:10px 12px; border-radius:8px; font-size:14px; font-weight:600; }
   .verdict.passed { background:#143324; color:var(--ok); } .verdict.failed { background:#3a1b19; color:var(--danger); }
   .verdict .why { font-weight:400; margin-top:4px; white-space:pre-wrap; word-break:break-word; }
+  .gen select { width:100%; } .plan { margin-top:8px; font-size:12.5px; } .plan .f { display:flex; gap:8px; align-items:center; padding:4px 0; border-top:1px solid #2a2f3a; } .plan .f b { flex:1; font-weight:500; } .plan .need { color:var(--danger); }
   code { font-family:var(--mono); background:#0f1115; padding:1px 5px; border-radius:4px; }
 </style>
 </head>
@@ -60,6 +61,10 @@ Enter ${LOGIN_PASSWORD} in the password field
 Click the login button
 Check that the account page is showing</textarea></div>
     <div><label>Test data</label><div class="rows"></div><button class="link add" type="button">+ add a value</button></div>
+    <div class="gen"><label>Test data source</label>
+      <select class="datamode" aria-label="test data source"><option value="">Use my values only</option><option value="generate">Auto-generate what can be made up</option></select>
+      <button class="link preview" type="button">Generate test data</button>
+      <div class="plan" aria-live="polite"></div></div>
     <button class="run" type="button">Run web test</button>
     <div class="results"></div>
   </section>
@@ -76,6 +81,10 @@ Enter ${LOGIN_PASSWORD} as the password
 Tap the login button
 Check that the home screen is showing</textarea></div>
     <div><label>Test data</label><div class="rows"></div><button class="link add" type="button">+ add a value</button></div>
+    <div class="gen"><label>Test data source</label>
+      <select class="datamode" aria-label="test data source"><option value="">Use my values only</option><option value="generate">Auto-generate what can be made up</option></select>
+      <button class="link preview" type="button">Generate test data</button>
+      <div class="plan" aria-live="polite"></div></div>
     <button class="run" type="button">Run mobile test</button>
     <div class="hint">Uses a BrowserStack session for the length of the run.</div>
     <div class="results"></div>
@@ -133,10 +142,41 @@ Check that the home screen is showing</textarea></div>
     return s;
   }
 
+  function planBody(card, stepsText) {
+    return { steps: stepsText, provided: readData(card), choices: card._choices || {}, seed: card._seed || undefined };
+  }
+  function showPlan(card, plan) {
+    var box = card.querySelector(".plan"); box.textContent = "";
+    card._seed = plan.seed;
+    plan.fields.forEach(function (f) {
+      var row = el("div", "f"); row.appendChild(el("b", "", f.name));
+      var label = f.source === "generated" ? "Generated" : f.source === "provided" ? "Yours" : f.source === "negative-only" ? "Skipped: wrong values on purpose" : "Needs you, cannot be made up";
+      row.appendChild(el("span", f.source === "needs-you" ? "need" : "", label + (f.value ? ": " + f.value : "")));
+      if (f.source === "needs-you" || f.source === "negative-only") {
+        var cb = el("input"); cb.type = "checkbox"; cb.checked = f.source === "negative-only"; cb.setAttribute("aria-label", "skip " + f.name + ", test bad logins only");
+        cb.addEventListener("change", function () { card._choices = card._choices || {}; if (cb.checked) card._choices[f.name] = "skip"; else delete card._choices[f.name]; });
+        row.appendChild(cb); row.appendChild(el("span", "", "skip"));
+      }
+      box.appendChild(row);
+    });
+    if (!plan.fields.length) box.textContent = "No ${NAME} values in these steps.";
+    else if (!plan.ready) box.appendChild(el("div", "need", "Type the missing values in the table above (or tick skip) before running."));
+  }
+  function dataFields(card) {
+    if (card.querySelector(".datamode").value !== "generate") return {};
+    return { dataMode: "generate", dataSeed: card._seed || "", dataChoices: card._choices || {} };
+  }
   function wire(card) {
     var btn = card.querySelector(".run"), isWeb = card.id === "web";
     Object.keys(DEFAULTS).forEach(function (k) { addRow(card, k, DEFAULTS[k]); });
     card.querySelector(".add").addEventListener("click", function () { addRow(card, "", ""); });
+    card.querySelector(".preview").addEventListener("click", function () {
+      card.querySelector(".datamode").value = "generate";
+      fetch("/api/test-data/plan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(planBody(card, card.querySelector("textarea").value)) })
+        .then(function (r) { return r.json(); })
+        .then(function (j) { if (j.error) card.querySelector(".plan").textContent = j.error; else showPlan(card, j); })
+        .catch(function (err) { card.querySelector(".plan").textContent = "The server could not be reached: " + err.message; });
+    });
 
     btn.addEventListener("click", function () {
       var stepsText = card.querySelector("textarea").value;
@@ -146,12 +186,13 @@ Check that the home screen is showing</textarea></div>
       var req;
       if (isWeb) {
         req = fetch("/api/english-runs", { method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ platform: "web", url: card.querySelector("#web-url").value.trim(), steps: stepsText, testData: data }) });
+          body: JSON.stringify(Object.assign({ platform: "web", url: card.querySelector("#web-url").value.trim(), steps: stepsText, testData: data }, dataFields(card)) ) });
       } else {
         var fd = new FormData();
         fd.append("platform", card.querySelector("#mobile-platform").value || "");
         fd.append("steps", stepsText);
         fd.append("testData", JSON.stringify(data));
+        var df = dataFields(card); Object.keys(df).forEach(function (k) { fd.append(k, typeof df[k] === "string" ? df[k] : JSON.stringify(df[k])); });
         var f = card.querySelector("#mobile-app").files[0];
         if (f) fd.append("app", f);
         var u = card.querySelector("#mobile-appurl").value.trim(); if (u) fd.append("appUrl", u);

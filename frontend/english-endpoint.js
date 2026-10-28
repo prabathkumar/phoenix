@@ -21,6 +21,7 @@ const Busboy = require("busboy");
 
 const { runEnglish, webRunner, mobileRunner } = require("../engine/english-run");
 const { redact } = require("../engine/core/english");
+const { buildPlan } = require("./testdata-endpoint");
 
 const UPLOAD_DIR = path.join(__dirname, "uploads");
 const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
@@ -149,11 +150,30 @@ function createEnglishEndpoint(deps = {}) {
     const steps = String(body.steps || "");
     if (!steps.trim()) { discard(upload); return json(res, 400, { error: "Write at least one step in English first." }); }
 
+    // Test-data layer (optional): with dataMode set, the layer fills what it can
+    // and the run refuses to start while a must-exist field (a login, a token)
+    // has no value - the tester is told which ones, before anything runs.
+    let runData = testData;
+    if (body.dataMode === "generate" || body.dataMode === "upload") {
+      const parseObj = (d) => { const v = parseData(d); return v && typeof v === "object" ? v : {}; };
+      const { plan, error } = buildPlan({
+        steps, mode: body.dataMode, upload: body.dataUpload, fill: body.dataFill !== "false" && body.dataFill !== false,
+        provided: testData, choices: parseObj(body.dataChoices), hints: parseObj(body.dataHints),
+        canCreate: body.dataCanCreate === true || body.dataCanCreate === "true", seed: body.dataSeed,
+      });
+      if (error) { discard(upload); return json(res, 400, { error }); }
+      if (!plan.ready) {
+        discard(upload);
+        return json(res, 400, { error: `Before this can run I need: ${plan.needsYou.join(", ")}. These must already exist in your system, so I cannot make them up. Type them, use a saved value, or choose skip.`, needsYou: plan.needsYou });
+      }
+      runData = plan.values;
+    }
+
     const platform = body.platform;
     if (platform === "web") {
       if (!body.url || typeof body.url !== "string") return json(res, 400, { error: "A URL is required for a web test." });
       const { id, emit } = newRun();
-      execute({ emit, platform, steps, testData, url: body.url });
+      execute({ emit, platform, steps, testData: runData, url: body.url });
       return json(res, 200, { runId: id });
     }
 
@@ -167,7 +187,7 @@ function createEnglishEndpoint(deps = {}) {
     mobileActive = true;
     const { id, emit } = newRun();
     execute({
-      emit, platform: mobilePlatform, steps, testData,
+      emit, platform: mobilePlatform, steps, testData: runData,
       appCapability: body.appUrl && !(upload && upload.filePath) ? { "appium:app": String(body.appUrl) } : undefined,
       appPath: upload && upload.filePath,
     });

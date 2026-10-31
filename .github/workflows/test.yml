@@ -61,7 +61,7 @@ jobs:
       # generation/node_modules already being present locally and broke
       # on a clean checkout.
       - name: Install generation dependencies (engine/root cross-require generation/*.js)
-        if: matrix.package == 'engine' || matrix.package == 'root'
+        if: matrix.package == 'engine' || matrix.package == 'root' || matrix.package == 'frontend'
         working-directory: generation
         run: npm install
 
@@ -83,6 +83,14 @@ jobs:
       # frontend/ also serves the web recorder and the "Run from English" page, which load
       # web/ (ws, playwright) and drive a real Chromium in their tests - same cross-require
       # reason as the generation/capture installs above, plus the browser itself.
+      # run-choice.test.js loads frontend/upload-session.js -> engine/session-manager.js -> live-view/server.js,
+      # which need engine's and live-view's own dependencies (webdriverio, ws) on a clean checkout.
+      - name: Install engine and live-view dependencies (frontend loads session-manager)
+        if: matrix.package == 'frontend'
+        run: |
+          (cd engine && npm install)
+          (cd live-view && npm install)
+
       - name: Install web dependencies and Chromium (frontend serves the web recorder)
         if: matrix.package == 'frontend'
         working-directory: web

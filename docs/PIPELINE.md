@@ -13,7 +13,8 @@ Every stage reports `passed`, `failed`, `needs-you`, `skipped`, `not-built` or `
 | Secrets, SAST | Runs `gitleaks` / `semgrep` when installed on the machine, else `unavailable` |
 | Execution | Handler is injected by the caller (English run, test-case runner) |
 | Scenarios, cases | Injected; the prompts live in the registry (`prompts/prompts.yaml`) |
-| HAR, performance, DAST, defects, AI feedback | `not-built` here; inject a handler (TestOps's, or new code) |
+| Defects (Jira) | Built: `defectsHandler` in `engine/core/jira.js` (see below); asks first at the default level |
+| HAR, performance, DAST, AI feedback | `not-built` here; inject a handler (TestOps's, or new code) |
 
 ## How much the AI asks
 
@@ -30,5 +31,17 @@ const { runPipeline, llmReviewer } = require("./engine/core/pipeline");
 const r = await runPipeline({ ctx: { steps, dir: "." }, handlers: { execution }, autonomy: "ask-when-matters", ai: llmReviewer() });
 // r.stages, r.summary, r.needsYou
 ```
+
+## Jira, both ways (`engine/core/jira.js`)
+
+| Direction | What |
+|---|---|
+| In | `readRequirement(key)`: the story and its linked change requests as one text block for scenario writing |
+| In | `defectsToRetest(keys)`: defects we logged that Jira now shows Done/Resolved/Closed, ready to re-test |
+| Out | `draftDefect` from a failed result (step, error, where it ran, requirement); secret values replaced with `***` |
+| Out | `logDefect`: creates a Bug, or comments on the open one for the same case (label `testops-case-<id>`), so no duplicates |
+| Out | `comment`, `transition(key, "Done")` |
+
+Settings: `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`, `JIRA_PROJECT_KEY`, `JIRA_DEFECT_TYPE` (see `.env.example`). Errors never repeat Jira's response, and the token only goes in the Authorization header. Not yet verified against a real Jira (no network from the build sandbox); tested against a fake Jira (`engine/test/jira.test.js`). Not built: Azure DevOps, a page or route for it, syncing Jira comments back into the AI.
 
 Tests: `engine/test/pipeline.test.js`. Not yet: an HTTP route or a page for it, the real handlers for HAR, performance, DAST and Jira, and feeding results back into the prompts.

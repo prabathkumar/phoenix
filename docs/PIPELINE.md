@@ -32,6 +32,17 @@ const r = await runPipeline({ ctx: { steps, dir: "." }, handlers: { execution },
 // r.stages, r.summary, r.needsYou
 ```
 
+## AI decides, code enforces (`engine/core/ai-pipeline.js`)
+
+`runAiPipeline({goal, requirement, handlers, callJson, autonomy})`:
+
+1. **Plan.** The model reads the goal, the requirement and the last runs, and decides the platforms (web, api, mobile; only what the requirement mentions) and which stages to run, with a reason for each. Invented stages are dropped; a stage it forgets still runs, marked as the default.
+2. **Run.** The chosen stages run through `runPipeline`. Gates stay in code: the model cannot lower the autonomy level, the live-scan rule or the production rule.
+3. **Review.** The model writes a note on every stage (cause and next action).
+4. **Remember.** Statuses and notes (never test-data values or requirement text) are appended to `logs/pipeline-runs.jsonl` (`TESTOPS_PIPELINE_LOG` to move it), and the next plan reads the last five runs.
+
+If the model is down or answers badly, every stage runs in order and the plan says `source: "fallback"`. Each stage in the result carries `decided`, the AI's reason.
+
 ## Jira, both ways (`engine/core/jira.js`)
 
 | Direction | What |
@@ -44,4 +55,6 @@ const r = await runPipeline({ ctx: { steps, dir: "." }, handlers: { execution },
 
 Settings: `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`, `JIRA_PROJECT_KEY`, `JIRA_DEFECT_TYPE` (see `.env.example`). Errors never repeat Jira's response, and the token only goes in the Authorization header. Not yet verified against a real Jira (no network from the build sandbox); tested against a fake Jira (`engine/test/jira.test.js`). Not built: Azure DevOps, a page or route for it, syncing Jira comments back into the AI.
 
-Tests: `engine/test/pipeline.test.js`. Not yet: an HTTP route or a page for it, the real handlers for HAR, performance, DAST and Jira, and feeding results back into the prompts.
+Tests: `engine/test/pipeline.test.js`, `jira.test.js`, `ai-pipeline.test.js`.
+
+Not yet: an HTTP route or page for the pipeline, real handlers for HAR, performance (Locust) and DAST (ZAP), and a real model run (tested against a fake model; self-hosted Ollama not exercised here).

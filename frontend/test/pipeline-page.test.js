@@ -6,7 +6,7 @@ const root = path.join(__dirname, "..", "..");
 const free = () => new Promise((ok) => { const s = net.createServer().listen(0, () => { const p = s.address().port; s.close(() => ok(p)); }); });
 (async () => {
   const port = await free(), tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pp-"));
-  const env = { ...process.env, TESTOPS_MOBILE_FRONTEND_PORT: String(port), TESTOPS_MOBILE_LIVE_VIEW_PORT: String(await free()), TESTOPS_GATEWAY_DIR: path.join(tmp, "lib"), TESTOPS_GATEWAY_LOG: path.join(tmp, "g.jsonl"), TESTOPS_PIPELINE_LOG: path.join(tmp, "p.jsonl"), TESTOPS_RUNS_DIR: path.join(tmp, "runs"), TESTOPS_TESTDATA_DIR: path.join(tmp, "td") };
+  const env = { ...process.env, TESTOPS_MOBILE_FRONTEND_PORT: String(port), TESTOPS_MOBILE_LIVE_VIEW_PORT: String(await free()), TESTOPS_GATEWAY_DIR: path.join(tmp, "lib"), TESTOPS_GATEWAY_LOG: path.join(tmp, "g.jsonl"), TESTOPS_PIPELINE_LOG: path.join(tmp, "p.jsonl"), TESTOPS_RUNS_DIR: path.join(tmp, "runs"), TESTOPS_TESTDATA_DIR: path.join(tmp, "td"), ZAP_API_URL: "http://127.0.0.1:1" };
   const server = spawn("node", ["frontend/server.js"], { cwd: root, env, stdio: "ignore" });
   let browser;
   try {

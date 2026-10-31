@@ -56,9 +56,9 @@ async function defaultLaunchBrowser({ runOn, target } = {}) {
   return (await launchWebBrowser({ runOn, target, chromium })).browser;
 }
 
-async function defaultStartMobile({ platform, capabilityOverrides }) {
+async function defaultStartMobile({ platform, capabilityOverrides, provider, device, osVersion }) {
   const { startSession } = require(platform === "ios" ? "../engine/ios-session" : "../engine/session");
-  return startSession(capabilityOverrides);
+  return startSession(capabilityOverrides, { provider, device, osVersion });
 }
 
 function createEnglishEndpoint(deps = {}) {
@@ -82,7 +82,7 @@ function createEnglishEndpoint(deps = {}) {
     return { id, run, emit };
   }
 
-  async function execute({ emit, platform, steps, testData, url, appCapability, appPath, target: passedTarget, runOn }) {
+  async function execute({ emit, platform, steps, testData, url, appCapability, appPath, target: passedTarget, runOn, mobileChoice = {} }) {
     const target = require("../engine/core/run-target");
     emit({ type: "run-started", platform, where: platform === "web" ? { label: runOn === "browserstack" ? "BrowserStack · Playwright" : "Local · Playwright", ...target.webTarget({ wsEndpoint: runOn === "browserstack" ? "wss://cdp.browserstack.com/playwright" : undefined }) } : { label: "Starting…" } });
     let browser; let driver;
@@ -96,10 +96,10 @@ function createEnglishEndpoint(deps = {}) {
         runner = makeWebRunner(page);
         try { const t = target.mergeTarget(passedTarget, target.targetFromBrowser(browser, runOn === "browserstack" ? { headless: undefined, wsEndpoint: "wss://cdp.browserstack.com/playwright" } : { headless: true })); emit({ type: "run-where", where: { ...t, label: `${target.targetLabel(t)} · Playwright` } }); } catch { /* label is best-effort */ }
       } else {
-        const capabilityOverrides = appCapability || (await resolveApp({ savedPath: appPath, platform }));
-        driver = await startMobile({ platform, capabilityOverrides });
+        const capabilityOverrides = appCapability || (await resolveApp({ savedPath: appPath, platform, provider: mobileChoice.provider }));
+        driver = await startMobile({ platform, capabilityOverrides, ...mobileChoice });
         runner = makeMobileRunner(driver, platform);
-        try { const t = target.mergeTarget(passedTarget, target.targetFromDriver(driver, platform)); emit({ type: "run-where", where: { ...t, label: `${target.targetLabel(t)} · Appium` } }); } catch { /* label is best-effort */ }
+        try { const t = target.mergeTarget(passedTarget, target.targetFromDriver(driver, platform, process.env, mobileChoice.provider)); emit({ type: "run-where", where: { ...t, label: `${target.targetLabel(t)} · Appium` } }); } catch { /* label is best-effort */ }
       }
       await runEnglish({ steps, testData, runner, onEvent: emit });
     } catch (err) {
@@ -196,6 +196,7 @@ function createEnglishEndpoint(deps = {}) {
       appCapability: body.appUrl && !(upload && upload.filePath) ? { "appium:app": String(body.appUrl) } : undefined,
       appPath: upload && upload.filePath,
       target: require("../engine/core/run-target").normalizeTarget(body.target),
+      mobileChoice: { provider: require("../engine/core/run-target").chooseProvider(body.runOn), ...(body.device ? { device: String(body.device).slice(0, 100) } : {}), ...(body.osVersion ? { osVersion: String(body.osVersion).slice(0, 30) } : {}) },
     });
     return json(res, 200, { runId: id });
   }

@@ -104,6 +104,13 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (req.method === "GET" && req.url.split("?")[0] === "/api/run-options") {
+    // What a user can choose from on this server (no secrets): Local / BrowserStack for web and mobile.
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify(require("../engine/remote-provider").availability()));
+    return;
+  }
+
   if (req.method === "POST" && req.url === "/api/api-cases/run") {
     require("./testdata-endpoint").handleApiRun(req, res);
     return;

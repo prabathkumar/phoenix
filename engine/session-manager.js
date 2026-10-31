@@ -31,6 +31,7 @@ const { generateScript } = require("../generation/pipeline");
 const { SessionRecorder } = require("../capture/recorder");
 const { startLiveView } = require("../live-view/server");
 const { SessionPool } = require("./session-pool");
+const remoteProvider = require("./remote-provider");
 
 const OUTPUT_DIR = path.join(__dirname, "..", "generated");
 
@@ -109,6 +110,8 @@ async function startRecordingSession(options = {}) {
   // real driver.sessionId is known, then rekeyed (see below).
   const reservationKey = `pending-${crypto.randomUUID()}`;
   const platform = options.platform === "ios" ? "ios" : (options.platform === "android" ? "android" : (process.env.TESTOPS_MOBILE_PLATFORM === "ios" ? "ios" : "android"));
+  const chosenProvider = require("./core/run-target").chooseProvider(options.provider);
+  options = { ...options, provider: chosenProvider };
   const liveViewPort = options.liveViewPort || pool.allocatePort();
 
   // SessionPool.acquire() throws SessionPoolFullError (message includes
@@ -122,7 +125,7 @@ async function startRecordingSession(options = {}) {
     const useLlm = options.useLlm !== undefined ? options.useLlm : process.env.TESTOPS_MOBILE_USE_LLM === "1";
 
     console.log(`[session-manager] starting Appium session (platform: ${platform}, port: ${liveViewPort})...`);
-    driver = await startSession(options.capabilityOverrides);
+    driver = await startSession(options.capabilityOverrides, { provider: options.provider, device: options.device, osVersion: options.osVersion });
     console.log("[session-manager] session started:", driver.sessionId);
 
     const recorder = new SessionRecorder(driver);
@@ -141,7 +144,7 @@ async function startRecordingSession(options = {}) {
         // calls recorder.finish()) before we read recorder.steps.
         setImmediate(async () => {
           try {
-            await finishSession({ sessionKey, steps: recorder.steps, driver, wss, socket, platform, useLlm, target: options.target });
+            await finishSession({ sessionKey, steps: recorder.steps, driver, wss, socket, platform, useLlm, target: { ...(typeof options.target === "string" ? (() => { try { return JSON.parse(options.target); } catch { return {}; } })() : options.target || {}), provider: remoteProvider.provider(options.provider), ...(options.device ? { device: options.device } : {}), ...(options.osVersion ? { osVersion: options.osVersion } : {}) } });
           } catch (err) {
             console.error("[session-manager] failed to finish session:", err);
             try {

@@ -21,6 +21,23 @@ Code: `engine/core/run-target.js`. Web launcher: `web/browser-provider.js`. Test
 
 Old test-case files and results without these fields behave exactly as before ("unknown", no warning).
 
+## What users can choose (all four combinations)
+
+| | Local | BrowserStack |
+|---|---|---|
+| **Web record** | Chromium on TestOps | a BrowserStack browser (Record on, Web panel) |
+| **Web run** | Chromium on TestOps | a BrowserStack browser (Run on, Web card; `--browserstack` on the CLI) |
+| **Mobile record** | local device or emulator via the server's Appium host | BrowserStack device (Record on, Mobile panel) |
+| **Mobile run** | local device or emulator | BrowserStack device (Run on, Mobile card) |
+
+Mobile also takes an optional **device** and **OS version** per session (for example `Samsung Galaxy S23`, `14`);
+empty means the server's default for the chosen provider. The choice is per session: `runOn`, `device`, `osVersion` on
+the recording upload form and on `POST /api/english-runs`. With no choice, `TESTOPS_MOBILE_APPIUM_PROVIDER` decides, exactly as before.
+
+`GET /api/run-options` tells the screens what this server can offer (no secrets): BrowserStack is greyed out
+as "not set up on this server" when `TESTOPS_MOBILE_BROWSERSTACK_USER` / `_KEY` are missing, and mobile preselects the
+server's default provider. A local mobile choice still needs an Appium host this server can reach (see docs/SETUP.md).
+
 ## Choosing where a web test runs
 
 The **Web** card on `/english` has **Run on: Chromium on TestOps / BrowserStack**. `POST /api/english-runs` takes
@@ -29,8 +46,7 @@ the server's `TESTOPS_MOBILE_BROWSERSTACK_USER` and `_KEY` (the same ones mobile
 connection URL and are never returned or labelled. Without them the run stops with a plain message. Browser and
 OS default to Chrome latest on Windows 11; pass a `target` with `browser`, `browserVersion`, `osVersion` to change it.
 
-Mobile keeps using the server's `TESTOPS_MOBILE_APPIUM_PROVIDER`; a per-run choice for mobile is not built, because
-that setting is process-wide by design (see `engine/remote-provider.js`).
+Mobile has the same per-session choice (see the table above); the provider is passed per call and never written to `process.env`.
 
 ## Recording on BrowserStack
 

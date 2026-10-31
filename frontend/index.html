@@ -361,7 +361,12 @@
         <div class="filename" id="selected-filename"></div>
         <input type="file" id="app-file-input" accept=".apk,.ipa" />
       </label>
-      <p class="small-hint">Uploaded to BrowserStack (or your local Appium host) and started as a session.</p>
+      <label class="field-label" for="mobile-runon" style="margin-top:8px">Record on</label>
+      <select id="mobile-runon" style="width:100%" aria-label="where to record the mobile test"><option value="local">Local device or emulator</option><option value="browserstack">BrowserStack</option></select>
+      <label class="field-label" for="mobile-device" style="margin-top:8px">Device (optional)</label>
+      <input type="text" id="mobile-device" placeholder="e.g. Samsung Galaxy S23 or iPhone 15" style="width:100%" />
+      <input type="text" id="mobile-os" placeholder="OS version (optional), e.g. 14" style="width:100%; margin-top:6px" />
+      <p class="small-hint">BrowserStack uploads the app and uses BrowserStack minutes. Local uses the Appium host this server points to. Leave the device empty to use the server's default.</p>
     </div>
     <span class="field-label">Test data (optional)</span>
     <div id="td-rows"></div>
@@ -486,6 +491,15 @@
   function refreshStartEnabled() {
     uploadStartBtn.disabled = platform === "web" ? !webUrl.value.trim() : !fileInput.files[0];
   }
+  // Offer BrowserStack only where the server has credentials; preselect the server's default for mobile.
+  fetch("/api/run-options").then((r) => r.json()).then((o) => {
+    [["web-runon", o.web], ["mobile-runon", o.mobile]].forEach(([id, a]) => {
+      const sel = $(id); if (!sel || !a) return;
+      const bs = Array.from(sel.options).find((x) => x.value === "browserstack");
+      if (bs && !a.browserstack) { bs.disabled = true; bs.textContent += " (not set up on this server)"; }
+    });
+    if (o.mobile && o.mobile.default === "browserstack" && o.mobile.browserstack) $("mobile-runon").value = "browserstack";
+  }).catch(() => { /* the choices still work; the server explains if one is not set up */ });
   $("tab-web").addEventListener("click", () => setPlatform("web"));
   $("tab-mobile").addEventListener("click", () => setPlatform("mobile"));
   webUrl.addEventListener("input", refreshStartEnabled);
@@ -553,6 +567,9 @@
         fileInput.disabled = true;
         uploadStatus.textContent = "Uploading " + file.name + " and starting a session — this can take a minute for a large build...";
         const formData = new FormData();
+        formData.append("runOn", $("mobile-runon").value);
+        if ($("mobile-device").value.trim()) formData.append("device", $("mobile-device").value.trim());
+        if ($("mobile-os").value.trim()) formData.append("osVersion", $("mobile-os").value.trim());
         formData.append("app", file);
         response = await fetch("/api/sessions", { method: "POST", body: formData });
       }

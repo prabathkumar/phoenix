@@ -34,8 +34,8 @@ function mobileTarget({ platform, provider, capabilities = {}, sessionId, env = 
 }
 
 /** From a live WebdriverIO driver (uses its returned capabilities and session id). */
-function targetFromDriver(driver, platform, env = process.env) {
-  return mobileTarget({ platform, capabilities: (driver && driver.capabilities) || {}, sessionId: driver && driver.sessionId, env });
+function targetFromDriver(driver, platform, env = process.env, provider) {
+  return mobileTarget({ platform, provider, capabilities: (driver && driver.capabilities) || {}, sessionId: driver && driver.sessionId, env });
 }
 
 /**
@@ -120,4 +120,7 @@ function mergeTarget(passed, derived) {
   return clean({ ...(derived || {}), ...passed });
 }
 
-module.exports = { normalizeTarget, mergeTarget, mobileTarget, targetFromDriver, webTarget, targetFromBrowser, targetLabel, compareTargets, LOCAL, BROWSERSTACK };
+/** "local" | "browserstack" | undefined (undefined = the server setting decides). */
+const chooseProvider = (v) => { const x = String(v || "").toLowerCase(); return x === BROWSERSTACK ? BROWSERSTACK : x === LOCAL ? LOCAL : undefined; };
+
+module.exports = { chooseProvider, normalizeTarget, mergeTarget, mobileTarget, targetFromDriver, webTarget, targetFromBrowser, targetLabel, compareTargets, LOCAL, BROWSERSTACK };

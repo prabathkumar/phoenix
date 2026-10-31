@@ -93,6 +93,8 @@ Check that the account page is showing</textarea></div>
     <h2>Mobile <span class="tag">real device on BrowserStack</span></h2>
     <div><label for="mobile-app">App build (.apk or .ipa)</label><input type="file" id="mobile-app" accept=".apk,.ipa" /><div class="hint">Or paste an already-uploaded app URL below (it starts with bs://).</div></div>
     <div><input type="text" id="mobile-appurl" placeholder="bs://… (optional, used when no file is chosen)" /></div>
+    <div><label for="mobile-runon">Run on</label><select id="mobile-runon" aria-label="where to run the mobile test"><option value="local">Local device or emulator</option><option value="browserstack">BrowserStack</option></select></div>
+    <div><label for="mobile-device">Device (optional)</label><input type="text" id="mobile-device" placeholder="e.g. Samsung Galaxy S23 or iPhone 15" /></div>
     <div><label for="mobile-platform">Platform</label><select id="mobile-platform"><option value="">Detect from the file</option><option value="android">Android</option><option value="ios">iOS</option></select></div>
     <div><label for="mobile-steps">Test case, in English</label>
 <textarea id="mobile-steps">Tap the Yes Number field
@@ -109,7 +111,7 @@ Check that the home screen is showing</textarea></div>
         <button class="link save" type="button">Save test data</button> <span class="saved-note" aria-live="polite"></span></div>
       <div class="plan" aria-live="polite"></div></div>
     <button class="run" type="button">Run mobile test</button>
-    <div class="hint">Uses a BrowserStack session for the length of the run.</div>
+    <div class="hint">BrowserStack uses a BrowserStack session for the length of the run; Local uses the Appium host this server points to.</div>
     <div class="results"></div>
   </section>
 </div>
@@ -222,6 +224,8 @@ Check that the home screen is showing</textarea></div>
       } else {
         var fd = new FormData();
         fd.append("platform", card.querySelector("#mobile-platform").value || "");
+        fd.append("runOn", card.querySelector("#mobile-runon").value);
+        var dev = card.querySelector("#mobile-device").value.trim(); if (dev) fd.append("device", dev);
         fd.append("steps", stepsText);
         fd.append("testData", JSON.stringify(data));
         var df = dataFields(card); Object.keys(df).forEach(function (k) { fd.append(k, typeof df[k] === "string" ? df[k] : JSON.stringify(df[k])); });
@@ -265,6 +269,13 @@ Check that the home screen is showing</textarea></div>
         }).catch(function (err) { fail("The server could not be reached: " + err.message); });
     });
   }
+  fetch("/api/run-options").then(function (r) { return r.json(); }).then(function (o) {
+    [["web-runon", o.web], ["mobile-runon", o.mobile]].forEach(function (p) {
+      var sel = document.getElementById(p[0]); if (!sel || !p[1]) return;
+      Array.prototype.forEach.call(sel.options, function (x) { if (x.value === "browserstack" && !p[1].browserstack) { x.disabled = true; x.textContent += " (not set up on this server)"; } });
+    });
+    if (o.mobile && o.mobile.default === "browserstack" && o.mobile.browserstack) document.getElementById("mobile-runon").value = "browserstack";
+  }).catch(function () { /* choices still work; the server explains if one is not set up */ });
   document.querySelectorAll(".card:not(#api)").forEach(wire);
 
   (function () {

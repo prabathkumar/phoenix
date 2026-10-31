@@ -48,31 +48,33 @@ const remoteProvider = require("./remote-provider");
 // device catalog; "Samsung Galaxy S23" is a real BrowserStack App Automate
 // catalog entry. Only used when TESTOPS_MOBILE_APPIUM_DEVICE_NAME isn't set --
 // an explicit value is still passed through unchanged on either provider.
-function defaultDeviceName() {
-  return remoteProvider.provider() === remoteProvider.BROWSERSTACK ? "Samsung Galaxy S23" : "emulator-5554";
+function defaultDeviceName(providerOverride) {
+  return remoteProvider.provider(providerOverride) === remoteProvider.BROWSERSTACK ? "Samsung Galaxy S23" : "emulator-5554";
 }
 
-function buildBaseCapabilities() {
+function buildBaseCapabilities(opts = {}) {
   return {
     platformName: "Android",
     "appium:automationName": "UiAutomator2",
-    "appium:deviceName": process.env.TESTOPS_MOBILE_APPIUM_DEVICE_NAME || defaultDeviceName(),
+    "appium:deviceName": opts.device || process.env.TESTOPS_MOBILE_APPIUM_DEVICE_NAME || defaultDeviceName(opts.provider),
+    ...(opts.osVersion ? { "appium:platformVersion": opts.osVersion } : {}),
     "appium:app": process.env.TESTOPS_MOBILE_STAGE0_APP_PATH, // path to a .apk on disk
   };
 }
 
-function buildCapabilities(overrides = {}) {
-  return remoteProvider.buildCapabilities(buildBaseCapabilities(), overrides);
+function buildCapabilities(overrides = {}, opts = {}) {
+  return remoteProvider.buildCapabilities(buildBaseCapabilities(opts), overrides, opts);
 }
 
 /**
  * @param {object} [capabilityOverrides]
  * @returns {Promise<import('webdriverio').Browser>}
  */
-async function startSession(capabilityOverrides) {
+async function startSession(capabilityOverrides, opts = {}) {
+  // opts: {provider:"local"|"browserstack", device, osVersion} -- a per-session choice; omitted = server setting, as before.
   return remote({
-    ...remoteProvider.buildConnectionConfig(),
-    capabilities: buildCapabilities(capabilityOverrides),
+    ...remoteProvider.buildConnectionConfig(opts),
+    capabilities: buildCapabilities(capabilityOverrides, opts),
   });
 }
 

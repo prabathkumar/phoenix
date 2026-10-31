@@ -57,6 +57,7 @@ function handleUploadAndStart(req, res) {
   let savedPath = null;
   let originalName = null;
   let sizeLimitExceeded = false;
+  const choice = {}; // optional per-session choice from the form: runOn (local|browserstack), device, osVersion
   let requestedTarget = null; // optional form field: where TestOps says this recording runs (JSON; see engine/core/run-target.js)
   let requestedPlatform = null; // optional form field, only needed if extension is ambiguous
   let fileWritePromise = Promise.resolve();
@@ -64,6 +65,9 @@ function handleUploadAndStart(req, res) {
   busboy.on("field", (name, value) => {
     if (name === "platform") requestedPlatform = value;
     if (name === "target") requestedTarget = value;
+    if (name === "runOn") choice.provider = require("../engine/core/run-target").chooseProvider(value);
+    if (name === "device" && value) choice.device = String(value).slice(0, 100);
+    if (name === "osVersion" && value) choice.osVersion = String(value).slice(0, 30);
   });
 
   busboy.on("file", (_name, fileStream, info) => {
@@ -123,8 +127,8 @@ function handleUploadAndStart(req, res) {
     }
 
     try {
-      const capabilityOverrides = await resolveAppCapability({ savedPath, platform });
-      const session = await startRecordingSession({ platform, capabilityOverrides, target: requestedTarget });
+      const capabilityOverrides = await resolveAppCapability({ savedPath, platform, provider: choice.provider });
+      const session = await startRecordingSession({ platform, capabilityOverrides, target: requestedTarget, ...choice });
       respondJson(res, 200, {
         platform: session.platform,
         port: session.port,
@@ -145,8 +149,8 @@ function handleUploadAndStart(req, res) {
  * or engine/ios-session.js's startSession() needs, depending on the
  * active TESTOPS_MOBILE_APPIUM_PROVIDER.
  */
-async function resolveAppCapability({ savedPath, platform }) {
-  if (remoteProvider.provider() === remoteProvider.BROWSERSTACK) {
+async function resolveAppCapability({ savedPath, platform, provider }) {
+  if (remoteProvider.provider(provider) === remoteProvider.BROWSERSTACK) {
     console.log(`[upload-session] uploading ${savedPath} to BrowserStack...`);
     const appUrl = await uploadApp(savedPath);
     console.log(`[upload-session] uploaded, got ${appUrl}`);

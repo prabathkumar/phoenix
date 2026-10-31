@@ -30,8 +30,10 @@
 const LOCAL = "local";
 const BROWSERSTACK = "browserstack";
 
-function provider() {
-  const value = (process.env.TESTOPS_MOBILE_APPIUM_PROVIDER || LOCAL).toLowerCase();
+function provider(override) {
+  // `override` is a per-session choice (the recording or run asked for Local or BrowserStack);
+  // without one, the server-wide TESTOPS_MOBILE_APPIUM_PROVIDER decides, exactly as before.
+  const value = String(override || process.env.TESTOPS_MOBILE_APPIUM_PROVIDER || LOCAL).toLowerCase();
   if (value !== LOCAL && value !== BROWSERSTACK) {
     throw new Error(
       `Unknown TESTOPS_MOBILE_APPIUM_PROVIDER "${value}" — expected "${LOCAL}" or "${BROWSERSTACK}".`
@@ -45,8 +47,8 @@ function provider() {
  * for Android and iOS on either provider, since only the capabilities
  * differ by platform.
  */
-function buildConnectionConfig() {
-  if (provider() === BROWSERSTACK) {
+function buildConnectionConfig(opts = {}) {
+  if (provider(opts.provider) === BROWSERSTACK) {
     return {
       protocol: "https",
       hostname: "hub-cloud.browserstack.com",
@@ -76,8 +78,8 @@ function buildConnectionConfig() {
  * over alongside it would be actively misleading even though
  * BrowserStack ignores capability keys it doesn't recognize.
  */
-function buildCapabilities(baseCapabilities, overrides = {}) {
-  if (provider() !== BROWSERSTACK) {
+function buildCapabilities(baseCapabilities, overrides = {}, opts = {}) {
+  if (provider(opts.provider) !== BROWSERSTACK) {
     return { ...baseCapabilities, ...overrides };
   }
 
@@ -137,4 +139,11 @@ function buildCapabilities(baseCapabilities, overrides = {}) {
   };
 }
 
-module.exports = { LOCAL, BROWSERSTACK, provider, buildConnectionConfig, buildCapabilities };
+/** What this server can offer a user to choose from (no secrets): used by GET /api/run-options. */
+function availability(env = process.env) {
+  const bs = Boolean(env.TESTOPS_MOBILE_BROWSERSTACK_USER && env.TESTOPS_MOBILE_BROWSERSTACK_KEY);
+  const def = String(env.TESTOPS_MOBILE_APPIUM_PROVIDER || LOCAL).toLowerCase() === BROWSERSTACK ? BROWSERSTACK : LOCAL;
+  return { web: { local: true, browserstack: bs }, mobile: { local: true, browserstack: bs, default: def } };
+}
+
+module.exports = { availability, LOCAL, BROWSERSTACK, provider, buildConnectionConfig, buildCapabilities };

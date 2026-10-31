@@ -30,12 +30,12 @@
 const { remote } = require("webdriverio");
 const remoteProvider = require("./remote-provider");
 
-function buildBaseCapabilities() {
+function buildBaseCapabilities(opts = {}) {
   const base = {
     platformName: "iOS",
     "appium:automationName": "XCUITest",
-    "appium:deviceName": process.env.TESTOPS_MOBILE_IOS_DEVICE_NAME || "iPhone 15",
-    "appium:platformVersion": process.env.TESTOPS_MOBILE_IOS_PLATFORM_VERSION,
+    "appium:deviceName": opts.device || process.env.TESTOPS_MOBILE_IOS_DEVICE_NAME || "iPhone 15",
+    "appium:platformVersion": opts.osVersion || process.env.TESTOPS_MOBILE_IOS_PLATFORM_VERSION,
   };
 
   // Either a path to a .app/.ipa to install and launch (the normal case
@@ -54,18 +54,19 @@ function buildBaseCapabilities() {
   return base;
 }
 
-function buildCapabilities(overrides = {}) {
-  return remoteProvider.buildCapabilities(buildBaseCapabilities(), overrides);
+function buildCapabilities(overrides = {}, opts = {}) {
+  return remoteProvider.buildCapabilities(buildBaseCapabilities(opts), overrides, opts);
 }
 
 /**
  * @param {object} [capabilityOverrides]
  * @returns {Promise<import('webdriverio').Browser>}
  */
-async function startSession(capabilityOverrides) {
+async function startSession(capabilityOverrides, opts = {}) {
+  // opts: {provider, device, osVersion} -- per-session choice; omitted = server setting, as before.
   return remote({
-    ...remoteProvider.buildConnectionConfig(),
-    capabilities: buildCapabilities(capabilityOverrides),
+    ...remoteProvider.buildConnectionConfig(opts),
+    capabilities: buildCapabilities(capabilityOverrides, opts),
   });
 }
 

@@ -44,7 +44,7 @@ function clean(turns) {
 }
 
 function available({ exec = run, env = process.env } = {}) {
-  const py = exec("python3", ["-c", "import deepeval"]);
+  const py = exec("python3", ["-c", "import deepeval"], { env });
   if (py.status !== 0) return { ok: false, why: "DeepEval is not installed (pip install deepeval)" };
   if (!env.DEEPEVAL_OLLAMA_MODEL && !env.OPENAI_API_KEY) return { ok: false, why: "no judge model: set DEEPEVAL_OLLAMA_MODEL (and DEEPEVAL_OLLAMA_URL), or OPENAI_API_KEY" };
   return { ok: true };

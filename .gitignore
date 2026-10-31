@@ -20,3 +20,11 @@ engine/training-data/
 generation/training-data/
 /test-data/*.secrets.json
 /logs/
+
+__pycache__/
+*.pyc
+phoenix.db
+.pytest_cache/
+backend/phoenix.db
+web-ui/node_modules/
+web-ui/dist/

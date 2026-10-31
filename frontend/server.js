@@ -120,6 +120,10 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (req.method === "POST" && req.url === "/api/engine/exec") {
+    require("./exec-endpoint").handleExec(req, res);
+    return;
+  }
   if (req.url.startsWith("/api/gateway/")) {
     require("./gateway-endpoint").handle(req, res);
     return;

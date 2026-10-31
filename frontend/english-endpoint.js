@@ -82,15 +82,15 @@ function createEnglishEndpoint(deps = {}) {
     return { id, run, emit };
   }
 
-  async function execute({ emit, platform, steps, testData, url, appCapability, appPath, target: passedTarget, runOn, mobileChoice = {} }) {
+  async function execute({ emit, platform, steps, testData, url, appCapability, appPath, target: passedTarget, runOn, mobileChoice = {}, harPath }) {
     const target = require("../engine/core/run-target");
     emit({ type: "run-started", platform, where: platform === "web" ? { label: runOn === "browserstack" ? "BrowserStack · Playwright" : "Local · Playwright", ...target.webTarget({ wsEndpoint: runOn === "browserstack" ? "wss://cdp.browserstack.com/playwright" : undefined }) } : { label: "Starting…" } });
-    let browser; let driver;
+    let browser; let driver; let context;
     try {
       let runner;
       if (platform === "web") {
         browser = await launchBrowser({ runOn, target: passedTarget });
-        const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+        context = await browser.newContext({ viewport: { width: 1280, height: 800 }, ...(harPath ? { recordHar: { path: harPath, mode: "minimal" } } : {}) });
         const page = await context.newPage();
         await page.goto(normalizeUrl(url), { waitUntil: "load", timeout: 45000 });
         runner = makeWebRunner(page);
@@ -105,6 +105,7 @@ function createEnglishEndpoint(deps = {}) {
     } catch (err) {
       emit({ type: "run-finished", status: "failed", reason: redact(friendlyStartError(err.message), testData), steps: [], passed: 0, failed: 0 });
     } finally {
+      if (context) { try { await context.close(); } catch { /* ignore */ } } // writes the HAR
       if (browser) { try { await browser.close(); } catch { /* ignore */ } }
       if (driver) { try { await driver.deleteSession(); } catch { /* ignore */ } }
       if (platform !== "web") mobileActive = false;
@@ -213,7 +214,26 @@ function createEnglishEndpoint(deps = {}) {
     req.on("close", () => run.listeners.delete(listener));
   }
 
-  return { handleStart, handleEvents };
+  /**
+   * Run English steps to the end without HTTP; used by the pipeline.
+   * @returns {Promise<{status, passed, failed, steps, where}>} where = the "Running on" label (no credentials).
+   */
+  async function runAndWait({ platform, steps, testData = {}, url, runOn, device, osVersion, appUrl, appPath, target, harPath }) {
+    const t = require("../engine/core/run-target");
+    const { run, emit } = newRun();
+    let where = null;
+    run.listeners.add((e) => { if (e.type === "run-where" || e.type === "run-started") where = (e.where && e.where.label) || where; });
+    const done = new Promise((ok) => run.listeners.add((e) => { if (e.type === "run-finished") ok(e); }));
+    const mobile = platform !== "web";
+    if (mobile) { if (mobileActive) throw new Error("A mobile run is already in progress."); mobileActive = true; }
+    const finished = execute({ emit, platform, steps: String(steps), testData, url, runOn: normalizeRunOn(runOn), target: t.normalizeTarget(target), harPath,
+      ...(mobile ? { appCapability: appUrl ? { "appium:app": String(appUrl) } : undefined, appPath, mobileChoice: { provider: t.chooseProvider(runOn), ...(device ? { device: String(device).slice(0, 100) } : {}), ...(osVersion ? { osVersion: String(osVersion).slice(0, 20) } : {}) } } : {}) });
+    await finished; // the browser is closed (and the HAR written) before we return
+    const fin = await done;
+    return { status: fin.status, passed: fin.passed, failed: fin.failed, steps: (fin.steps || []).map((r) => ({ index: r.index, text: r.text, status: r.status, reason: r.reason || r.error })), where, reason: fin.reason };
+  }
+
+  return { handleStart, handleEvents, runAndWait };
 }
 
 const defaults = createEnglishEndpoint();

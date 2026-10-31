@@ -25,7 +25,9 @@ function aiHandler(promptName, { callJson, getPrompt, platform = "shared", userO
   return async (ctx) => {
     if (!callJson) return { unavailable: true, detail: "no model configured" };
     const { text, id } = (getPrompt || libraryPrompt)(promptName, platform);
-    const r = await callJson(`${text}\n\n${userOf(ctx)}`);
+    let r;
+    try { r = await callJson(`${text}\n\n${userOf(ctx)}`); }
+    catch (e) { if (/No model answered|not configured/i.test(e.message)) return { unavailable: true, detail: `no model reachable: ${e.message.slice(0, 160)}` }; throw e; }
     const items = Array.isArray(r) ? r : Array.isArray(r && (r.scenarios || r.cases || r.items)) ? (r.scenarios || r.cases || r.items) : null;
     if (!items || !items.length) return { ok: false, detail: `the model returned nothing usable (${id})` };
     return { ok: true, detail: `${items.length} from ${id}`, data: { items } };
@@ -99,13 +101,39 @@ function performanceHandler({ exec = run, dir = "logs/performance", users = 10, 
 }
 
 // ---- DAST (ZAP)
-function dastHandler({ exec = run, dir = "logs/security", ajaxSpider = false } = {}) {
+/** ZAP through its HTTP API (a ZAP daemon, e.g. the compose "zap" service): spider, passive scan, alerts. */
+async function zapApi({ api, key, url, ajaxSpider, fetchFn, wait = (ms) => new Promise((r) => setTimeout(r, ms)), maxPolls = 120 }) {
+  const call = async (path, params = {}) => {
+    const q = new URLSearchParams({ ...params, apikey: key || "" });
+    const res = await fetchFn(`${api.replace(/\/+$/, "")}${path}?${q}`, { method: "GET" });
+    if (!res.ok) throw new Error(`ZAP ${path} failed (${res.status}).`);
+    return JSON.parse(await res.text());
+  };
+  await call("/JSON/core/action/accessUrl", { url, followRedirects: "true" });
+  const sp = await call("/JSON/spider/action/scan", { url, recurse: "true" });
+  for (let i = 0; i < maxPolls; i++) { const st = await call("/JSON/spider/view/status", { scanId: sp.scan }); if (Number(st.status) >= 100) break; await wait(1000); }
+  if (ajaxSpider) {
+    await call("/JSON/ajaxSpider/action/scan", { url });
+    for (let i = 0; i < maxPolls; i++) { const st = await call("/JSON/ajaxSpider/view/status"); if (st.status === "stopped") break; await wait(1000); }
+  }
+  for (let i = 0; i < maxPolls; i++) { const st = await call("/JSON/pscan/view/recordsToScan"); if (Number(st.recordsToScan) === 0) break; await wait(1000); }
+  const sum = (await call("/JSON/alert/view/alertsSummary", { baseurl: url })).alertsSummary || {};
+  return { high: Number(sum.High || 0), medium: Number(sum.Medium || 0), low: Number(sum.Low || 0), info: Number(sum.Informational || 0) };
+}
+
+function dastHandler({ exec = run, dir = "logs/security", ajaxSpider = false, env = process.env, fetchFn = globalThis.fetch, wait } = {}) {
   return async (ctx) => {
     if (!ctx.baseUrl && !ctx.appUrl) return { unavailable: true, detail: "give the app address to scan" };
     const url = ctx.appUrl || ctx.baseUrl;
+    if (env.ZAP_API_URL) {
+      try {
+        const c = await zapApi({ api: env.ZAP_API_URL, key: env.ZAP_API_KEY, url, ajaxSpider: ajaxSpider || ctx.ajaxSpider, fetchFn, wait });
+        return { ok: c.high === 0, detail: `ZAP alerts: ${c.high} high, ${c.medium} medium, ${c.low} low, ${c.info} informational`, data: { alerts: c } };
+      } catch (e) { return { ok: false, detail: `ZAP scan failed: ${e.message}` }; }
+    }
     fs.mkdirSync(dir, { recursive: true });
     const local = has("zap-baseline.py", exec);
-    if (!local && !has("docker", exec)) return { unavailable: true, detail: "neither zap-baseline.py nor docker is installed" };
+    if (!local && !has("docker", exec)) return { unavailable: true, detail: "ZAP is not set up: set ZAP_API_URL (a ZAP daemon), or install zap-baseline.py or docker" };
     const extra = ajaxSpider || ctx.ajaxSpider ? ["-j"] : [];
     const report = ["-J", local ? path.join(dir, "zap.json") : "zap.json", "-r", local ? path.join(dir, "zap.html") : "zap.html"];
     const args = local ? ["-t", url, ...report, ...extra] : ["run", "--rm", "-v", `${path.resolve(dir)}:/zap/wrk`, "zaproxy/zap-stable", "zap-baseline.py", "-t", url, ...report, ...extra];
@@ -162,4 +190,18 @@ function allHandlers({ callJson, getPrompt, exec, connectRepo = (rq) => require(
   return { unittests: unittestsHandler({ callJson, getPrompt, connectRepo }), testspr: testsPrHandler({ connectRepo }), scenarios: scenariosHandler({ callJson, getPrompt }), cases: casesHandler({ callJson, getPrompt }), har: harHandler(), performance: performanceHandler({ exec }), dast: dastHandler({ exec }), feedback: feedbackHandler(), ...extra };
 }
 
-module.exports = { unittestsHandler, testsPrHandler, locustFromHar, scenariosHandler, casesHandler, harHandler, harContextOptions, performanceHandler, locustFile, dastHandler, feedbackHandler, allHandlers };
+/** What this server can actually run: for the validation script and the pipeline page. */
+async function toolStatus({ exec = run, env = process.env, fetchFn = globalThis.fetch } = {}) {
+  const out = {};
+  for (const [id, cmd] of [["locust", "locust"], ["semgrep", "semgrep"], ["gitleaks", "gitleaks"], ["node", "node"]]) out[id] = has(cmd, exec);
+  if (env.ZAP_API_URL) {
+    try { const r = await fetchFn(`${env.ZAP_API_URL.replace(/\/+$/, "")}/JSON/core/view/version?apikey=${encodeURIComponent(env.ZAP_API_KEY || "")}`); out.zap = r.ok ? "daemon reachable" : `daemon answered ${r.status}`; } catch { out.zap = "daemon not reachable"; }
+  } else out.zap = has("zap-baseline.py", exec) ? "zap-baseline.py" : has("docker", exec) ? "via docker" : false;
+  out.jira = !!(env.JIRA_BASE_URL && env.JIRA_EMAIL && env.JIRA_API_TOKEN);
+  out.github = !!env.GITHUB_TOKEN; out.gitlab = !!env.GITLAB_TOKEN;
+  out.browserstack = !!(env.TESTOPS_MOBILE_BROWSERSTACK_USER && env.TESTOPS_MOBILE_BROWSERSTACK_KEY);
+  out.ollama = !!(env.OLLAMA_HOST || env.TESTOPS_OLLAMA_URL || env.OLLAMA_URL);
+  return out;
+}
+
+module.exports = { toolStatus, unittestsHandler, testsPrHandler, locustFromHar, scenariosHandler, casesHandler, harHandler, harContextOptions, performanceHandler, locustFile, dastHandler, feedbackHandler, allHandlers };

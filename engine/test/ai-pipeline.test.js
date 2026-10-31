@@ -38,5 +38,12 @@ const by = (r, id) => r.stages.find((s) => s.id === id);
   assert.ok(history({ env })[0].includes("dast=needs-you"));
   await runAiPipeline({ goal: "again", handlers: hs, callJson, env, exec: () => ({ status: 127 }) });
   assert.ok(prompts[prompts.length - 1] !== undefined && prompts.some((x) => x.includes("Recent runs") && x.includes("dast=needs-you")));
+  // Run just the stages the person picked: no planning call.
+  const prompts2 = [];
+  r = await runAiPipeline({ goal: "g", stages: ["performance"], handlers: { performance: ok, execution: ok }, callJson: async (p) => { prompts2.push(p); return { note: "n" }; }, env, exec: () => ({ status: 127 }) });
+  assert.strictEqual(r.plan.source, "manual");
+  assert.strictEqual(by(r, "performance").status, "passed");
+  assert.strictEqual(by(r, "execution").status, "skipped");
+  assert.ok(!prompts2.some((p) => /Plan this run/.test(p)));
   console.log("ai-pipeline tests passed");
 })().catch((e) => { console.error(e); process.exit(1); });

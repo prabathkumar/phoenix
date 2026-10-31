@@ -1,6 +1,7 @@
 /**
  * POST /api/pipeline/run: one request runs the whole AI-driven pipeline.
  *   {goal, requirement? | jiraKey?, steps?, baseUrl?, appUrl?, project?, testData?,
+ *    stages?: [stageId] (run just these; no planning call),
  *    autonomy?: "ask-everything"|"ask-when-matters"|"run-everything", approvals?:{stageId:true}, production?}
  * -> {ok, runId, retest, plan, stages:[{id,status,detail,decided,ai}], summary, needsYou:[stageId]}
  * Needs-you stages (live scan, Jira, production, or your autonomy level) come back with their
@@ -44,6 +45,7 @@ async function runPipelineRequest(body, deps = {}) {
   const baseUrl = typeof body.baseUrl === "string" && /^https?:\/\//i.test(body.baseUrl) ? body.baseUrl : undefined;
   const runCases = deps.runApiCases || require("../engine/core/api-cases").runApiCases;
   let values = {};
+  const state = {};
   const failedCases = [];
   // One gateway-wrapped model function for the handlers, the planner and the reviewer: guardrails, fallback, log tagged with the run id.
   const callJson = deps.callJson && deps.gateway !== false ? gw.wrap(deps.callJson, { name: "pipeline", run: runId, env }) : deps.callJson;
@@ -58,20 +60,41 @@ async function runPipelineRequest(body, deps = {}) {
         return plan.needsYou.length ? { ok: false, detail: `needs you: ${plan.needsYou.join(", ")}`, data: { names } } : { ok: true, detail: `${plan.fields.length} field(s) ready`, data: { names } };
       },
       execution: async () => {
-        if (!steps.some((s) => s && s.kind === "api")) return { unavailable: true, detail: "no API steps here; run web and mobile cases from the English page" };
+        const parts = [], bad = [], ranOn = [];
+        // Web and mobile: the same English run as the English page, here for the pipeline.
+        const english = deps.englishRun || require("./english-endpoint").runAndWait;
+        for (const [kind, spec] of [["web", body.web], ["mobile", body.mobile]]) {
+          if (!spec || !String(spec.steps || "").trim()) continue;
+          const harPath = kind === "web" ? require("path").join(require("os").tmpdir(), `${runId}.har`) : undefined;
+          try {
+            const r = await english({ platform: kind === "web" ? "web" : spec.platform, steps: spec.steps, testData: values, url: spec.url, runOn: spec.runOn, device: spec.device, osVersion: spec.osVersion, appUrl: spec.appUrl, harPath });
+            if (r.where) ranOn.push(`${kind}: ${r.where}`);
+            if (harPath) state.harPath = harPath;
+            const fails = (r.steps || []).filter((x) => x.status === "failed");
+            fails.forEach((x) => { const f = { name: `${kind}: ${x.text}`, error: String(x.reason || "").slice(0, 300), ranOn: { label: r.where || kind } }; failedCases.push(f); bad.push(f); });
+            if (r.status !== "passed" && !fails.length) { const f = { name: `${kind} run`, error: String(r.reason || r.status).slice(0, 300), ranOn: { label: r.where || kind } }; failedCases.push(f); bad.push(f); }
+            parts.push(`${kind} ${r.status} (${r.passed || 0} passed, ${r.failed || 0} failed)`);
+          } catch (e) { const f = { name: `${kind} run`, error: e.message }; failedCases.push(f); bad.push(f); parts.push(`${kind} could not start`); }
+        }
+        if (!steps.some((s) => s && s.kind === "api")) {
+          if (!parts.length) return { unavailable: true, detail: "give web or mobile English steps, or API steps, to run" };
+          return { ok: bad.length === 0, detail: `${parts.join("; ")}${ranOn.length ? " · " + ranOn.join(" · ") : ""}`, data: { failedCases: failedCases.map((c) => ({ name: c.name })) } };
+        }
         const prepared = td.prepareApiSteps(steps, { seed: "pipeline" });
         const r = await runCases({ steps: prepared.steps, testData: values, baseUrl, seed: "pipeline", negative: true });
-        const bad = [r.main, ...r.negatives].filter((x) => x && x.ok === false);
-        bad.forEach((x) => failedCases.push({ name: x.name || "API case", error: String(x.detail || "").slice(0, 300) }));
-        return { ok: bad.length === 0, detail: `${1 + r.negatives.length} case(s), ${bad.length} failed`, data: { failedCases: failedCases.map((c) => ({ name: c.name })) } };
+        [r.main, ...r.negatives].filter((x) => x && x.ok === false).forEach((x) => failedCases.push({ name: x.name || "API case", error: String(x.detail || "").slice(0, 300) }));
+        const apiBad = [r.main, ...r.negatives].filter((x) => x && x.ok === false);
+        return { ok: bad.length === 0 && apiBad.length === 0, detail: `${[...parts, `${1 + r.negatives.length} API case(s), ${apiBad.length} failed`].join("; ")}${ranOn.length ? " · " + ranOn.join(" · ") : ""}`, data: { failedCases: failedCases.map((c) => ({ name: c.name })) } };
       },
+      feedback: require("../engine/core/handlers").feedbackHandler({ dir: require("path").join(require("path").dirname(require("../engine/core/run-record").dirOf ? require("../engine/core/run-record").dirOf(env) : "logs/runs"), "reports") }),
+      har: async (ctx) => require("../engine/core/handlers").harHandler()({ ...ctx, harPath: state.harPath }),
       defects: async (ctx) => J.defectsHandler(jira, { requirement: body.jiraKey, secrets: Object.values(values) })({ ...ctx, failedCases }),
     },
   });
   const out = await runAiPipeline({
     goal: body.goal, requirement, ctx: { steps, baseUrl, appUrl: body.appUrl, requirement, goal: body.goal, ruleset: body.ruleset, repoRequest: body.repo && typeof body.repo === "object" ? body.repo : undefined }, handlers,
     autonomy, approvals: body.approvals && typeof body.approvals === "object" ? body.approvals : {}, production: body.production === true,
-    callJson, exec: deps.exec, env,
+    callJson, exec: deps.exec, env, stages: Array.isArray(body.stages) ? body.stages : undefined,
   });
   const record = runs.link(out.stages, { jiraKey: body.jiraKey, goal: body.goal, plan: out.plan, runId, retest });
   try { runs.save(record, { env }); } catch { /* a full disk never fails a run */ }
@@ -88,4 +111,8 @@ async function handlePipelineRun(req, res) {
   try { const r = await runPipelineRequest(body, { callJson }); send(r.code, r.json); } catch (e) { send(500, { error: e.message }); }
 }
 
-module.exports = { handlePipelineRun, runPipelineRequest };
+async function handleTools(req, res) {
+  const tools = await require("../engine/core/handlers").toolStatus();
+  res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" }); res.end(JSON.stringify({ tools, stages: require("../engine/core/pipeline").STAGES.map(({ id, name }) => ({ id, name })) }));
+}
+module.exports = { handlePipelineRun, runPipelineRequest, handleTools };

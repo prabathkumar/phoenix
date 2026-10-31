@@ -14,6 +14,9 @@ const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "h-"));
   assert.strictEqual((await H.scenariosHandler({ callJson: async () => ({}), getPrompt: gp })({})).ok, false);
   assert.strictEqual((await H.scenariosHandler({ getPrompt: gp })({})).unavailable, true);
 
+  // An unreachable model is "unavailable", not a failed stage.
+  assert.strictEqual((await H.scenariosHandler({ callJson: async () => { throw new Error("No model answered (default: fetch failed)"); }, getPrompt: gp })({})).unavailable, true);
+
   // HAR: reads what the run recorded.
   const d = tmp(), har = path.join(d, "a.har");
   fs.writeFileSync(har, JSON.stringify({ log: { entries: [{ time: 50, request: { url: "https://x/a?q=1" }, response: { status: 200 } }, { time: 900, request: { url: "https://x/b" }, response: { status: 500 } }] } }));
@@ -53,6 +56,23 @@ const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "h-"));
   assert.ok(/warnings/.test((await H.dastHandler({ exec: zx(2), dir: tmp() })({ appUrl: "https://app" })).detail));
   assert.strictEqual((await H.dastHandler({ exec: () => ({ status: 127 }), dir: tmp() })({ appUrl: "u" })).unavailable, true);
 
+  // ZAP through its daemon API: spider, passive scan, alert summary; high alerts fail the stage.
+  const zcalls = [];
+  const zfetch = (summary) => async (u) => { const p = new URL(u); zcalls.push(p.pathname + (p.searchParams.get("apikey") === "k" ? "" : " BADKEY")); const j = (o) => ({ ok: true, status: 200, text: async () => JSON.stringify(o) });
+    if (p.pathname.endsWith("spider/action/scan")) return j({ scan: "1" }); if (p.pathname.endsWith("spider/view/status")) return j({ status: "100" });
+    if (p.pathname.endsWith("pscan/view/recordsToScan")) return j({ recordsToScan: "0" }); if (p.pathname.endsWith("alertsSummary")) return j({ alertsSummary: summary }); return j({}); };
+  const zenv = { ZAP_API_URL: "http://zap:8080", ZAP_API_KEY: "k" };
+  let z = await H.dastHandler({ env: zenv, fetchFn: zfetch({ High: "0", Medium: "2", Low: "1", Informational: "3" }), wait: async () => {} })({ appUrl: "https://app" });
+  assert.ok(z.ok && /0 high, 2 medium/.test(z.detail)); assert.ok(zcalls.every((c) => !/BADKEY/.test(c)) && zcalls.some((c) => c.endsWith("spider/action/scan")));
+  z = await H.dastHandler({ env: zenv, fetchFn: zfetch({ High: "1" }), wait: async () => {} })({ appUrl: "https://app" });
+  assert.strictEqual(z.ok, false);
+  z = await H.dastHandler({ env: zenv, fetchFn: async () => ({ ok: false, status: 500, text: async () => "body" }), wait: async () => {} })({ appUrl: "https://app" });
+  assert.ok(!z.ok && /ZAP scan failed/.test(z.detail) && !/body/.test(z.detail));
+
+  // What this server can run.
+  const ts = await H.toolStatus({ exec: (c, a) => ({ status: c === "locust" || c === "node" ? 0 : 127 }), env: { ZAP_API_URL: "http://zap:8080", JIRA_BASE_URL: "x", JIRA_EMAIL: "y", JIRA_API_TOKEN: "z" }, fetchFn: async () => ({ ok: true }) });
+  assert.strictEqual(ts.locust, true); assert.strictEqual(ts.semgrep, false); assert.strictEqual(ts.zap, "daemon reachable"); assert.strictEqual(ts.jira, true); assert.strictEqual(ts.github, false);
+  assert.ok(!JSON.stringify(ts).includes("token"));
   // Feedback: a secret-free report.
   const fd = tmp();
   r = await H.feedbackHandler({ dir: fd })({ goal: "g", results: [{ id: "x", status: "passed", detail: "ok", data: { secret: "S3CR3T" } }] });

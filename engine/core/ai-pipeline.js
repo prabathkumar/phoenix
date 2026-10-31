@@ -52,8 +52,11 @@ async function planRun({ goal, requirement = "", callJson, past = [] }) {
     stages: STAGES.map((s) => chosen.has(s.id) ? { id: s.id, run: chosen.get(s.id).run !== false, why: String(chosen.get(s.id).why || "").slice(0, 200) } : { id: s.id, run: true, why: "not mentioned by the AI; default" }) };
 }
 
-async function runAiPipeline({ goal, requirement, ctx = {}, handlers, autonomy, approvals, production, callJson, exec, env = process.env, log = true } = {}) {
-  const plan = await planRun({ goal, requirement, callJson, past: history({ env }) });
+async function runAiPipeline({ goal, requirement, ctx = {}, handlers, autonomy, approvals, production, callJson, exec, env = process.env, log = true, stages: chosen } = {}) {
+  // stages: the person picked exactly which stages to run: no planning call, those stages only.
+  const known = new Set(STAGES.map((s) => s.id));
+  const manual = Array.isArray(chosen) ? chosen.filter((id) => known.has(id)) : null;
+  const plan = manual && manual.length ? { source: "manual", platforms: PLATFORMS.slice(), stages: STAGES.map((s) => ({ id: s.id, run: manual.includes(s.id), why: manual.includes(s.id) ? "you chose this stage" : "not chosen" })) } : await planRun({ goal, requirement, callJson, past: history({ env }) });
   const only = plan.stages.filter((s) => s.run).map((s) => s.id);
   const result = await runPipeline({ ctx: { ...ctx, platforms: plan.platforms }, handlers, only, autonomy, approvals, production, exec,
     ai: callJson ? llmReviewer({ callJson }) : undefined });

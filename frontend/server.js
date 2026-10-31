@@ -124,6 +124,18 @@ const server = http.createServer((req, res) => {
     require("./gateway-endpoint").handle(req, res);
     return;
   }
+  if (req.method === "GET" && req.url.split("?")[0] === "/api/pipeline/tools") {
+    require("./pipeline-endpoint").handleTools(req, res);
+    return;
+  }
+  if (req.method === "GET" && req.url.split("?")[0] === "/pipeline") {
+    fs.readFile(path.join(__dirname, "pipeline.html"), "utf8", (err, content) => {
+      if (err) { res.writeHead(500); res.end("Failed to read pipeline.html: " + err.message); return; }
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      res.end(content);
+    });
+    return;
+  }
   if (req.method === "POST" && req.url === "/api/pipeline/run") {
     require("./pipeline-endpoint").handlePipelineRun(req, res);
     return;

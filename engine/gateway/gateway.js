@@ -53,11 +53,35 @@ async function execute({ promptId, version, input, models, providers, rules, sec
   return { ok: true, value, model: r.model, guardrails: results };
 }
 
-async function callPrompt({ name, platform = "shared", vars = {}, input = "", providers, defaultModels = [], secrets = [], env = process.env }) {
+const MAX_TOOL_CALLS = 3;
+/**
+ * With MCP tools allowed on the prompt, the model may answer {"tool":"server/tool","args":{...}} to call one.
+ * Only tools in the prompt's allow-list run; the result goes back to the model (through the guardrails again),
+ * at most MAX_TOOL_CALLS times. The log records which tool ran, never its arguments or result.
+ */
+async function callPrompt({ name, platform = "shared", vars = {}, input = "", providers, defaultModels = [], secrets = [], env = process.env, run, fetchFn }) {
   const p = store.getPrompt(name, platform, vars, { env });
   const rec = p.record;
-  const user = input ? `${p.text}\n\n${input}` : p.text;
-  return execute({ promptId: p.id, version: p.version, input: user, models: rec.models && rec.models.length ? rec.models : defaultModels, providers, rules: rulesFor(rec.guardrails, env), secrets, env, name });
+  const allowed = rec.mcp || [];
+  let text = input ? `${p.text}\n\n${input}` : p.text;
+  if (allowed.length) {
+    const known = require("./mcp-registry").list({ env }).flatMap((s) => (s.enabled ? s.tools.map((t) => ({ ref: `${s.id}/${t.name}`, d: t.description })) : []));
+    const usable = known.filter((t) => allowed.includes(t.ref));
+    if (usable.length) text += `\n\nYou may use a tool before answering. To call one, reply only {"tool":"server/tool","args":{...}}. Tools:\n${usable.map((t) => `- ${t.ref}: ${t.d}`).join("\n")}`;
+  }
+  const models = rec.models && rec.models.length ? rec.models : defaultModels;
+  const used = [];
+  for (let i = 0; ; i++) {
+    const r = await execute({ promptId: p.id, version: p.version, input: text, models, providers, rules: rulesFor(rec.guardrails, env), secrets, env, name, run });
+    const v = r.value;
+    const wants = r.ok && allowed.length && v && typeof v === "object" && typeof v.tool === "string";
+    if (!wants) return used.length ? { ...r, toolCalls: used } : r;
+    if (i >= MAX_TOOL_CALLS) return { ...r, ok: false, error: `The model kept asking for tools (more than ${MAX_TOOL_CALLS}).`, toolCalls: used };
+    let result;
+    try { result = await require("./mcp-registry").callTool(v.tool, v.args, { allowed, env, fetchFn }); used.push(v.tool); log({ at: new Date().toISOString(), ...(run ? { run } : {}), name, prompt: p.id, version: p.version, status: "tool", tool: v.tool }, env); }
+    catch (e) { result = { error: e.message }; }
+    text += `\n\nTOOL RESULT (${v.tool}): ${JSON.stringify(result).slice(0, 4000)}\nNow give your answer, or call another tool.`;
+  }
 }
 
 /** A drop-in callJson: same checks, log and fallback around a plain model function. Throws on a block, so callers see a failed stage. */

@@ -41,7 +41,7 @@ From the TestOps user guide (roboticodigital.gitbook.io). Phoenix now has an equ
 | Test Automation (record and play) | Recorder + English run, `execution` stage for API | Web and mobile runs start from the English page |
 | API Testing | API steps, `runApiCases`, negative cases | Runs with no device |
 | Performance Test Lab (script from a HAR) | `har` then `performance`: Locust file built from the HAR (or API steps), run headless | Pass/fail on failure rate; Locust must be installed |
-| Security Test Lab (target, mode, Ajax Spider, HTML report) | `dast`: ZAP baseline with `-j` for Ajax Spider, HTML and JSON reports | Always asks first |
+| Security Test Lab (target, mode, Ajax Spider, HTML report) | `dast`: ZAP daemon API (spider, Ajax Spider, passive scan, alert summary), or `zap-baseline.py`, or docker | Always asks first |
 | Code Analyzer: SAST quick scan (ruleset Auto or Security Audit) | `sast`: Semgrep, `ruleset: "security-audit"` picks `p/security-audit` | |
 | Code Analyzer: Secret scan | `secrets`: Gitleaks | |
 | Defect Management + Jira (Bug type; one-way or two-way mapping) | `defects`: `defectsHandler({syncType})` | One-way only sends; two-way also reads status back |
@@ -62,6 +62,24 @@ One request runs it all: `POST /api/pipeline/run` (`frontend/pipeline-endpoint.j
 4. **Remember.** Statuses and notes (never test-data values or requirement text) are appended to `logs/pipeline-runs.jsonl` (`TESTOPS_PIPELINE_LOG` to move it), and the next plan reads the last five runs.
 
 If the model is down or answers badly, every stage runs in order and the plan says `source: "fallback"`. Each stage in the result carries `decided`, the AI's reason.
+
+## Run every component, and validate it on a server
+
+**The pipeline page** (`/pipeline`): start a run, see every stage with its status and the AI's note, run any single stage with "Run just this", approve a waiting gate with "Approve and run", and see the run record. It shows which tools this server has (Locust, Semgrep, Gitleaks, ZAP, Jira, GitHub or GitLab token, BrowserStack, a model). `stages: [...]` in `POST /api/pipeline/run` does the same from code. Web and mobile English steps (`web: {url, steps, runOn}`, `mobile: {platform, appUrl, steps, runOn, device, osVersion}`) run inside the execution stage; a web run records a HAR for the HAR and Locust stages.
+
+**Host it with Docker (your Mac):**
+
+```
+cd /Users/prabathkumar/android-sdk/cmdline-tools/phoenix
+cp .env.example .env          # fill in BrowserStack, Jira, GITHUB_TOKEN or GITLAB_TOKEN, ZAP_API_KEY, and your model address
+docker compose --profile platform up --build testops-platform
+open http://localhost:8091/pipeline
+node scripts/validate-server.js http://localhost:8091
+```
+
+The image includes Semgrep, Gitleaks and Locust (`--build-arg WITH_SECURITY_TOOLS=false` leaves them out). ZAP runs as its own `zap` service and Phoenix drives it over `ZAP_API_URL`. Data lives in the `platform-data` volume (prompt library, run records, call log, test data).
+
+**Validate each component:** `node scripts/validate-server.js <address>` checks every page, the tool status, run targets, test data, API testing, the gateway (prompts, rollback, guardrails, MCP, playground, log) and every pipeline stage on its own, then a full AI-planned run and its run record. Each line is PASS, FAIL, NOT SET UP (this server lacks that tool or key) or NEEDS YOU (a gate that is meant to ask). Exit code 1 only if something FAILs. It writes only the project `validate-server` and the prompt `validate_server_check`.
 
 ## Wired together: one run record
 
@@ -93,7 +111,9 @@ Every model call goes through `engine/gateway/`. The page is `/gateway` (linked 
 
 The pipeline's scenario and case prompts come from the library (YAML is the fallback), and its planner and reviewer calls are wrapped by the gateway.
 
-Not built: cost in money (no price table), per-user keys and budgets, an MCP tool-calling loop inside a prompt (the registry and allow-list are there; a prompt does not call tools by itself yet), caching, A/B comparison of versions, and a real run against Ollama or an MCP server (tested with fakes).
+MCP tools inside a prompt: if a prompt allows `server/tool`, the model may answer `{"tool":"server/tool","args":{}}`; only allowed tools run, the result goes back to the model through the guardrails, at most three times, and the log names the tool but never its arguments.
+
+Not built: cost in money (no price table), per-user keys and budgets, caching, A/B comparison of versions, and a real run against Ollama or an MCP server (tested with fakes).
 
 ## Jira, both ways (`engine/core/jira.js`)
 
@@ -109,4 +129,4 @@ Settings: `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`, `JIRA_PROJECT_KEY`, `
 
 Tests: `engine/test/pipeline.test.js`, `jira.test.js`, `ai-pipeline.test.js`.
 
-Not yet: a page for the pipeline (the route exists), web and mobile execution inside the pipeline request, and any real run of Locust, ZAP, Semgrep, Gitleaks, Jira or the model (all tested against fakes; none installed or reachable from the build sandbox).
+Not yet: any real run of Locust, ZAP, Semgrep, Gitleaks, Jira or the model (all tested against fakes; none installed or reachable from the build sandbox).

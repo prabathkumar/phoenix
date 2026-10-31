@@ -51,4 +51,4 @@ function priorFor(jiraKey, { n = 5, env = process.env } = {}) {
 function briefFor(jiraKey, opts) {
   return priorFor(jiraKey, opts).map((r) => `${r.at.slice(0, 10)}: execution ${r.execution.status}${r.execution.failedCases.length ? " (failed: " + r.execution.failedCases.map((c) => c.name).join(", ") + ")" : ""}; defects ${r.defects.keys.join(",") || "none"}${r.defects.fixed.length ? "; fixed in Jira: " + r.defects.fixed.join(",") : ""}`);
 }
-module.exports = { newId, link, save, get, list, priorFor, briefFor, okId };
+module.exports = { dirOf, newId, link, save, get, list, priorFor, briefFor, okId };

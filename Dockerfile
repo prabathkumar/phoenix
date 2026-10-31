@@ -91,13 +91,15 @@ COPY generation/package.json generation/package-lock.json ./generation/
 COPY live-view/package.json live-view/package-lock.json ./live-view/
 COPY frontend/package.json frontend/package-lock.json ./frontend/
 COPY web/package.json web/package-lock.json ./web/
+COPY prompts/package.json ./prompts/
 
 RUN npm install --prefix engine --omit=dev \
  && npm install --prefix capture --omit=dev \
  && npm install --prefix generation --omit=dev \
  && npm install --prefix live-view --omit=dev \
  && npm install --prefix frontend --omit=dev \
- && npm install --prefix web --omit=dev
+ && npm install --prefix web --omit=dev \
+ && npm install --prefix prompts --omit=dev
 
 # Chromium for the web recorder and web replay (Playwright). `npm install` does not
 # fetch a browser, so install it here, AFTER the web dependencies and BEFORE the source
@@ -119,6 +121,20 @@ COPY web/ ./web/
 COPY run-session.js ./run-session.js
 COPY run-batch-executions.js ./run-batch-executions.js
 COPY test-cases/ ./test-cases/
+COPY prompts/ ./prompts/
+COPY scripts/ ./scripts/
+
+# Scanners the pipeline runs: Semgrep (SAST), Gitleaks (secrets), Locust (performance). On by default, ~600MB;
+# skip with --build-arg WITH_SECURITY_TOOLS=false.
+# ZAP (DAST) is not in this image: the compose file runs it as its own `zap` service and the DAST stage
+# talks to it through ZAP_API_URL.
+ARG WITH_SECURITY_TOOLS=true
+RUN if [ "$WITH_SECURITY_TOOLS" = "true" ]; then \
+      apt-get update && apt-get install -y --no-install-recommends python3 python3-pip curl ca-certificates \
+      && pip3 install --break-system-packages semgrep locust \
+      && curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz | tar -xz -C /usr/local/bin gitleaks \
+      && rm -rf /var/lib/apt/lists/*; \
+    fi
 
 # live-view + frontend ports (see .env.example for what each does), plus a small range
 # for web recordings: each browser the web recorder opens mirrors itself over its own

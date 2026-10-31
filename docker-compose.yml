@@ -37,5 +37,40 @@ services:
     shm_size: "1gb"
     restart: unless-stopped
 
+
+  # The whole platform as a server: English page, pipeline page, gateway page and all /api routes on :8092 -> container :8091.
+  #   docker compose --profile platform up --build testops-platform
+  # Then open http://localhost:8091/pipeline and run: node scripts/validate-server.js http://localhost:8091
+  zap:
+    image: zaproxy/zap-stable
+    command: ["zap.sh", "-daemon", "-host", "0.0.0.0", "-port", "8080", "-config", "api.key=${ZAP_API_KEY:-change-me}", "-config", "api.addrs.addr.name=.*", "-config", "api.addrs.addr.regex=true"]
+    profiles: ["platform"]
+    restart: unless-stopped
+
+  testops-platform:
+    build: .
+    depends_on: [zap]
+    image: testops-mobile:latest
+    command: ["node", "frontend/server.js"]
+    env_file:
+      - .env
+    environment:
+      ZAP_API_URL: http://zap:8080
+      ZAP_API_KEY: ${ZAP_API_KEY:-change-me}
+      TESTOPS_GATEWAY_DIR: /data/prompt-library
+      TESTOPS_GATEWAY_LOG: /data/logs/gateway-calls.jsonl
+      TESTOPS_PIPELINE_LOG: /data/logs/pipeline-runs.jsonl
+      TESTOPS_RUNS_DIR: /data/runs
+      TESTOPS_TESTDATA_DIR: /data/test-data
+      TESTOPS_MOBILE_LOCATOR_DB_PATH: /data/locator-store.db
+    volumes:
+      - platform-data:/data
+    ports:
+      - "8091:8091"
+    shm_size: "1gb"
+    profiles: ["platform"]
+    restart: unless-stopped
+
 volumes:
+  platform-data:
   locator-data:

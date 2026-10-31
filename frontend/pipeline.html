@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TestOps ai-automate — Pipeline</title>
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --border:#2a2f3a; --text:#e8eaed; --muted:#9aa0ab; --accent:#ff5a36; --ok:#3ddc84; --danger:#ff5f56; --warn:#f5c04a; --mono:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  * { box-sizing:border-box; } body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  header { padding:14px 20px; border-bottom:1px solid var(--border); display:flex; gap:14px; align-items:center; } header h1 { font-size:16px; margin:0; font-weight:600; } header h1 span { color:var(--accent); }
+  header a { color:var(--muted); font-size:13px; text-decoration:none; } header a:first-of-type { margin-left:auto; }
+  main { max-width:1200px; margin:16px auto 40px; padding:0 20px; display:grid; grid-template-columns:1fr 1.2fr; gap:16px; } @media (max-width:900px){ main{ grid-template-columns:1fr; } }
+  .card { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:16px; min-width:0; } h2 { font-size:15px; margin:0 0 8px; }
+  label { font-size:12px; color:var(--muted); display:block; margin:10px 0 4px; }
+  input[type=text], textarea, select { width:100%; background:#0f1115; color:var(--text); border:1px solid var(--border); border-radius:6px; padding:8px 10px; font:inherit; font-size:13px; } textarea { min-height:70px; font-family:var(--mono); resize:vertical; }
+  .row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  button { background:var(--accent); color:#fff; border:0; border-radius:6px; padding:8px 14px; cursor:pointer; font-size:13px; } button.alt { background:#2a2f3a; } button:disabled { opacity:.5; cursor:default; }
+  .muted { color:var(--muted); font-size:12px; } .msg { margin-top:10px; font-size:13px; min-height:18px; } .msg.err { color:var(--danger); }
+  .stage { border:1px solid var(--border); border-radius:8px; padding:10px 12px; margin-bottom:8px; display:grid; grid-template-columns:1fr auto; gap:6px 12px; }
+  .stage b { font-size:13px; } .stage .d { grid-column:1; font-size:12px; color:var(--muted); } .stage .ai { grid-column:1; font-size:12px; color:#9ec5ff; }
+  .st { font-size:11px; border-radius:99px; padding:1px 9px; border:1px solid var(--border); margin-left:8px; } .st.passed { color:var(--ok); border-color:var(--ok); } .st.failed { color:var(--danger); border-color:var(--danger); } .st.needs-you { color:var(--warn); border-color:var(--warn); }
+  .tools span { display:inline-block; font-size:12px; border:1px solid var(--border); border-radius:99px; padding:2px 10px; margin:0 6px 6px 0; } .tools .on { color:var(--ok); border-color:var(--ok); } .tools .off { color:var(--muted); }
+  pre { background:#0f1115; border:1px solid var(--border); border-radius:6px; padding:10px; overflow:auto; font-size:12px; max-height:240px; }
+</style>
+</head>
+<body>
+<header><h1>TestOps <span>ai-automate</span> — Pipeline</h1><a href="/english">Run from English</a><a href="/gateway">Prompts, guardrails, MCP</a></header>
+<main>
+  <section class="card">
+    <h2>What to test</h2>
+    <label>Goal</label><input type="text" id="goal" placeholder="Test TOP-Req-188 end to end" />
+    <div class="row"><div><label>Jira key (optional)</label><input type="text" id="jira" placeholder="TOP-Req-188" /></div><div><label>How much should the AI ask you?</label><select id="autonomy"><option value="ask-when-matters">Ask only when it matters</option><option value="ask-everything">Ask me about everything</option><option value="run-everything">Run everything</option></select></div></div>
+    <label>Requirement (or leave blank and use the Jira key)</label><textarea id="req"></textarea>
+    <div class="row"><div><label>API address</label><input type="text" id="base" placeholder="https://api.example.com" /></div><div><label>App address to scan (ZAP)</label><input type="text" id="app" placeholder="https://staging.example.com" /></div></div>
+    <label>API steps (JSON list, optional)</label><textarea id="api" placeholder='[{"kind":"api","method":"POST","url":"/login","body":{"email":"${EMAIL}"}}]'></textarea>
+    <label>Web: address and English steps</label><input type="text" id="weburl" placeholder="https://staging.example.com/login" /><textarea id="websteps" placeholder="click Sign in"></textarea>
+    <div class="row"><div><label>Web run on</label><select id="webon"><option value="local">Chromium on TestOps</option><option value="browserstack">BrowserStack</option></select></div><div><label>Repo for unit tests (provider owner/name)</label><input type="text" id="repo" placeholder="github prabathkumar/phoenix" /></div></div>
+    <div style="margin-top:12px"><button id="runall">Run everything</button> <span class="muted">or pick stages on the right and run just those.</span></div>
+    <div class="msg" id="msg"></div>
+    <h2 style="margin-top:16px">What this server can run</h2><div class="tools" id="tools"></div>
+  </section>
+  <section class="card">
+    <h2>Stages</h2><div id="stages"></div>
+    <div id="runinfo" class="muted"></div>
+    <pre id="record" hidden></pre>
+  </section>
+</main>
+<script>
+const $ = (s) => document.querySelector(s);
+const el = (t, p = {}, ...k) => { const e = document.createElement(t); Object.assign(e, p); k.forEach((x) => e.append(x)); return e; };
+let STAGES = [], LAST = {}, approvals = {};
+const say = (t, c) => { $("#msg").textContent = t; $("#msg").className = "msg " + (c || ""); };
+function body(stages) {
+  const b = { goal: $("#goal").value || "Run", autonomy: $("#autonomy").value, approvals };
+  if ($("#jira").value.trim()) b.jiraKey = $("#jira").value.trim();
+  if ($("#req").value.trim()) b.requirement = $("#req").value;
+  if ($("#base").value.trim()) b.baseUrl = $("#base").value.trim();
+  if ($("#app").value.trim()) b.appUrl = $("#app").value.trim();
+  if ($("#api").value.trim()) { try { b.steps = JSON.parse($("#api").value); } catch { throw new Error("API steps must be a JSON list."); } }
+  if ($("#websteps").value.trim()) b.web = { url: $("#weburl").value.trim(), steps: $("#websteps").value, runOn: $("#webon").value };
+  const r = $("#repo").value.trim().split(/\s+/); if (r.length === 2) b.repo = { provider: r[0], project: r[1] };
+  if (stages) b.stages = stages;
+  return b;
+}
+async function run(stages) {
+  say("Running..."); document.querySelectorAll("#stages button").forEach((x) => x.disabled = true); $("#runall").disabled = true;
+  try {
+    const r = await fetch("/api/pipeline/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body(stages)) });
+    const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status);
+    j.stages.forEach((s) => { LAST[s.id] = s; });
+    say(`${j.plan.source === "manual" ? "Ran the stages you picked." : "The AI planned this run (" + j.plan.source + ")."} Run ${j.runId}`);
+    $("#runinfo").textContent = j.needsYou.length ? "Waiting for you: " + j.needsYou.join(", ") : "";
+    const rec = await (await fetch("/api/gateway/run?id=" + j.runId)).json(); $("#record").hidden = false; $("#record").textContent = JSON.stringify(rec.run, null, 2);
+  } catch (e) { say(e.message, "err"); }
+  $("#runall").disabled = false; draw();
+}
+function draw() {
+  const box = $("#stages"); box.textContent = "";
+  STAGES.forEach((s) => { const r = LAST[s.id];
+    const row = el("div", { className: "stage" }, el("div", {}, el("b", {}, s.name), r ? el("span", { className: "st " + r.status }, r.status) : ""));
+    const act = el("div", {}, el("button", { className: "alt", onclick: () => run([s.id]) }, "Run just this"));
+    if (r && r.status === "needs-you") act.append(" ", el("button", { onclick: () => { approvals[s.id] = true; run([s.id]); } }, "Approve and run"));
+    row.append(act);
+    if (r && r.detail) row.append(el("div", { className: "d" }, r.detail)); if (r && r.ai) row.append(el("div", { className: "ai" }, "AI: " + r.ai)); if (r && r.decided) row.append(el("div", { className: "d" }, "Plan: " + r.decided));
+    box.append(row); });
+}
+$("#runall").onclick = () => run();
+(async () => {
+  const j = await (await fetch("/api/pipeline/tools")).json(); STAGES = j.stages; draw();
+  const t = $("#tools"); Object.entries(j.tools).forEach(([k, v]) => t.append(el("span", { className: v ? "on" : "off", title: typeof v === "string" ? v : "" }, k + (v ? "" : " – not set up"))));
+})();
+</script>
+</body>
+</html>

@@ -69,5 +69,19 @@ const store = require("../gateway/prompt-store"), guard = require("../gateway/gu
   assert.deepStrictEqual(await mcp.callTool("s1/search", { q: 1 }, { allowed: ["s1/search"], env, fetchFn }), { content: [{ text: "ok" }] });
   mcp.setEnabled("s1", false, { env });
   await assert.rejects(mcp.callTool("s1/search", {}, { allowed: ["s1/search"], env, fetchFn }), /not available/);
+  // ---- MCP tool calling inside a prompt
+  mcp.add({ id: "s2", url: "https://m.example/mcp" }, { env });
+  await mcp.refresh("s2", { env, fetchFn });
+  store.saveVersion({ name: "tooly", text: "Find it.", mcp: ["s2/search"], models: ["m"] }, { env });
+  const asked = []; let n = 0;
+  const prov = { m: async (pr) => { asked.push(pr); n++; return n === 1 ? { tool: "s2/search", args: { q: "x" } } : n === 2 ? { tool: "s2/other", args: {} } : { answer: "done" }; } };
+  const tr = await gw.callPrompt({ name: "tooly", providers: prov, env, fetchFn });
+  assert.ok(tr.ok && tr.value.answer === "done"); assert.deepStrictEqual(tr.toolCalls, ["s2/search"]);        // allowed tool ran
+  assert.ok(asked[0].includes("s2/search: d") && /TOOL RESULT \(s2\/search\)/.test(asked[1]));            // tool listed, result fed back
+  assert.ok(/not allowed/.test(asked[2]));                                                                     // a tool outside the allow-list is refused, model told
+  const lg = fs.readFileSync(env.TESTOPS_GATEWAY_LOG, "utf8");
+  assert.ok(lg.includes('"status":"tool"') && !lg.includes('"q":"x"'));                                        // log names the tool, not its arguments
+  const loop = await gw.callPrompt({ name: "tooly", providers: { m: async () => ({ tool: "s2/search", args: {} }) }, env, fetchFn });
+  assert.ok(!loop.ok && /kept asking for tools/.test(loop.error));
   console.log("gateway tests passed");
 })().catch((e) => { console.error(e); process.exit(1); });

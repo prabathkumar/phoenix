@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TestOps ai-automate — Prompts, guardrails and MCP</title>
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --border:#2a2f3a; --text:#e8eaed; --muted:#9aa0ab; --accent:#ff5a36; --ok:#3ddc84; --danger:#ff5f56; --warn:#f5c04a; --mono:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  header { padding:14px 20px; border-bottom:1px solid var(--border); display:flex; gap:14px; align-items:center; }
+  header h1 { font-size:16px; margin:0; font-weight:600; } header h1 span { color:var(--accent); }
+  header a { margin-left:auto; color:var(--muted); font-size:13px; text-decoration:none; }
+  nav { display:flex; gap:4px; padding:12px 20px 0; max-width:1200px; margin:0 auto; }
+  nav button { background:none; border:1px solid var(--border); border-bottom:none; color:var(--muted); padding:8px 16px; border-radius:8px 8px 0 0; cursor:pointer; font-size:13px; }
+  nav button.on { background:var(--panel); color:var(--text); }
+  main { max-width:1200px; margin:0 auto 40px; padding:0 20px; }
+  .pane { display:none; background:var(--panel); border:1px solid var(--border); border-radius:0 10px 10px 10px; padding:16px; } .pane.on { display:block; }
+  .cols { display:grid; grid-template-columns:260px 1fr; gap:16px; } @media (max-width:800px){ .cols{ grid-template-columns:1fr; } }
+  .list button { display:block; width:100%; text-align:left; background:none; border:1px solid transparent; color:var(--text); padding:8px 10px; border-radius:6px; cursor:pointer; font-size:13px; }
+  .list button:hover, .list button.on { border-color:var(--border); background:#0f1115; } .list small { color:var(--muted); display:block; }
+  label { font-size:12px; color:var(--muted); display:block; margin:10px 0 4px; }
+  input[type=text], textarea, select { width:100%; background:#0f1115; color:var(--text); border:1px solid var(--border); border-radius:6px; padding:8px 10px; font:inherit; font-size:13px; }
+  textarea { min-height:220px; font-family:var(--mono); line-height:1.5; resize:vertical; }
+  button.act { background:var(--accent); color:#fff; border:0; border-radius:6px; padding:8px 14px; cursor:pointer; font-size:13px; margin:10px 8px 0 0; } button.act.alt { background:#2a2f3a; }
+  table { width:100%; border-collapse:collapse; font-size:13px; } th,td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--border); vertical-align:top; } th { color:var(--muted); font-weight:500; }
+  .muted { color:var(--muted); font-size:12px; } .msg { margin-top:10px; font-size:13px; min-height:18px; } .msg.err { color:var(--danger); } .msg.ok { color:var(--ok); }
+  .tag { font-size:11px; border:1px solid var(--border); border-radius:99px; padding:1px 8px; color:var(--muted); } .hit { color:var(--warn); } .bad { color:var(--danger); }
+  pre { background:#0f1115; border:1px solid var(--border); border-radius:6px; padding:10px; overflow:auto; font-size:12px; max-height:260px; }
+</style>
+</head>
+<body>
+<header><h1>TestOps <span>ai-automate</span> — Prompts, guardrails and MCP</h1><a href="/english">Run from English</a></header>
+<nav id="tabs"><button data-t="prompts" class="on">Prompts</button><button data-t="guard">Guardrails</button><button data-t="mcp">MCP</button><button data-t="logs">Call log</button></nav>
+<main>
+  <section class="pane on" id="p-prompts">
+    <div class="cols">
+      <div><div class="list" id="plist"></div><button class="act alt" id="import">Import from prompts.yaml</button><button class="act alt" id="newp">New prompt</button><div class="msg" id="pmsg0"></div></div>
+      <div id="peditor"><p class="muted">Pick a prompt, or make a new one. Every save is a new version; nothing is overwritten.</p></div>
+    </div>
+  </section>
+  <section class="pane" id="p-guard">
+    <p class="muted">Checks on what goes to a model and what comes back. A prompt can pick its own rules in the Prompts tab; with none picked, the rules not marked "opt-in" apply to every call. These are common-case checks, not guarantees.</p>
+    <table id="gtable"><thead><tr><th>On</th><th>Rule</th><th>Type</th><th>Applies to</th><th>Action</th><th>Opt-in</th></tr></thead><tbody></tbody></table>
+    <button class="act" id="gsave">Save rules</button><div class="msg" id="gmsg"></div>
+  </section>
+  <section class="pane" id="p-mcp">
+    <p class="muted">MCP servers (web address). A tool is only used by a prompt when you allow it there, as <code>server/tool</code>. Header values are saved but never shown again.</p>
+    <table id="mtable"><thead><tr><th>Server</th><th>Address</th><th>On</th><th>Tools</th><th></th></tr></thead><tbody></tbody></table>
+    <label>Server id</label><input type="text" id="mid" placeholder="jira-tools" />
+    <label>Address</label><input type="text" id="murl" placeholder="https://host/mcp" />
+    <label>Authorization header (optional)</label><input type="text" id="mauth" placeholder="Bearer ..." autocomplete="off" />
+    <button class="act" id="madd">Add server</button><div class="msg" id="mmsg"></div>
+  </section>
+  <section class="pane" id="p-logs">
+    <p class="muted">Every model call: prompt and version, the model that answered (and whether it fell back), time, sizes and which guardrails fired. The text itself is never logged.</p>
+    <button class="act alt" id="lrefresh">Refresh</button>
+    <table id="ltable"><thead><tr><th>When</th><th>Prompt</th><th>Status</th><th>Model</th><th>ms</th><th>Guardrails</th></tr></thead><tbody></tbody></table>
+  </section>
+</main>
+<script>
+const $ = (s, r = document) => r.querySelector(s);
+const el = (tag, props = {}, ...kids) => { const e = document.createElement(tag); Object.assign(e, props); kids.forEach((k) => e.append(k)); return e; };
+const api = async (method, path, body) => { const r = await fetch("/api/gateway/" + path, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined }); const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); return j; };
+const say = (id, text, cls) => { const m = $(id); m.textContent = text; m.className = "msg " + (cls || ""); };
+
+document.querySelectorAll("#tabs button").forEach((b) => b.onclick = () => {
+  document.querySelectorAll("#tabs button, .pane").forEach((x) => x.classList.remove("on"));
+  b.classList.add("on"); $("#p-" + b.dataset.t).classList.add("on");
+  ({ prompts: loadPrompts, guard: loadGuard, mcp: loadMcp, logs: loadLogs })[b.dataset.t]();
+});
+
+// ---- Prompts
+let current = null;
+async function loadPrompts() {
+  const { prompts } = await api("GET", "prompts"); const box = $("#plist"); box.textContent = "";
+  prompts.forEach((p) => { const b = el("button", { onclick: () => open(p.name, p.platform) }, p.name, el("small", {}, `${p.platform} · v${p.published} of ${p.versions}`)); if (current && current.name === p.name && current.platform === p.platform) b.classList.add("on"); box.append(b); });
+  if (!prompts.length) box.append(el("p", { className: "muted" }, "No prompts yet. Import the YAML registry or make a new one."));
+}
+$("#import").onclick = async () => { try { const r = await api("POST", "import"); say("#pmsg0", `${r.imported.length} imported`, "ok"); loadPrompts(); } catch (e) { say("#pmsg0", e.message, "err"); } };
+$("#newp").onclick = () => editor({ name: "", platform: "shared", versions: [], published: 0, guardrails: [], mcp: [], models: [] });
+async function open(name, platform) { const { prompt } = await api("GET", `prompt?name=${encodeURIComponent(name)}&platform=${platform}`); current = prompt; editor(prompt); loadPrompts(); }
+function editor(p) {
+  const box = $("#peditor"); box.textContent = ""; const cur = p.versions.find((v) => v.v === p.published) || { text: "", vars: [] };
+  const name = el("input", { type: "text", value: p.name, disabled: !!p.name, placeholder: "scenario_batch" });
+  const plat = el("select", { disabled: !!p.name }); ["shared", "web", "mobile"].forEach((x) => plat.append(el("option", { value: x, selected: x === p.platform }, x)));
+  const text = el("textarea", { value: cur.text, spellcheck: false });
+  const note = el("input", { type: "text", placeholder: "What changed" });
+  const gr = el("input", { type: "text", value: p.guardrails.join(", "), placeholder: "no-secrets, no-pii (blank = the default rules)" });
+  const mc = el("input", { type: "text", value: p.mcp.join(", "), placeholder: "server/tool, server/tool" });
+  const mo = el("input", { type: "text", value: p.models.join(", "), placeholder: "ollama, then fallbacks (blank = default)" });
+  const list = (i) => i.value.split(",").map((x) => x.trim()).filter(Boolean);
+  const msg = el("div", { className: "msg", id: "pmsg" });
+  const vars = el("div", { className: "muted" }, "Variables: " + (cur.vars.length ? cur.vars.map((v) => "{{" + v + "}}").join(" ") : "none"));
+  text.oninput = () => { const f = [...new Set([...text.value.matchAll(/\{\{\s*([A-Za-z_]\w*)\s*\}\}/g)].map((m) => m[1]))]; vars.textContent = "Variables: " + (f.length ? f.map((v) => "{{" + v + "}}").join(" ") : "none"); };
+  const save = el("button", { className: "act", onclick: async () => { try { const r = await api("POST", "prompt", { name: name.value, platform: plat.value, text: text.value, note: note.value, guardrails: list(gr), mcp: list(mc), models: list(mo) }); current = r.prompt; loadPrompts(); editor(r.prompt); say("#pmsg", `Saved as v${r.prompt.published} and published`, "ok"); } catch (e) { say("#pmsg", e.message, "err"); } } }, "Save as new version");
+  const hist = el("table"); hist.append(el("tr", {}, ...["Version", "When", "Note", ""].map((h) => el("th", {}, h))));
+  p.versions.slice().reverse().forEach((v) => { const use = el("button", { className: "act alt", onclick: async () => { await api("POST", "publish", { name: p.name, platform: p.platform, v: v.v }); open(p.name, p.platform); } }, v.v === p.published ? "Live" : "Make live"); use.disabled = v.v === p.published; const view = el("button", { className: "act alt", onclick: () => { text.value = v.text; text.oninput(); } }, "Load text"); hist.append(el("tr", {}, el("td", {}, "v" + v.v), el("td", {}, (v.at || "").replace("T", " ").slice(0, 16)), el("td", {}, v.note || ""), el("td", {}, use, view))); });
+  const test = el("button", { className: "act alt", onclick: async () => { say("#pmsg", "Running through the gateway..."); try { const r = await api("POST", "test", { name: p.name || name.value, platform: plat.value, vars: {}, input: "" }); out.textContent = JSON.stringify(r.ok ? { model: r.model, answer: r.value, guardrails: r.guardrails.filter((g) => g.hit) } : { error: r.error, guardrails: r.guardrails }, null, 2); say("#pmsg", r.ok ? "Done" : r.error, r.ok ? "ok" : "err"); } catch (e) { say("#pmsg", e.message, "err"); } } }, "Try the live version");
+  const out = el("pre", {}, "");
+  box.append(el("label", {}, "Name"), name, el("label", {}, "Platform"), plat, el("label", {}, "Prompt text"), text, vars, el("label", {}, "Note for this version"), note,
+    el("label", {}, "Guardrails (rule ids)"), gr, el("label", {}, "Allowed MCP tools"), mc, el("label", {}, "Models in order (fallback)"), mo, save, test, msg, out, el("label", {}, "Versions"), hist);
+}
+
+// ---- Guardrails
+let rules = [];
+async function loadGuard() {
+  rules = (await api("GET", "guardrails")).rules; const tb = $("#gtable tbody"); tb.textContent = "";
+  rules.forEach((r) => { const on = el("input", { type: "checkbox", checked: r.enabled !== false, onchange: () => { r.enabled = on.checked; } });
+    const act = el("select", { onchange: () => { r.action = act.value; } }); ["block", "redact", "warn"].forEach((a) => act.append(el("option", { value: a, selected: a === r.action }, a)));
+    const opt = el("input", { type: "checkbox", checked: r.default === false, onchange: () => { r.default = opt.checked ? false : undefined; } });
+    tb.append(el("tr", {}, el("td", {}, on), el("td", {}, r.id), el("td", {}, el("span", { className: "tag" }, r.type)), el("td", {}, r.applies || "both"), el("td", {}, act), el("td", {}, opt))); });
+}
+$("#gsave").onclick = async () => { try { await api("POST", "guardrails", { rules }); say("#gmsg", "Saved", "ok"); } catch (e) { say("#gmsg", e.message, "err"); } };
+
+// ---- MCP
+async function loadMcp() {
+  const { servers } = await api("GET", "mcp"); const tb = $("#mtable tbody"); tb.textContent = "";
+  servers.forEach((s) => { const tog = el("input", { type: "checkbox", checked: s.enabled, onchange: async () => { await api("POST", "mcp/enable", { id: s.id, enabled: tog.checked }); } });
+    const refresh = el("button", { className: "act alt", onclick: async () => { try { await api("POST", "mcp/refresh", { id: s.id }); loadMcp(); } catch (e) { say("#mmsg", e.message, "err"); } } }, "Fetch tools");
+    const del = el("button", { className: "act alt", onclick: async () => { await api("POST", "mcp/remove", { id: s.id }); loadMcp(); } }, "Remove");
+    tb.append(el("tr", {}, el("td", {}, s.id), el("td", {}, s.url), el("td", {}, tog), el("td", {}, s.tools.length ? s.tools.map((t) => s.id + "/" + t.name).join(", ") : "none yet"), el("td", {}, refresh, del))); });
+}
+$("#madd").onclick = async () => { try { await api("POST", "mcp/add", { id: $("#mid").value, url: $("#murl").value, headers: $("#mauth").value ? { Authorization: $("#mauth").value } : {} }); $("#mauth").value = ""; say("#mmsg", "Added. Use Fetch tools to list its tools.", "ok"); loadMcp(); } catch (e) { say("#mmsg", e.message, "err"); } };
+
+// ---- Logs
+async function loadLogs() {
+  const { calls } = await api("GET", "logs?n=100"); const tb = $("#ltable tbody"); tb.textContent = "";
+  calls.forEach((c) => tb.append(el("tr", {}, el("td", {}, (c.at || "").replace("T", " ").slice(0, 19)), el("td", {}, `${c.name || ""} ${c.version ? "v" + c.version : ""}`), el("td", { className: c.status === "ok" ? "" : "bad" }, c.status), el("td", {}, (c.model || "") + (c.fellBack ? " (fallback)" : "")), el("td", {}, String(c.ms)), el("td", { className: "hit" }, (c.guardrails || []).map((g) => g.id).join(", ")))));
+}
+$("#lrefresh").onclick = loadLogs;
+loadPrompts().catch((e) => say("#pmsg0", e.message, "err"));
+</script>
+</body>
+</html>

@@ -1,0 +1,55 @@
+{
+  "goal": "test login API",
+  "stages": [
+    {
+      "id": "scenarios",
+      "status": "passed",
+      "detail": "1 from scenario_batch:shared:v:h"
+    },
+    {
+      "id": "cases",
+      "status": "passed",
+      "detail": "1 from testcase_target:shared:v:h"
+    },
+    {
+      "id": "testdata",
+      "status": "passed",
+      "detail": "0 field(s) ready"
+    },
+    {
+      "id": "execution",
+      "status": "failed",
+      "detail": "2 case(s), 1 failed"
+    },
+    {
+      "id": "har",
+      "status": "skipped",
+      "detail": "waiting on execution"
+    },
+    {
+      "id": "performance",
+      "status": "skipped",
+      "detail": "not selected"
+    },
+    {
+      "id": "secrets",
+      "status": "unavailable",
+      "detail": "gitleaks is not installed on this machine"
+    },
+    {
+      "id": "sast",
+      "status": "unavailable",
+      "detail": "semgrep is not installed on this machine"
+    },
+    {
+      "id": "dast",
+      "status": "needs-you",
+      "detail": "it sends attack traffic to a live app, which always needs your approval"
+    },
+    {
+      "id": "defects",
+      "status": "passed",
+      "detail": "1 logged, 0 already open, 0 already fixed"
+    }
+  ]
+}

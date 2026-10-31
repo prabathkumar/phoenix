@@ -66,7 +66,9 @@ async function runPipelineRequest(body, deps = {}) {
 async function handlePipelineRun(req, res) {
   const send = (code, obj) => { res.writeHead(code, { "Content-Type": "application/json; charset=utf-8" }); res.end(JSON.stringify(obj)); };
   let body; try { body = await readJson(req); } catch (e) { return send(400, { error: `Bad request: ${e.message}` }); }
-  let callJson; try { callJson = require("../generation/llm").callOllamaJson; } catch { /* no model: stages say so */ }
+  let callJson;
+  // Every model call goes through the gateway: guardrails, fallback and the call log.
+  try { callJson = require("../engine/gateway/gateway").wrap(require("../generation/llm").callOllamaJson, { name: "pipeline" }); } catch { /* no model: stages say so */ }
   try { const r = await runPipelineRequest(body, { callJson }); send(r.code, r.json); } catch (e) { send(500, { error: e.message }); }
 }
 

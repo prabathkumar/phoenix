@@ -14,11 +14,17 @@ const { spawnSync } = require("child_process");
 const run = (cmd, args, opts = {}) => spawnSync(cmd, args, { encoding: "utf8", timeout: 900000, ...opts });
 const has = (cmd, exec = run) => { try { return exec(cmd, ["--version"]).status === 0; } catch { return false; } };
 
+// Prompts come from the prompt library (edited and versioned on the Gateway page); the YAML registry is the fallback.
+function libraryPrompt(name, platform) {
+  try { return require("../gateway/prompt-store").getPrompt(name, platform); } catch { /* not in the library: use the registry */ }
+  return require("../../prompts/registry").getPrompt(name, platform);
+}
+
 // ---- scenarios and cases (AI)
 function aiHandler(promptName, { callJson, getPrompt, platform = "shared", userOf }) {
   return async (ctx) => {
     if (!callJson) return { unavailable: true, detail: "no model configured" };
-    const { text, id } = (getPrompt || require("../../prompts/registry").getPrompt)(promptName, platform);
+    const { text, id } = (getPrompt || libraryPrompt)(promptName, platform);
     const r = await callJson(`${text}\n\n${userOf(ctx)}`);
     const items = Array.isArray(r) ? r : Array.isArray(r && (r.scenarios || r.cases || r.items)) ? (r.scenarios || r.cases || r.items) : null;
     if (!items || !items.length) return { ok: false, detail: `the model returned nothing usable (${id})` };

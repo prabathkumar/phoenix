@@ -90,6 +90,15 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (req.method === "GET" && req.url.split("?")[0] === "/gateway") {
+    fs.readFile(path.join(__dirname, "gateway.html"), "utf8", (err, content) => {
+      if (err) { res.writeHead(500); res.end("Failed to read gateway.html: " + err.message); return; }
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      res.end(content);
+    });
+    return;
+  }
+
   if (req.method === "GET" && req.url.split("?")[0] === "/english") {
     fs.readFile(path.join(__dirname, "english.html"), "utf8", (err, content) => {
       if (err) { res.writeHead(500); res.end("Failed to read english.html: " + err.message); return; }
@@ -111,6 +120,10 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (req.url.startsWith("/api/gateway/")) {
+    require("./gateway-endpoint").handle(req, res);
+    return;
+  }
   if (req.method === "POST" && req.url === "/api/pipeline/run") {
     require("./pipeline-endpoint").handlePipelineRun(req, res);
     return;

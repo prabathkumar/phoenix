@@ -63,6 +63,22 @@ One request runs it all: `POST /api/pipeline/run` (`frontend/pipeline-endpoint.j
 
 If the model is down or answers badly, every stage runs in order and the plan says `source: "fallback"`. Each stage in the result carries `decided`, the AI's reason.
 
+## Gateway: prompts, guardrails, MCP, call log (Portkey-style)
+
+Every model call goes through `engine/gateway/`. The page is `/gateway` (linked from the English page); the routes are `/api/gateway/*`.
+
+| Part | What | Where |
+|---|---|---|
+| Prompt library | Every prompt stored with versions, `{{variables}}`, notes and who saved it. Edit = new version; make any version live, so a bad edit is rolled back in one click. One JSON file per prompt in `prompt-library/` (commit it). "Import from prompts.yaml" loads the registry as version 1. | `prompt-store.js` |
+| Guardrails | Input and output checks: secrets (keys, tokens, `password=`, known values), personal data (email, Luhn-checked cards, phone), prompt injection, JSON shape, length, banned phrases. Each rule blocks, redacts or warns; set per prompt or for everyone; edited on the page. Common-case heuristics, not guarantees. | `guardrails.js` |
+| MCP registry | Add MCP servers by web address, fetch their tools, switch on or off. A prompt may call a tool only if it lists `server/tool`. Header values are saved but never shown again. HTTP only; no stdio. | `mcp-registry.js` |
+| Routing and fallback | A prompt lists models in order; if one fails the next answers, and the log says it fell back. | `gateway.js` |
+| Call log | Prompt, version, model, time, sizes, which guardrails fired, status. Never the prompt text, input or answer. | `logs/gateway-calls.jsonl` |
+
+The pipeline's scenario and case prompts come from the library (YAML is the fallback), and its planner and reviewer calls are wrapped by the gateway.
+
+Not built: cost in money (no price table), per-user keys and budgets, an MCP tool-calling loop inside a prompt (the registry and allow-list are there; a prompt does not call tools by itself yet), caching, A/B comparison of versions, and a real run against Ollama or an MCP server (tested with fakes).
+
 ## Jira, both ways (`engine/core/jira.js`)
 
 | Direction | What |

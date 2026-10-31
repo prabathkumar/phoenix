@@ -103,6 +103,14 @@ const ENV_PLACEHOLDER_RE = /^\$\{([A-Z0-9_]+)\}$/;
  * @param {string} filePath - absolute or relative path to a .json file
  * @returns {Array<{kind: string, instruction: string, text?: string, optional?: boolean, resolvedSelector?: {strategy: string, value: string}, selector?: {strategy: string, value: string}, expect?: {appeared?: string[], disappeared?: string[]}}>}
  */
+/** Optional metadata beside the steps ({recordedOn}); an array-form file has none. */
+function loadTestCaseMeta(filePath) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    return parsed && !Array.isArray(parsed) && typeof parsed === "object" ? { recordedOn: parsed.recordedOn } : {};
+  } catch { return {}; }
+}
+
 function loadTestCaseSteps(filePath) {
   const raw = fs.readFileSync(filePath, "utf8");
   let parsed;
@@ -279,6 +287,14 @@ async function runScriptSteps(driver, steps, options) {
   // "generateBody" and refuses to start while a must-exist value is missing.
   // Absent => behaviour is exactly as before.
   const originalSteps = steps;
+  // Where this ran / was recorded (informational; never changes how the run behaves).
+  const runTarget = require("./core/run-target");
+  let ranOn = runTarget.normalizeTarget(options.ranOn);
+  if (driver && driver.sessionId) { try { ranOn = runTarget.mergeTarget(ranOn, runTarget.targetFromDriver(driver, platform)); } catch { /* label is best-effort */ } }
+  let recordedOn = runTarget.normalizeTarget(options.recordedOn);
+  if (!recordedOn && options.testCaseFile) { try { recordedOn = runTarget.normalizeTarget(loadTestCaseMeta(options.testCaseFile).recordedOn); } catch { /* unreadable meta: no label */ } }
+  const mismatch = runTarget.compareTargets(recordedOn, ranOn);
+  const warnings = mismatch ? [mismatch.message] : [];
   if (options.testDataLayer) {
     const td = require("./core/testdata");
     const prepared = td.prepareApiSteps(steps, { seed: options.testDataLayer.seed || "default" });
@@ -312,8 +328,8 @@ async function runScriptSteps(driver, steps, options) {
     detail,
     updatedSteps,
     ...(() => {
-      const r = buildTestResult({ platform, testCase: options.testCaseFile, steps: stepLog, startedAt, finishedAt: Date.now() });
-      return { status: success ? "pass" : "fail", summary: r.summary, steps: r.steps, durationMs: r.durationMs, platform };
+      const r = buildTestResult({ platform, testCase: options.testCaseFile, steps: stepLog, startedAt, finishedAt: Date.now(), ranOn, recordedOn, warnings });
+      return { status: success ? "pass" : "fail", summary: r.summary, steps: r.steps, durationMs: r.durationMs, platform, ...(ranOn ? { ranOn } : {}), ...(recordedOn ? { recordedOn } : {}), ...(warnings.length ? { warnings } : {}) };
     })(),
   });
   for (let i = 0; i < resolvedSteps.length; i += 1) {
@@ -514,7 +530,7 @@ function persistResolvedSelectors(filePath, updatedSteps) {
   }
 }
 
-module.exports = {
+module.exports = { loadTestCaseMeta,
   loadTestCaseSteps,
   resolveStepText,
   resolveSteps,

@@ -312,7 +312,12 @@ async function runWebSteps(page, steps, options = {}) {
     runError = err.message;
   }
 
-  const result = buildTestResult({ platform: "web", testCase, steps: results, startedAt, finishedAt: Date.now(), error: runError });
+  const runTarget = require("../engine/core/run-target");
+  let ranOn = runTarget.normalizeTarget(options.ranOn);
+  try { ranOn = runTarget.mergeTarget(ranOn, runTarget.targetFromBrowser(page.context().browser())); } catch { /* label is best-effort */ }
+  const recordedOn = runTarget.normalizeTarget(options.recordedOn);
+  const mismatch = runTarget.compareTargets(recordedOn, ranOn);
+  const result = buildTestResult({ platform: "web", testCase, steps: results, startedAt, finishedAt: Date.now(), error: runError, ranOn, recordedOn, warnings: mismatch ? [mismatch.message] : [] });
   return { ...result, updatedSteps, patches, healedSteps: applyPatches(steps, patches), resolvedBy: tally(results) };
 }
 
@@ -330,14 +335,14 @@ async function runWebTestCase(steps, options = {}) {
   const { chromium } = require("playwright");
   // executablePath: lets a machine with its own Chromium (or a pinned older build)
   // skip `npx playwright install` -- option, or TESTOPS_MOBILE_WEB_CHROMIUM_PATH.
-  const browser = await chromium.launch({
-    headless: options.headless !== false,
-    executablePath: options.executablePath || process.env.TESTOPS_MOBILE_WEB_CHROMIUM_PATH || undefined,
+  const { browser } = await require("./browser-provider").launchWebBrowser({
+    runOn: options.runOn, headless: options.headless !== false, executablePath: options.executablePath, target: options.ranOn, chromium,
   });
   try {
     const context = await browser.newContext(options.contextOptions || {});
     const page = await context.newPage();
-    return await runWebSteps(page, steps, options);
+    const ranOn = require("../engine/core/run-target").mergeTarget(require("../engine/core/run-target").normalizeTarget(options.ranOn), require("../engine/core/run-target").targetFromBrowser(browser, { headless: options.headless !== false }));
+    return await runWebSteps(page, steps, { ...options, ranOn });
   } finally {
     await browser.close();
   }

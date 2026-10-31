@@ -23,8 +23,11 @@ const VALID_STEP_STATUS = new Set(["pass", "fail", "skipped"]);
  * @param {number} [input.startedAt] - epoch ms
  * @param {number} [input.finishedAt] - epoch ms
  * @param {string} [input.error] - a run-level error (session lost etc.) -> fail
+ * @param {Object} [input.ranOn] - where it ran (engine/core/run-target.js); additive
+ * @param {Object} [input.recordedOn] - where it was recorded, if the test case says
+ * @param {string[]} [input.warnings] - e.g. replayed somewhere other than where recorded
  */
-function buildTestResult({ platform, testCase, steps, startedAt, finishedAt, error }) {
+function buildTestResult({ platform, testCase, steps, startedAt, finishedAt, error, ranOn, recordedOn, warnings }) {
   const list = Array.isArray(steps) ? steps : [];
   for (const s of list) {
     if (!VALID_STEP_STATUS.has(s.status)) {
@@ -62,6 +65,10 @@ function buildTestResult({ platform, testCase, steps, startedAt, finishedAt, err
     startedAt,
     finishedAt,
     durationMs: typeof startedAt === "number" && typeof finishedAt === "number" ? finishedAt - startedAt : undefined,
+    // Additive, informational (engine/core/run-target.js): where this ran, where it was recorded, and a flag if they differ.
+    ...(ranOn ? { ranOn } : {}),
+    ...(recordedOn ? { recordedOn } : {}),
+    ...(warnings && warnings.length ? { warnings } : {}),
   };
 }
 

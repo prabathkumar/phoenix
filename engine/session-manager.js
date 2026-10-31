@@ -141,7 +141,7 @@ async function startRecordingSession(options = {}) {
         // calls recorder.finish()) before we read recorder.steps.
         setImmediate(async () => {
           try {
-            await finishSession({ sessionKey, steps: recorder.steps, driver, wss, socket, platform, useLlm });
+            await finishSession({ sessionKey, steps: recorder.steps, driver, wss, socket, platform, useLlm, target: options.target });
           } catch (err) {
             console.error("[session-manager] failed to finish session:", err);
             try {
@@ -164,10 +164,12 @@ async function startRecordingSession(options = {}) {
   }
 }
 
-async function finishSession({ sessionKey, steps, driver, wss, socket, platform, useLlm }) {
+async function finishSession({ sessionKey, steps, driver, wss, socket, platform, useLlm, target }) {
   console.log(`[session-manager] session finished: ${steps.length} step(s) recorded`);
 
-  const result = await generateScript(steps, { useLlm, platform });
+  let recordedOn;
+  try { const rt = require("./core/run-target"); recordedOn = rt.mergeTarget(rt.normalizeTarget(target), rt.targetFromDriver(driver, platform)); } catch { /* label is best-effort */ }
+  const result = await generateScript(steps, { useLlm, platform, recordedOn });
   console.log(`[session-manager] generated script: "${result.testName}" (${result.assertions.length} assertion(s), ${result.parameters.length} parameter(s))`);
 
   fs.mkdirSync(OUTPUT_DIR, { recursive: true });
@@ -181,6 +183,7 @@ async function finishSession({ sessionKey, steps, driver, wss, socket, platform,
   socket.send(JSON.stringify({
     type: "script-generated",
     testName: result.testName,
+    ...(recordedOn ? { recordedOn } : {}),
     scriptSource: result.scriptSource,
     assertionCount: result.assertions.length,
     parameterCount: result.parameters.length,

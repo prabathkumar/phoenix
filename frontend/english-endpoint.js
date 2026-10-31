@@ -22,6 +22,7 @@ const Busboy = require("busboy");
 const { runEnglish, webRunner, mobileRunner } = require("../engine/english-run");
 const { redact } = require("../engine/core/english");
 const { buildPlan } = require("./testdata-endpoint");
+const { launchWebBrowser, normalizeRunOn } = require("../web/browser-provider");
 
 const UPLOAD_DIR = path.join(__dirname, "uploads");
 const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
@@ -49,9 +50,10 @@ function loadPlaywright() {
   catch { return require("playwright"); }
 }
 
-async function defaultLaunchBrowser() {
+/** Chromium on this server, or a BrowserStack browser, per run. Returns the Playwright browser. */
+async function defaultLaunchBrowser({ runOn, target } = {}) {
   const { chromium } = loadPlaywright();
-  return chromium.launch({ headless: true, executablePath: process.env.TESTOPS_MOBILE_WEB_CHROMIUM_PATH || undefined });
+  return (await launchWebBrowser({ runOn, target, chromium })).browser;
 }
 
 async function defaultStartMobile({ platform, capabilityOverrides }) {
@@ -80,21 +82,24 @@ function createEnglishEndpoint(deps = {}) {
     return { id, run, emit };
   }
 
-  async function execute({ emit, platform, steps, testData, url, appCapability, appPath }) {
-    emit({ type: "run-started", platform });
+  async function execute({ emit, platform, steps, testData, url, appCapability, appPath, target: passedTarget, runOn }) {
+    const target = require("../engine/core/run-target");
+    emit({ type: "run-started", platform, where: platform === "web" ? { label: runOn === "browserstack" ? "BrowserStack · Playwright" : "Local · Playwright", ...target.webTarget({ wsEndpoint: runOn === "browserstack" ? "wss://cdp.browserstack.com/playwright" : undefined }) } : { label: "Starting…" } });
     let browser; let driver;
     try {
       let runner;
       if (platform === "web") {
-        browser = await launchBrowser();
+        browser = await launchBrowser({ runOn, target: passedTarget });
         const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
         const page = await context.newPage();
         await page.goto(normalizeUrl(url), { waitUntil: "load", timeout: 45000 });
         runner = makeWebRunner(page);
+        try { const t = target.mergeTarget(passedTarget, target.targetFromBrowser(browser, runOn === "browserstack" ? { headless: undefined, wsEndpoint: "wss://cdp.browserstack.com/playwright" } : { headless: true })); emit({ type: "run-where", where: { ...t, label: `${target.targetLabel(t)} · Playwright` } }); } catch { /* label is best-effort */ }
       } else {
         const capabilityOverrides = appCapability || (await resolveApp({ savedPath: appPath, platform }));
         driver = await startMobile({ platform, capabilityOverrides });
         runner = makeMobileRunner(driver, platform);
+        try { const t = target.mergeTarget(passedTarget, target.targetFromDriver(driver, platform)); emit({ type: "run-where", where: { ...t, label: `${target.targetLabel(t)} · Appium` } }); } catch { /* label is best-effort */ }
       }
       await runEnglish({ steps, testData, runner, onEvent: emit });
     } catch (err) {
@@ -173,7 +178,7 @@ function createEnglishEndpoint(deps = {}) {
     if (platform === "web") {
       if (!body.url || typeof body.url !== "string") return json(res, 400, { error: "A URL is required for a web test." });
       const { id, emit } = newRun();
-      execute({ emit, platform, steps, testData: runData, url: body.url });
+      execute({ emit, platform, steps, testData: runData, url: body.url, runOn: normalizeRunOn(body.runOn), target: require("../engine/core/run-target").normalizeTarget(body.target) });
       return json(res, 200, { runId: id });
     }
 
@@ -190,6 +195,7 @@ function createEnglishEndpoint(deps = {}) {
       emit, platform: mobilePlatform, steps, testData: runData,
       appCapability: body.appUrl && !(upload && upload.filePath) ? { "appium:app": String(body.appUrl) } : undefined,
       appPath: upload && upload.filePath,
+      target: require("../engine/core/run-target").normalizeTarget(body.target),
     });
     return json(res, 200, { runId: id });
   }

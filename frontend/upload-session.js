@@ -57,11 +57,13 @@ function handleUploadAndStart(req, res) {
   let savedPath = null;
   let originalName = null;
   let sizeLimitExceeded = false;
+  let requestedTarget = null; // optional form field: where TestOps says this recording runs (JSON; see engine/core/run-target.js)
   let requestedPlatform = null; // optional form field, only needed if extension is ambiguous
   let fileWritePromise = Promise.resolve();
 
   busboy.on("field", (name, value) => {
     if (name === "platform") requestedPlatform = value;
+    if (name === "target") requestedTarget = value;
   });
 
   busboy.on("file", (_name, fileStream, info) => {
@@ -122,7 +124,7 @@ function handleUploadAndStart(req, res) {
 
     try {
       const capabilityOverrides = await resolveAppCapability({ savedPath, platform });
-      const session = await startRecordingSession({ platform, capabilityOverrides });
+      const session = await startRecordingSession({ platform, capabilityOverrides, target: requestedTarget });
       respondJson(res, 200, {
         platform: session.platform,
         port: session.port,

@@ -189,6 +189,22 @@ const STEPS = "Enter ${LOGIN_PHONE} in the phone field\nEnter ${LOGIN_PASSWORD} 
     target.close();
   }));
 
+  await test("english run: web runOn is passed to the launcher (local by default, browserstack on request) and the label follows", async () => {
+    const seen = [];
+    const ep2 = createEnglishEndpoint({
+      launchBrowser: async (o) => { seen.push(o.runOn); throw new Error("stop here"); },
+    });
+    const app2 = http.createServer((rq, rs) => { if (rq.method === "POST") return ep2.handleStart(rq, rs); rs.writeHead(404); rs.end(); });
+    await new Promise((r) => app2.listen(0, r));
+    const p2 = app2.address().port;
+    const go = (b) => new Promise((resolve, reject) => { const d = JSON.stringify(b); const r = http.request({ port: p2, path: "/", method: "POST", headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(d) } }, (res) => { let t = ""; res.on("data", (c) => (t += c)); res.on("end", () => resolve(JSON.parse(t))); }); r.on("error", reject); r.end(d); });
+    await go({ platform: "web", url: "http://x.test", steps: "tap login" });
+    await go({ platform: "web", url: "http://x.test", steps: "tap login", runOn: "browserstack", target: { provider: "browserstack", accessKey: "SECRETKEY9" } });
+    await new Promise((r) => setTimeout(r, 100));
+    assert.deepStrictEqual(seen, ["local", "browserstack"]);
+    app2.close();
+  });
+
   fs.rmSync(dir, { recursive: true, force: true });
   app.close();
   if (failed) { console.error(`\n${failed} failed`); process.exit(1); }

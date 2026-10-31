@@ -130,12 +130,17 @@ async function startWebLiveView({ port, startUrl, name, browser, headless, aiLoo
       const steps = recorder.steps;
       const testName = name && name !== "recorded_web_flow" ? name : inferWebFlowName(steps);
       send({ type: "session-finished", stepCount: steps.length });
+      let recordedOn;
+      try { recordedOn = require("../../engine/core/run-target").targetFromBrowser(b, { headless }); } catch { /* label is best-effort */ }
+      const tc = toTestCase(steps, { name: testName });
+      const label = recordedOn ? require("../../engine/core/run-target").targetLabel(recordedOn) : null;
       send({
         type: "script-generated",
-        scriptSource: toPlaywrightScript(steps, { name: testName }),
+        scriptSource: (label ? `// Recorded on: ${label} (provider=${recordedOn.provider}) — informational; replays the same anywhere.\n` : "") + toPlaywrightScript(steps, { name: testName }),
         testName,
         assertionCount: countAssertions(steps),
-        testCaseJson: toTestCase(steps, { name: testName }),
+        testCaseJson: recordedOn && tc && typeof tc === "object" && !Array.isArray(tc) ? { ...tc, recordedOn } : tc,
+        ...(recordedOn ? { recordedOn } : {}),
       });
       await shutdown();
       return;

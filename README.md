@@ -15,6 +15,7 @@ Testers record a flow once, inside TestOps — no Appium Inspector, no local ins
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Engineering, integrators | How the mobile and web recorders, generators and runners fit together: diagrams, protocols, step format, design decisions |
 | [`docs/LAYERS.md`](docs/LAYERS.md) | Everyone | The four layers as a ladder (falling down, promoting up), API steps, test data, the Surface, safety rails, how to use it |
 | [`docs/TEST_DATA.md`](docs/TEST_DATA.md) | Testers, engineering | The test data layer: generate or upload data for web, API and mobile, ask only for what cannot be made up, where it is stored, API bodies and bad-body cases, OpenAPI/Postman import |
+| [`docs/RUN_TARGETS.md`](docs/RUN_TARGETS.md) | Testers, engineering | Where a recording or run happened (local or BrowserStack, Appium or Playwright), choosing Chromium on TestOps or BrowserStack for web, and letting TestOps pass the target in |
 | [`docs/UPGRADING.md`](docs/UPGRADING.md) | Engineering | When Playwright/Appium ship upgrades we upgrade too: the check script and the routine |
 | [`docs/STATUS.md`](docs/STATUS.md) | Engineering — the source of truth | Every capability, every real bug found and fixed with root cause and evidence, what's still open. If a claim anywhere else in these docs needs checking, this is where it's backed up |
 | [`docs/SETUP.md`](docs/SETUP.md) | An infra engineer standing TestOps ai-automate up | Local Appium host vs. BrowserStack, credentials, env vars, one checklist from a cold machine |

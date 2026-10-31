@@ -40,6 +40,7 @@
   .verdict.passed { background:#143324; color:var(--ok); } .verdict.failed { background:#3a1b19; color:var(--danger); }
   .verdict .why { font-weight:400; margin-top:4px; white-space:pre-wrap; word-break:break-word; }
   .gen .chk { display:block; font-size:12px; } .gen select { width:100%; } .plan { margin-top:8px; font-size:12.5px; } .plan .f { display:flex; gap:8px; align-items:center; padding:4px 0; border-top:1px solid #2a2f3a; } .plan .f b { flex:1; font-weight:500; } .plan .need { color:var(--danger); }
+  .where { display:inline-block; font-size:12px; color:var(--muted,#9aa3b2); border:1px solid #2a2f3a; border-radius:999px; padding:3px 10px; margin-bottom:8px; }
   code { font-family:var(--mono); background:#0f1115; padding:1px 5px; border-radius:4px; }
 </style>
 </head>
@@ -53,6 +54,7 @@
 <div class="grid">
   <section class="card" id="web">
     <h2>Web <span class="tag">browser on this server</span></h2>
+    <div><label for="web-runon">Run on</label><select id="web-runon" aria-label="where to run the web test"><option value="local">Chromium on TestOps</option><option value="browserstack">BrowserStack</option></select></div>
     <div><label for="web-url">URL</label><input type="text" id="web-url" value="https://www.yes.my" /></div>
     <div><label for="web-steps">Test case, in English</label>
 <textarea id="web-steps">Go to the login page
@@ -216,7 +218,7 @@ Check that the home screen is showing</textarea></div>
       var req;
       if (isWeb) {
         req = fetch("/api/english-runs", { method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(Object.assign({ platform: "web", url: card.querySelector("#web-url").value.trim(), steps: stepsText, testData: data }, dataFields(card)) ) });
+          body: JSON.stringify(Object.assign({ platform: "web", url: card.querySelector("#web-url").value.trim(), steps: stepsText, testData: data, runOn: card.querySelector("#web-runon").value }, dataFields(card)) ) });
       } else {
         var fd = new FormData();
         fd.append("platform", card.querySelector("#mobile-platform").value || "");
@@ -238,7 +240,11 @@ Check that the home screen is showing</textarea></div>
           var es = new EventSource("/api/english-runs/" + encodeURIComponent(x.j.runId) + "/events");
           es.onmessage = function (m) {
             var e = JSON.parse(m.data);
-            if (e.type === "step-started") setStep(card, e.index, "running");
+            if ((e.type === "run-where" || e.type === "run-started") && e.where && e.where.label) {
+              var chip = card.querySelector(".where"); if (!chip) { chip = el("div", "where"); results.insertBefore(chip, results.firstChild); }
+              chip.textContent = "Running on: " + e.where.label + (e.where.sessionUrl ? "" : "");
+              if (e.where.sessionUrl) { chip.appendChild(document.createTextNode(" · ")); var a = el("a", "", "session"); a.href = e.where.sessionUrl; a.target = "_blank"; a.rel = "noopener"; chip.appendChild(a); }
+            } else if (e.type === "step-started") setStep(card, e.index, "running");
             else if (e.type === "step-progress") {
               var s = stepNode(card, e.index); if (!s) return;
               var sub = s.querySelector(".sub"); if (!sub) { sub = el("div", "sub"); s.lastChild.appendChild(sub); }

@@ -8,6 +8,6 @@
     "ws": "^8.18.0"
   },
   "scripts": {
-    "test": "node test/web-test-case-runner.test.js && node recorder/test/web-recorder.test.js && node test/web-ladder.test.js"
+    "test": "node test/web-test-case-runner.test.js && node recorder/test/web-recorder.test.js && node test/web-ladder.test.js && node test/browser-provider.test.js"
   }
 }

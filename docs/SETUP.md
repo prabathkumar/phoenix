@@ -159,6 +159,10 @@ Optional: `TESTOPS_MOBILE_BROWSERSTACK_PROJECT` / `_BUILD` / `_SESSION_NAME`
 label the session in BrowserStack's dashboard (defaults to "TestOps ai-automate" /
 "testops-mobile-recording" / "TestOps ai-automate recording session" if unset).
 
+### Choosing Local or BrowserStack per session
+
+With the BrowserStack username and key above set, the Record on / Run on selects (web and mobile) offer BrowserStack; without them it is greyed out (`GET /api/run-options`). Mobile preselects `TESTOPS_MOBILE_APPIUM_PROVIDER`. Device and OS version are typed per session. Details: [RUN_TARGETS.md](RUN_TARGETS.md).
+
 ## 3. Configure TestOps ai-automate
 
 ```bash
@@ -336,6 +340,9 @@ docker run --rm -p 8091:8091 --env-file .env testops-mobile node frontend/server
   connects to an already-running `run-session.js`), not the upload flow.
 
 ## Notes for CI / automated environments
+
+The `frontend` job needs the `generation`, `capture`, `engine`, `live-view` and `web` dependencies and Chromium installed (see `.github/workflows/test.yml`); `frontend` loads them on a clean checkout.
+
 
 The `test.yml` GitHub Actions workflow runs `capture/` and
 `generation/`'s own unit test suites (rule-based logic against fixed

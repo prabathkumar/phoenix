@@ -333,3 +333,5 @@ the planned second one. `api` steps (`engine/core/api-step.js`) work in any flow
   confirm pass/fail; BrowserStack latency makes recording slow (local emulator
   recording is the proposed fix); Flutter UIs are not identifiable.
 - TestOps write API and frothAI contract are not built.
+
+See also: [RUN_TARGETS.md](RUN_TARGETS.md) for where a recording or run happens (Local or BrowserStack) and how it is reported.

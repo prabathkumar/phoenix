@@ -6,13 +6,14 @@ fixed (with root causes), and what's still open. The [README](../README.md)
 carries only the current-state summary and points here for the rest.
 
 CI (`test.yml`) runs the `capture/`, `generation/`, `engine/`,
-`live-view/`, and `frontend/` suites on every push; the frontend
+`live-view/`, `frontend/`, `web/` and root suites on every push (the `frontend` job also installs `generation`, `capture`, `engine`, `live-view` and `web` dependencies plus Chromium, because the frontend loads them on a clean checkout); the frontend
 (`deploy-frontend.yml`) auto-deploys to GitHub Pages on every push that
 touches it.
 
 ## Contents
 
 - [Test data layer](#test-data-layer)
+- [Run targets: Local or BrowserStack](#run-targets-local-or-browserstack)
 - [Handoff to the dev team](#handoff-to-the-dev-team)
 - [The "AI" question, answered precisely](#the-ai-question-answered-precisely)
 - [Recording and script generation](#recording-and-script-generation)
@@ -43,6 +44,20 @@ Added on branch `test-data-layer` (see [TEST_DATA.md](TEST_DATA.md) for the desi
 | Web, Mobile and API cards: Generate test data, project, Save | `frontend/english.html` | checked in a real Chromium; not run against a live app or device |
 
 Open: "Create it for me" (sign-up page or API to add a test user) is offered but does nothing yet; Excel upload (CSV/JSON work); negative-case batches are run from the API card and `runApiCases`, not from `run-batch-executions.js`; not exercised against a real BrowserStack device. Never run in Docker from the sandbox (no daemon): build and smoke-test once per [TESTOPS_MOBILE_DOCKER.md](TESTOPS_MOBILE_DOCKER.md).
+
+## Run targets: Local or BrowserStack
+
+Users choose Local or BrowserStack for recording and for running, on web (Playwright) and mobile (Appium). Design and the four-way table: [RUN_TARGETS.md](RUN_TARGETS.md).
+
+| Piece | Where | State |
+|---|---|---|
+| Target model, labels, comparison (flag, never block) | `engine/core/run-target.js` | unit-tested |
+| Per-session provider, device, OS version for Appium (no `process.env` change) | `engine/remote-provider.js`, `session.js`, `ios-session.js`, `session-manager.js` | tested with fake drivers |
+| Web: Chromium on TestOps or BrowserStack | `web/browser-provider.js`, web runner and recorder | tested; BrowserStack path against a fake endpoint |
+| `GET /api/run-options` greys out BrowserStack without credentials | `frontend/server.js` | tested |
+| `ranOn`, `recordedOn`, `warnings` in results and script headers | engine, web, generation | tested |
+
+Not verified: a real BrowserStack run (web or mobile); local mobile needs a reachable Appium host; the device is typed, not picked from a list. CI note: `frontend` tests failed on a clean checkout until the `frontend` job installed the engine and live-view dependencies; fixed in `test.yml`.
 
 ## Handoff to the dev team
 

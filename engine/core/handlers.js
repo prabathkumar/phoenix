@@ -115,6 +115,37 @@ function dastHandler({ exec = run, dir = "logs/security", ajaxSpider = false } =
   };
 }
 
+// ---- unit tests (AI) and the pull request
+function unittestsHandler({ callJson, getPrompt, connectRepo, max = 5 } = {}) {
+  const U = require("./unit-tests");
+  return async (ctx) => {
+    if (!callJson) return { unavailable: true, detail: "no model configured" };
+    const rq = ctx.repoRequest;
+    if (!rq || !rq.project) return { unavailable: true, detail: "give a repo (provider and project) to write unit tests for" };
+    let repo; try { repo = connectRepo(rq); } catch (e) { return { unavailable: true, detail: e.message }; }
+    const ref = rq.ref || (await repo.defaultBranch());
+    const all = await repo.listFiles(ref);
+    const sast = ((ctx.results || []).find((s) => s.id === "sast") || {}).data || {};
+    const findings = sast.findings || {};
+    const files = U.pickFiles(all, { only: rq.files, flagged: Object.keys(findings), max: rq.max || max, languages: rq.languages });
+    if (!files.length) return { ok: true, detail: "no source files in a supported language to test", data: { tests: [], skipped: [] } };
+    const r = await U.generateTests({ files, readFile: (f) => repo.readFile(f, ref), callJson, getPrompt: getPrompt || libraryPrompt, findings });
+    const langs = [...new Set(r.files.map((f) => f.language))];
+    return { ok: r.files.length > 0, detail: `${r.files.length} test file(s) written${langs.length ? " (" + langs.join(", ") + ")" : ""}, ${r.skipped.length} skipped${r.skipped[0] ? ": " + r.skipped[0].why : ""}`, data: { tests: r.files, skipped: r.skipped, ref } };
+  };
+}
+function testsPrHandler({ connectRepo } = {}) {
+  return async (ctx) => {
+    const u = ((ctx.results || []).find((s) => s.id === "unittests") || {}).data;
+    if (!u || !u.tests || !u.tests.length) return { unavailable: true, detail: "no tests to commit" };
+    const rq = ctx.repoRequest; const repo = connectRepo(rq);
+    const branch = `testops/ai-unit-tests-${Date.now().toString(36)}`;
+    const pr = await repo.openPullRequest({ base: u.ref, branch, title: `AI-generated unit tests (${u.tests.length} file${u.tests.length > 1 ? "s" : ""})`,
+      body: "Written by TestOps ai-automate. Review before merging: the tests have not been run. Your CI runs them on this branch.\n\n" + u.tests.map((t) => `- ${t.path} (${t.language}${t.flagged ? ", covers a Semgrep finding" : ""})`).join("\n"), files: u.tests.map((t) => ({ path: t.path, content: t.content })) });
+    return { ok: true, detail: `opened ${pr.url}`, data: { url: pr.url, branch: pr.branch } };
+  };
+}
+
 // ---- feedback: a secret-free report per run
 function feedbackHandler({ dir = "logs/reports" } = {}) {
   return async (ctx) => {
@@ -127,8 +158,8 @@ function feedbackHandler({ dir = "logs/reports" } = {}) {
 }
 
 /** Everything wired, plus what the caller provides (execution, defects). */
-function allHandlers({ callJson, getPrompt, exec, extra = {} } = {}) {
-  return { scenarios: scenariosHandler({ callJson, getPrompt }), cases: casesHandler({ callJson, getPrompt }), har: harHandler(), performance: performanceHandler({ exec }), dast: dastHandler({ exec }), feedback: feedbackHandler(), ...extra };
+function allHandlers({ callJson, getPrompt, exec, connectRepo = (rq) => require("./repo").fromEnv(rq), extra = {} } = {}) {
+  return { unittests: unittestsHandler({ callJson, getPrompt, connectRepo }), testspr: testsPrHandler({ connectRepo }), scenarios: scenariosHandler({ callJson, getPrompt }), cases: casesHandler({ callJson, getPrompt }), har: harHandler(), performance: performanceHandler({ exec }), dast: dastHandler({ exec }), feedback: feedbackHandler(), ...extra };
 }
 
-module.exports = { locustFromHar, scenariosHandler, casesHandler, harHandler, harContextOptions, performanceHandler, locustFile, dastHandler, feedbackHandler, allHandlers };
+module.exports = { unittestsHandler, testsPrHandler, locustFromHar, scenariosHandler, casesHandler, harHandler, harContextOptions, performanceHandler, locustFile, dastHandler, feedbackHandler, allHandlers };

@@ -20,7 +20,9 @@ async function route(method, pathname, query, body, deps = {}) {
       if (pathname === "prompt") { const r = store.get(query.name, query.platform || "shared", { env }); return r ? ok({ prompt: r }) : { code: 404, json: { error: "No such prompt." } }; }
       if (pathname === "guardrails") { let rules = guard.DEFAULT_RULES; try { rules = JSON.parse(require("fs").readFileSync(require("path").join(store.dirOf(env), "_guardrails.json"), "utf8")).rules; } catch { /* defaults */ } return ok({ rules }); }
       if (pathname === "mcp") return ok({ servers: mcp.list({ env }) });
-      if (pathname === "logs") return ok({ calls: gw.readLog({ n: Math.min(Number(query.n) || 100, 500), env }) });
+      if (pathname === "logs") return ok({ calls: gw.readLog({ n: Math.min(Number(query.n) || 100, 500), env, run: query.run }) });
+      if (pathname === "runs") return ok({ runs: require("../engine/core/run-record").list({ env }) });
+      if (pathname === "run") { const rr = require("../engine/core/run-record"); const rec = rr.get(query.id, { env }); return rec ? ok({ run: rec, calls: gw.readLog({ n: 200, env, run: query.id }) }) : { code: 404, json: { error: "No such run." } }; }
     } else if (method === "POST") {
       const b = body || {};
       if (pathname === "prompt") return ok({ prompt: store.saveVersion({ name: b.name, platform: b.platform, text: b.text, note: b.note, by: b.by, publish: b.publish !== false }, { env }) });

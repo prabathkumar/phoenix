@@ -63,6 +63,22 @@ One request runs it all: `POST /api/pipeline/run` (`frontend/pipeline-endpoint.j
 
 If the model is down or answers badly, every stage runs in order and the plan says `source: "fallback"`. Each stage in the result carries `decided`, the AI's reason.
 
+## Wired together: one run record
+
+Every `POST /api/pipeline/run` gets a `runId` and writes one record (`logs/runs/<id>.json`, `TESTOPS_RUNS_DIR` to move it; `GET /api/gateway/runs`, `/api/gateway/run?id=`). It links: requirement (Jira key) → scenario and case counts → test-data field names → execution (status, failed cases) → HAR → performance → scans → Jira defect keys → the model calls (the call log carries the same `run` id). Statuses, counts, names and keys only; no test-data values, requirement text, prompts or answers.
+
+The next run for the same Jira key starts from it: the planner is told what the earlier runs found, and with a two-way Jira mapping the defects that are now Done come back as `retest` so their cases are re-run.
+
+## Unit tests in many languages, connected to GitHub and GitLab
+
+Stages `unittests` and `testspr` (`engine/core/unit-tests.js`, `repo.js`). Request: `repo: {provider: "github"|"gitlab", project: "owner/name", ref?, files?, languages?, max?, baseUrl?}`; tokens `GITHUB_TOKEN` / `GITLAB_TOKEN`.
+
+- **Languages:** JavaScript (node:test), TypeScript (Vitest), Python (pytest), Java (JUnit 5), Go (testing), C# (xUnit); file names follow each convention (`test_x.py`, `src/test/.../XTest.java`, `x_test.go`, ...).
+- **Flow:** list the repo's files, skip tests, vendored and generated code, read each source file, the model writes the test file from the library prompt `unit_test_gen` (edit it on the Gateway page), checks run (not empty, has a real test for that framework, syntax check where `node` or `python3` is installed), the files come back as `tests`.
+- **Semgrep:** Semgrep runs with `--json`; the files it flagged are tested first, and each finding goes into the prompt so the test fails while the code is still unsafe. `ruleset: "security-audit"` picks the stricter rule set.
+- **Pull or merge request:** `testspr` creates a new branch, commits the test files there and opens a PR (GitHub) or MR (GitLab). It never writes to the base branch, and it asks first at the default autonomy level.
+- Not done: running the generated tests (the repo's CI does that on the PR), Java, Go and C# syntax checks, Bitbucket and Azure Repos, writing custom Semgrep rules. Tested with a fake GitHub and GitLab and a fake model; no real repo, token or model was used.
+
 ## Gateway: prompts, guardrails, MCP, call log (Portkey-style)
 
 Every model call goes through `engine/gateway/`. The page is `/gateway` (linked from the English page); the routes are `/api/gateway/*`.

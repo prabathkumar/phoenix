@@ -14,7 +14,7 @@ const guard = require("./guardrails");
 
 const logFile = (env = process.env) => env.TESTOPS_GATEWAY_LOG || path.join(__dirname, "..", "..", "logs", "gateway-calls.jsonl");
 function log(rec, env) { try { const f = logFile(env); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.appendFileSync(f, JSON.stringify(rec) + "\n"); } catch { /* logging never fails a call */ } }
-function readLog({ n = 100, env = process.env } = {}) { try { return fs.readFileSync(logFile(env), "utf8").trim().split("\n").slice(-n).map((l) => JSON.parse(l)).reverse(); } catch { return []; } }
+function readLog({ n = 100, env = process.env, run } = {}) { try { const all = fs.readFileSync(logFile(env), "utf8").trim().split("\n").map((l) => JSON.parse(l)); return (run ? all.filter((c) => c.run === run) : all).slice(-n).reverse(); } catch { return []; } }
 function rulesFor(names, env) {
   let all = guard.DEFAULT_RULES;
   try { const custom = JSON.parse(fs.readFileSync(path.join(store.dirOf(env), "_guardrails.json"), "utf8")); if (Array.isArray(custom.rules)) all = custom.rules; } catch { /* defaults */ }
@@ -36,10 +36,10 @@ async function viaModels(models, providers, prompt) {
 }
 
 /** @returns {{ok, value?, error?, blocked?, guardrails}} */
-async function execute({ promptId, version, input, models, providers, rules, secrets, env, name }) {
+async function execute({ promptId, version, input, models, providers, rules, secrets, env, name, run }) {
   const t0 = Date.now();
   const gin = guard.run(rules, "input", input, { secrets });
-  const base = { at: new Date().toISOString(), name, prompt: promptId, version, inChars: String(input).length };
+  const base = { at: new Date().toISOString(), ...(run ? { run } : {}), name, prompt: promptId, version, inChars: String(input).length };
   if (gin.blocked) { log({ ...base, status: "blocked-input", guardrails: gin.results.filter((r) => r.hit), ms: Date.now() - t0 }, env); return { ok: false, blocked: "input", error: "Blocked by a guardrail on the input.", guardrails: gin.results }; }
   let r;
   try { r = await viaModels(models, providers, gin.text); } catch (e) { log({ ...base, status: "model-error", error: e.message.slice(0, 300), ms: Date.now() - t0 }, env); return { ok: false, error: e.message, guardrails: gin.results }; }
@@ -61,10 +61,10 @@ async function callPrompt({ name, platform = "shared", vars = {}, input = "", pr
 }
 
 /** A drop-in callJson: same checks, log and fallback around a plain model function. Throws on a block, so callers see a failed stage. */
-function wrap(callJson, { name = "adhoc", models = ["default"], extra = {}, secrets = [], env = process.env } = {}) {
+function wrap(callJson, { name = "adhoc", models = ["default"], extra = {}, secrets = [], env = process.env, run } = {}) {
   const providers = { default: callJson, ...extra };
   return async (prompt, ...rest) => {
-    const r = await execute({ promptId: `${name}:adhoc`, version: 0, input: prompt, models, providers: { ...providers, default: (p) => callJson(p, ...rest) }, rules: rulesFor(null, env), secrets, env, name });
+    const r = await execute({ promptId: `${name}:adhoc`, version: 0, input: prompt, models, providers: { ...providers, default: (p) => callJson(p, ...rest) }, rules: rulesFor(null, env), secrets, env, name, run });
     if (!r.ok) throw new Error(r.error);
     return r.value;
   };

@@ -60,6 +60,7 @@ const get = (name, platform = "shared", { env = process.env } = {}) => read(name
 
 /** Published text with {{vars}} filled; unknown vars are an error, not silently empty. */
 function getPrompt(name, platform = "shared", vars = {}, { env = process.env } = {}) {
+  ensureDefault(name, { env });
   const rec = read(name, platform, env) || read(name, "shared", env);
   if (!rec) throw new Error(`unknown prompt '${name}'`);
   const ver = rec.versions.find((x) => x.v === rec.published);
@@ -68,6 +69,22 @@ function getPrompt(name, platform = "shared", vars = {}, { env = process.env } =
   if (missing.length) throw new Error(`prompt '${name}' needs: ${missing.join(", ")}`);
   const text = ver.text.replace(/\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
   return { text, id: `${rec.name}:${rec.platform}:v${ver.v}:${ver.hash}`, version: ver.v, record: rec };
+}
+
+/** Prompts Phoenix ships with that are not in the YAML registry. Created in the library on first use, then editable on the Gateway page. */
+const DEFAULTS = {
+  unit_test_gen: `You write unit tests. Given one source file, write one complete test file for it in the named language and framework.
+Rules:
+- Test the real behaviour of the public functions or methods: normal cases, edge cases (empty, null, boundaries) and error cases.
+- Use only the framework named, and import the source file by the path given. Do not invent modules or helpers that are not in the source.
+- No network, no real files, no secrets, no sleeping. Use plain inputs and fakes.
+- If SEMGREP FINDINGS are listed, include a test that fails while that flagged code is still unsafe (for example, a hostile input that must be rejected).
+- Each test has a name that says what it checks, and at least one assertion.
+Reply with JSON {"code":"<the whole test file>"} and nothing else.`,
+};
+function ensureDefault(name, { env = process.env } = {}) {
+  if (!DEFAULTS[name] || read(name, "shared", env)) return false;
+  saveVersion({ name, platform: "shared", text: DEFAULTS[name], note: "shipped default", by: "phoenix" }, { env }); return true;
 }
 
 /** One-time import of the YAML registry (prompts/prompts.yaml) as version 1 of each prompt. Skips ones that exist. */
@@ -79,4 +96,4 @@ function importRegistry({ env = process.env, registry = () => require("../../pro
   }
   return made;
 }
-module.exports = { saveVersion, publish, setSettings, list, get, getPrompt, importRegistry, varsOf, dirOf };
+module.exports = { DEFAULTS, ensureDefault, saveVersion, publish, setSettings, list, get, getPrompt, importRegistry, varsOf, dirOf };

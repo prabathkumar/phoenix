@@ -17,15 +17,17 @@ const has = (cmd, exec = run) => { try { return exec(cmd, ["--version"]).status 
 // Prompts come from the prompt library (edited and versioned on the Gateway page); the YAML registry is the fallback.
 function libraryPrompt(name, platform) {
   try { return require("../gateway/prompt-store").getPrompt(name, platform); } catch { /* not in the library: use the registry */ }
-  return require("../../prompts/registry").getPrompt(name, platform);
+  try { return require("../../prompts/registry").getPrompt(name, platform); }
+  catch (e) { throw new Error(`not configured: prompt "${name}" is not in the prompt library and the YAML registry could not be loaded (${String(e.message).split("\n")[0]})`); }
 }
 
 // ---- scenarios and cases (AI)
 function aiHandler(promptName, { callJson, getPrompt, platform = "shared", userOf }) {
   return async (ctx) => {
     if (!callJson) return { unavailable: true, detail: "no model configured" };
-    const { text, id } = (getPrompt || libraryPrompt)(promptName, platform);
     let r;
+    let text, id;
+    try { ({ text, id } = (getPrompt || libraryPrompt)(promptName, platform)); } catch (e) { return { unavailable: true, detail: e.message.slice(0, 200) }; }
     try { r = await callJson(`${text}\n\n${userOf(ctx)}`); }
     catch (e) { if (/No model answered|not configured/i.test(e.message)) return { unavailable: true, detail: `no model reachable: ${e.message.slice(0, 160)}` }; throw e; }
     const items = Array.isArray(r) ? r : Array.isArray(r && (r.scenarios || r.cases || r.items)) ? (r.scenarios || r.cases || r.items) : null;

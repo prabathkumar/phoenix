@@ -90,6 +90,7 @@ jobs:
         run: |
           (cd engine && npm install)
           (cd live-view && npm install)
+          (cd prompts && npm install)
 
       - name: Install web dependencies and Chromium (frontend serves the web recorder)
         if: matrix.package == 'frontend'

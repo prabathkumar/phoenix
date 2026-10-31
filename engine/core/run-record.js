@@ -15,13 +15,16 @@ const newId = () => `run-${new Date().toISOString().replace(/[-:T]/g, "").slice(
 const okId = (id) => /^run-\d{14}-[0-9a-f]{6}$/.test(String(id));
 
 /** Pull the cross-block links out of the stage results. */
-function link(stages, { jiraKey, goal, plan, runId, retest = [] }) {
+function link(stages, { jiraKey, goal, plan, runId, retest = [], requirementSource }) {
   const by = (id) => stages.find((s) => s.id === id) || {};
   const d = (id) => (by(id).data) || {};
   const defects = (d("defects").defects || []).map((x) => x.key).filter(Boolean);
   return {
     id: runId, at: new Date().toISOString(), goal: String(goal || "").slice(0, 200),
     requirement: jiraKey || null,
+    requirementSource: requirementSource ? { kind: requirementSource.kind, type: requirementSource.type, name: requirementSource.name, host: requirementSource.host } : null,
+    traceability: (d("traceability").traceability && d("traceability").traceability.summary) || null,
+    aiEval: (d("aieval").summary) || null,
     plan: plan ? { source: plan.source, platforms: plan.platforms } : null,
     counts: { scenarios: (d("scenarios").items || []).length, cases: (d("cases").items || []).length, dataFields: d("testdata").names ? d("testdata").names.length : undefined },
     dataFields: d("testdata").names || [],

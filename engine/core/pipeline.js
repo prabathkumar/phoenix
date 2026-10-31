@@ -21,6 +21,8 @@ const STAGES = [
   { id: "performance", name: "Performance (Locust)", needs: ["cases"] },
   { id: "secrets", name: "Secrets scan (Gitleaks)", needs: [] },
   { id: "sast", name: "SAST (Semgrep, source code)", needs: [] },
+  { id: "aieval", name: "AI answer quality (DeepEval)", needs: [] },
+  { id: "traceability", name: "Requirements vs what is built (repo)", needs: [] },
   { id: "unittests", name: "Unit tests written by the AI (many languages)", needs: [] },
   { id: "testspr", name: "Pull/merge request with the tests (GitHub or GitLab)", needs: ["unittests"] },
   { id: "dast", name: "DAST (ZAP, running app)", needs: [] },

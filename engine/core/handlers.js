@@ -176,6 +176,34 @@ function testsPrHandler({ connectRepo } = {}) {
   };
 }
 
+// ---- requirements vs the repo where the sessions are stored
+function traceabilityHandler({ callJson, connectRepo } = {}) {
+  const T = require("./traceability");
+  return async (ctx) => {
+    const rq = ctx.repoRequest;
+    if (!ctx.requirement || !String(ctx.requirement).trim()) return { unavailable: true, detail: "no requirement text to compare" };
+    if (!rq || !rq.project) return { unavailable: true, detail: "give the repo (provider and project) where the sessions are stored" };
+    let repo; try { repo = connectRepo(rq); } catch (e) { return { unavailable: true, detail: e.message }; }
+    const r = await T.check({ requirement: ctx.requirement, repo, ref: rq.ref, callJson });
+    const s = r.summary;
+    const how = r.source === "ai" ? "" : " (word match, a guess: no model judged it)";
+    return { ok: s.missing === 0 && s.partial === 0, detail: `${s.requirements} requirements, ${s.tests} tests in the repo: ${s.covered} covered, ${s.partial} partial, ${s.missing} missing${s.possible ? ", " + s.possible + " possible" : ""}, ${s.unrequired} built without a requirement${how}`, data: { traceability: r } };
+  };
+}
+
+// ---- AI answer quality (DeepEval)
+function aievalHandler({ evaluate = require("./ai-eval").evaluate, exec, env } = {}) {
+  return async (ctx) => {
+    const ev = ctx.evaluate;
+    if (!ev || (!ev.conversation && !(ev.turns && ev.turns.length))) return { unavailable: true, detail: "give a conversation to evaluate (User: / Bot: lines, or turns)" };
+    const r = evaluate({ ...ev, exec, env });
+    if (r.status === "unavailable") return { unavailable: true, detail: r.why };
+    if (r.status === "error") return { ok: false, detail: r.why };
+    const m = Object.entries(r.summary.byMetric).map(([k, v]) => `${k} ${v.avg}`).join(", ");
+    return { ok: r.summary.failed === 0, detail: `${r.summary.passed} of ${r.summary.scored} checks passed over ${r.summary.turns} turn(s)${m ? " (" + m + ")" : ""}${r.summary.skipped ? `; ${r.summary.skipped} skipped` : ""}`, data: { evaluation: r.results, summary: r.summary } };
+  };
+}
+
 // ---- feedback: a secret-free report per run
 function feedbackHandler({ dir = "logs/reports" } = {}) {
   return async (ctx) => {
@@ -189,7 +217,7 @@ function feedbackHandler({ dir = "logs/reports" } = {}) {
 
 /** Everything wired, plus what the caller provides (execution, defects). */
 function allHandlers({ callJson, getPrompt, exec, connectRepo = (rq) => require("./repo").fromEnv(rq), extra = {} } = {}) {
-  return { unittests: unittestsHandler({ callJson, getPrompt, connectRepo }), testspr: testsPrHandler({ connectRepo }), scenarios: scenariosHandler({ callJson, getPrompt }), cases: casesHandler({ callJson, getPrompt }), har: harHandler(), performance: performanceHandler({ exec }), dast: dastHandler({ exec }), feedback: feedbackHandler(), ...extra };
+  return { traceability: traceabilityHandler({ callJson, connectRepo }), aieval: aievalHandler({}), unittests: unittestsHandler({ callJson, getPrompt, connectRepo }), testspr: testsPrHandler({ connectRepo }), scenarios: scenariosHandler({ callJson, getPrompt }), cases: casesHandler({ callJson, getPrompt }), har: harHandler(), performance: performanceHandler({ exec }), dast: dastHandler({ exec }), feedback: feedbackHandler(), ...extra };
 }
 
 /** What this server can actually run: for the validation script and the pipeline page. */
@@ -199,6 +227,7 @@ async function toolStatus({ exec = run, env = process.env, fetchFn = globalThis.
   if (env.ZAP_API_URL) {
     try { const r = await fetchFn(`${env.ZAP_API_URL.replace(/\/+$/, "")}/JSON/core/view/version?apikey=${encodeURIComponent(env.ZAP_API_KEY || "")}`); out.zap = r.ok ? "daemon reachable" : `daemon answered ${r.status}`; } catch { out.zap = "daemon not reachable"; }
   } else out.zap = has("zap-baseline.py", exec) ? "zap-baseline.py" : has("docker", exec) ? "via docker" : false;
+  try { const a = require("./ai-eval").available({ exec, env }); out.deepeval = a.ok ? "installed, judge set" : a.why; if (a.ok === false && /not installed/.test(a.why)) out.deepeval = false; } catch { out.deepeval = false; }
   out.jira = !!(env.JIRA_BASE_URL && env.JIRA_EMAIL && env.JIRA_API_TOKEN);
   out.github = !!env.GITHUB_TOKEN; out.gitlab = !!env.GITLAB_TOKEN;
   out.browserstack = !!(env.TESTOPS_MOBILE_BROWSERSTACK_USER && env.TESTOPS_MOBILE_BROWSERSTACK_KEY);
@@ -206,4 +235,4 @@ async function toolStatus({ exec = run, env = process.env, fetchFn = globalThis.
   return out;
 }
 
-module.exports = { toolStatus, unittestsHandler, testsPrHandler, locustFromHar, scenariosHandler, casesHandler, harHandler, harContextOptions, performanceHandler, locustFile, dastHandler, feedbackHandler, allHandlers };
+module.exports = { traceabilityHandler, aievalHandler, toolStatus, unittestsHandler, testsPrHandler, locustFromHar, scenariosHandler, casesHandler, harHandler, harContextOptions, performanceHandler, locustFile, dastHandler, feedbackHandler, allHandlers };

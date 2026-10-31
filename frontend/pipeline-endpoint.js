@@ -29,8 +29,16 @@ async function runPipelineRequest(body, deps = {}) {
   const autonomy = ["ask-everything", "ask-when-matters", "run-everything"].includes(body.autonomy) ? body.autonomy : "ask-when-matters";
   let requirement = typeof body.requirement === "string" ? body.requirement : "";
   const jira = deps.jira || J.client({ env });
+  let requirementSource = requirement ? { kind: "text" } : null; const requirementNotes = [];
+  // A requirement can come from a public link, an uploaded file (Word, Excel, PowerPoint, PDF, CSV, HTML, Markdown, JSON/OpenAPI), pasted text or Jira.
+  if (!requirement && (body.requirementUrl || body.requirementFile)) {
+    try {
+      const rq = await require("../engine/core/requirements").loadRequirement({ url: body.requirementUrl, file: body.requirementFile, jira: { client: jira }, ...(deps.fetcher ? { fetcher: deps.fetcher } : {}), ...(deps.allowPrivate ? { allowPrivate: true } : {}) });
+      requirement = rq.text; requirementSource = rq.source; requirementNotes.push(...rq.notes);
+    } catch (e) { return { code: 400, json: { error: e.message } }; }
+  }
   if (!requirement && body.jiraKey) {
-    try { requirement = (await J.readRequirement(jira, String(body.jiraKey))).text; } catch (e) { return { code: 400, json: { error: e.message } }; }
+    try { requirement = (await J.readRequirement(jira, String(body.jiraKey))).text; requirementSource = { kind: "jira", name: String(body.jiraKey) }; } catch (e) { return { code: 400, json: { error: e.message } }; }
   }
   const runId = runs.newId();
   // What earlier runs of this requirement found, and which of their Jira defects are now fixed: the plan starts from that.
@@ -92,14 +100,14 @@ async function runPipelineRequest(body, deps = {}) {
     },
   });
   const out = await runAiPipeline({
-    goal: body.goal, requirement, ctx: { steps, baseUrl, appUrl: body.appUrl, requirement, goal: body.goal, ruleset: body.ruleset, repoRequest: body.repo && typeof body.repo === "object" ? body.repo : undefined }, handlers,
+    goal: body.goal, requirement, ctx: { steps, baseUrl, appUrl: body.appUrl, requirement, goal: body.goal, ruleset: body.ruleset, evaluate: body.evaluate && typeof body.evaluate === "object" ? body.evaluate : undefined, repoRequest: body.repo && typeof body.repo === "object" ? body.repo : undefined }, handlers,
     autonomy, approvals: body.approvals && typeof body.approvals === "object" ? body.approvals : {}, production: body.production === true,
     callJson, exec: deps.exec, env, stages: Array.isArray(body.stages) ? body.stages : undefined,
   });
-  const record = runs.link(out.stages, { jiraKey: body.jiraKey, goal: body.goal, plan: out.plan, runId, retest });
+  const record = runs.link(out.stages, { jiraKey: body.jiraKey, goal: body.goal, plan: out.plan, runId, retest, requirementSource });
   try { runs.save(record, { env }); } catch { /* a full disk never fails a run */ }
   const clean = out.stages.map(({ data, ...s }) => s); // data can hold values; never returned
-  return { code: 200, json: { ok: out.ok, runId, retest, plan: { source: out.plan.source, platforms: out.plan.platforms, reason: out.plan.reason }, stages: clean, summary: out.summary, needsYou: out.needsYou } };
+  return { code: 200, json: { ok: out.ok, runId, retest, requirement: requirementSource ? { ...requirementSource, notes: requirementNotes, characters: requirement.length } : null, plan: { source: out.plan.source, platforms: out.plan.platforms, reason: out.plan.reason }, stages: clean, summary: out.summary, needsYou: out.needsYou } };
 }
 
 async function handlePipelineRun(req, res) {

@@ -49,8 +49,13 @@ def ai_handler(prompt_name, call_json, get_prompt, user_of, platform="shared"):
                 return {"unavailable": True, "detail": f"no model reachable: {str(e)[:160]}"}
             raise
         items = r if isinstance(r, list) else next((r[k] for k in ("scenarios", "cases", "items") if isinstance(r, dict) and isinstance(r.get(k), list)), None)
+        if not items and isinstance(r, dict):
+            # smaller models often pick their own key ("test_scenarios", "data"...): take the one list of objects they sent
+            lists = [v for v in r.values() if isinstance(v, list) and v and all(isinstance(x, dict) for x in v)]
+            items = lists[0] if len(lists) == 1 else None
         if not items:
-            return {"ok": False, "detail": f"the model returned nothing usable ({p['id']})"}
+            seen = ("a list" if isinstance(r, list) else ("keys: " + ", ".join(list(r)[:6]) if isinstance(r, dict) and r else "an empty answer"))
+            return {"ok": False, "detail": f"the model returned nothing usable ({p['id']}); it sent {seen}"}
         return {"ok": True, "detail": f"{len(items)} from {p['id']}", "data": {"items": items}}
     return h
 

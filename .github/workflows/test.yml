@@ -102,7 +102,16 @@ jobs:
       - name: Run ${{ matrix.package }} tests
         if: matrix.package != 'root'
         working-directory: ${{ matrix.package }}
-        run: npm test
+        shell: bash
+        run: |
+          # Keep the output, and on failure surface the failing lines as annotations
+          # (they show on the run summary without opening the raw log).
+          set -o pipefail
+          npm test 2>&1 | tee /tmp/test-output.txt || {
+            grep -nE "not ok|Error|Cannot find|ENOENT|EACCES|expected|actual" /tmp/test-output.txt | head -8 | while IFS= read -r l; do echo "::error::${l:0:400}"; done
+            echo "::error::last lines: $(tail -5 /tmp/test-output.txt | tr '\n' ' ' | cut -c1-500)"
+            exit 1
+          }
 
       - name: Run root tests (test/*.test.js)
         if: matrix.package == 'root'

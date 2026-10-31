@@ -14,6 +14,7 @@ touches it.
 
 - [Test data layer](#test-data-layer)
 - [Run targets: Local or BrowserStack](#run-targets-local-or-browserstack)
+- [Pipeline](PIPELINE.md)
 - [Handoff to the dev team](#handoff-to-the-dev-team)
 - [The "AI" question, answered precisely](#the-ai-question-answered-precisely)
 - [Recording and script generation](#recording-and-script-generation)

@@ -1,3 +1,5 @@
+> **Platform (React UI + Python API + Node engine, PostgreSQL, ClickHouse):** see [docs/PLATFORM.md](docs/PLATFORM.md). Start with `docker compose --profile platform up --build`, then `python3 scripts/validate_platform.py http://localhost:8000`.
+
 # TestOps ai-automate
 
 [![Test](https://github.com/prabathkumar/phoenix/actions/workflows/test.yml/badge.svg)](https://github.com/prabathkumar/phoenix/actions/workflows/test.yml)

@@ -38,39 +38,79 @@ services:
     restart: unless-stopped
 
 
-  # The whole platform as a server: English page, pipeline page, gateway page and all /api routes on :8092 -> container :8091.
-  #   docker compose --profile platform up --build testops-platform
-  # Then open http://localhost:8091/pipeline and run: node scripts/validate-server.js http://localhost:8091
+  # ---- Phoenix platform: React UI + Python API (:8000), Node execution engine, PostgreSQL, ClickHouse, ZAP.
+  #   cp .env.example .env
+  #   docker compose --profile platform up --build
+  # Then open http://localhost:8000 and run: python3 scripts/validate_platform.py http://localhost:8000
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: phoenix
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      POSTGRES_DB: phoenix
+    volumes: [pg-data:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U phoenix"], interval: 5s, timeout: 3s, retries: 20 }
+    profiles: ["platform"]
+    restart: unless-stopped
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    environment:
+      CLICKHOUSE_USER: phoenix
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-change-me}
+      CLICKHOUSE_DB: phoenix
+    volumes: [ch-data:/var/lib/clickhouse]
+    ulimits: { nofile: { soft: 262144, hard: 262144 } }
+    healthcheck: { test: ["CMD-SHELL", "wget -qO- http://localhost:8123/ping || exit 1"], interval: 5s, timeout: 3s, retries: 20 }
+    profiles: ["platform"]
+    restart: unless-stopped
+
   zap:
     image: zaproxy/zap-stable
     command: ["zap.sh", "-daemon", "-host", "0.0.0.0", "-port", "8080", "-config", "api.key=${ZAP_API_KEY:-change-me}", "-config", "api.addrs.addr.name=.*", "-config", "api.addrs.addr.regex=true"]
     profiles: ["platform"]
     restart: unless-stopped
 
-  testops-platform:
+  # Node execution engine: drives Chromium (web), Appium (mobile) and BrowserStack. Called by the API at /api/engine/exec.
+  engine:
     build: .
-    depends_on: [zap]
     image: testops-mobile:latest
     command: ["node", "frontend/server.js"]
-    env_file:
-      - .env
+    env_file: [.env]
     environment:
+      PHOENIX_DATA_DIR: /data
+      TESTOPS_MOBILE_LOCATOR_DB_PATH: /data/locator-store.db
+    volumes: [platform-data:/data]
+    shm_size: "1gb"
+    profiles: ["platform"]
+    restart: unless-stopped
+
+  phoenix-api:
+    build: { context: ., dockerfile: backend/Dockerfile }
+    image: phoenix-api:latest
+    depends_on:
+      postgres: { condition: service_healthy }
+      clickhouse: { condition: service_healthy }
+      engine: { condition: service_started }
+      zap: { condition: service_started }
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgresql+psycopg://phoenix:${POSTGRES_PASSWORD:-change-me}@postgres:5432/phoenix
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: phoenix
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-change-me}
+      CLICKHOUSE_DB: phoenix
+      ENGINE_URL: http://engine:8091
       ZAP_API_URL: http://zap:8080
       ZAP_API_KEY: ${ZAP_API_KEY:-change-me}
-      TESTOPS_GATEWAY_DIR: /data/prompt-library
-      TESTOPS_GATEWAY_LOG: /data/logs/gateway-calls.jsonl
-      TESTOPS_PIPELINE_LOG: /data/logs/pipeline-runs.jsonl
-      TESTOPS_RUNS_DIR: /data/runs
-      TESTOPS_TESTDATA_DIR: /data/test-data
-      TESTOPS_MOBILE_LOCATOR_DB_PATH: /data/locator-store.db
-    volumes:
-      - platform-data:/data
-    ports:
-      - "8091:8091"
-    shm_size: "1gb"
+      PHOENIX_REPORTS_DIR: /data/reports
+    volumes: [platform-data:/data]
+    ports: ["8000:8000"]
     profiles: ["platform"]
     restart: unless-stopped
 
 volumes:
   platform-data:
   locator-data:
+  pg-data:
+  ch-data:

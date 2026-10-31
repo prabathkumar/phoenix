@@ -148,17 +148,22 @@ def run_checks(run_id, url=None):
     if not rec:
         return {"pass": False, "checks": [{"name": "Run exists", "ok": False, "detail": "No such run."}]}
     ex = executions_for(run_id, url)
-    cases = list_cases(requirement=rec.get("requirement"), url=url) if rec.get("requirement") else []
     last = {}
     for e in ex:
         last[e["caseId"]] = e["result"]
+    # The cases this release is judged on: everything under its requirement, plus every case that was actually executed in the run.
+    cases = {c["id"]: c for c in (list_cases(requirement=rec.get("requirement"), url=url) if rec.get("requirement") else [])}
+    for c in list_cases(url=url):
+        if c["id"] in last:
+            cases[c["id"]] = c
+    cases = list(cases.values())
     failed = [c for c, r in last.items() if r == "failed"]
     defect_n = len(rec["defects"]["keys"])
     sec = rec["security"]
     tr = rec.get("traceability") or {}
     checks = [
-        {"name": "Cases approved", "ok": bool(cases) and all(c["signoff"] == "approved" for c in cases) if cases else True, "detail": f"{sum(c['signoff'] == 'approved' for c in cases)} of {len(cases)} approved" if cases else "no cases are linked to this requirement"},
-        {"name": "Every case executed", "ok": all(c["id"] in last for c in cases) if cases else bool(ex), "detail": f"{len(last)} executed"},
+        {"name": "Cases approved", "ok": bool(cases) and all(c["signoff"] == "approved" for c in cases), "detail": f"{sum(c['signoff'] == 'approved' for c in cases)} of {len(cases)} approved" if cases else "no test cases are linked to this run, so there is nothing to approve"},
+        {"name": "Every case executed", "ok": bool(cases) and all(c["id"] in last for c in cases), "detail": f"{len(last)} executed"},
         {"name": "No unresolved failures", "ok": not failed or defect_n >= len(failed), "detail": f"{len(failed)} failed, {defect_n} defect(s) logged"},
         {"name": "No failed security stage", "ok": "failed" not in (sec.get("secrets"), sec.get("sast"), sec.get("dast")), "detail": f"secrets {sec.get('secrets')}, SAST {sec.get('sast')}, DAST {sec.get('dast')}"},
         {"name": "Requirements covered", "ok": (not tr) or (tr.get("missing", 0) == 0), "detail": f"{tr.get('missing', 0)} missing" if tr else "traceability not run"},

@@ -326,11 +326,12 @@ def tool_status(run=_run, env=None):
     out["node"] = "reachable" if env.get("ENGINE_URL") else False
     out["zap"] = "daemon configured" if env.get("ZAP_API_URL") else ("zap-baseline.py" if _has("zap-baseline.py", run) else "via docker" if _has("docker", run) else False)
     av = ai_eval.available(run, env)
-    out["deepeval"] = "installed, judge set" if av["ok"] else (False if "not installed" in av["why"] else av["why"])
+    out["deepeval"] = "installed, judge set" if av["ok"] else False
+    out["deepevalWhy"] = None if av["ok"] else av["why"]
     out["jira"] = all(env.get(k) for k in ("JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN"))
     out["github"], out["gitlab"] = bool(env.get("GITHUB_TOKEN")), bool(env.get("GITLAB_TOKEN"))
     out["browserstack"] = bool(env.get("TESTOPS_MOBILE_BROWSERSTACK_USER") and env.get("TESTOPS_MOBILE_BROWSERSTACK_KEY"))
     out["ollama"] = any(env.get(k) for k in ("OLLAMA_HOST", "TESTOPS_OLLAMA_URL", "OLLAMA_URL", "TESTOPS_MOBILE_OLLAMA_HOST"))
     out["clickhouse"] = bool(env.get("CLICKHOUSE_URL"))
-    out["postgres"] = bool(env.get("DATABASE_URL"))
+    out["postgres"] = str(env.get("DATABASE_URL", "")).startswith(("postgres", "postgresql"))
     return out

@@ -124,3 +124,40 @@ async def test_pipeline_validation_and_needs_you(fresh):
     assert (await run_pipeline_request({}, d))[0] == 400
     code, out = await run_pipeline_request({"goal": "scan", "appUrl": "http://x", "stages": ["dast", "feedback"]}, d)
     assert out["needsYou"] == ["dast"] and out["ok"] is False
+
+
+async def test_selected_cases_run_by_id_and_results_are_recorded(fresh):
+    from phoenix_api.service import run_pipeline_request
+    signoff.upsert_case("TC-7", "Pay by card", ["open checkout", "pay with ${PW}"], requirement="REQ-2")
+    seen = {}
+    async def exec_fetch(m, u, h, b):
+        body = json.loads(b); seen.update(body)
+        return 200, json.dumps({"ok": False, "detail": "1 failed", "results": [{"id": "TC-7", "result": "failed", "detail": "no pay button", "ms": 9, "where": "local"}], "failedCases": [{"id": "TC-7", "name": "Pay by card", "error": "no pay button"}]})
+    d = Deps(env={"DATABASE_URL": fresh, "ENGINE_URL": "http://e"}, call_json=None, exec_fetch=exec_fetch)
+    code, out = await run_pipeline_request({"goal": "run", "web": {"url": "http://x", "steps": ""}, "cases": [{"id": "TC-7"}], "testData": {"PW": "secret1234", "UNUSED": "never-sent"}, "stages": ["execution"]}, d)
+    assert code == 200 and seen["cases"][0]["steps"] == "open checkout\npay with ${PW}" and seen["testData"] == {"PW": "secret1234"}  # only fields the steps use are sent
+    ex = signoff.executions_for(out["runId"])
+    assert ex[0]["caseId"] == "TC-7" and ex[0]["result"] == "failed"
+    assert "secret1234" not in json.dumps(out) and "secret1234" not in json.dumps(run_record.get(out["runId"]))
+
+
+def test_first_requests_in_parallel_do_not_race_on_table_creation(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    from phoenix_api import db
+    url = f"sqlite:///{tmp_path}/race.db"
+    db._engines.pop(url, None)
+    with ThreadPoolExecutor(8) as ex:
+        engines = list(ex.map(lambda _: db.engine_for(url), range(8)))
+    assert len({id(e) for e in engines}) == 1
+
+
+def test_release_check_is_not_vacuous_without_a_requirement():
+    rid = make_run()
+    assert not next(c for c in signoff.run_checks(rid)["checks"] if c["name"] == "Cases approved")["ok"]
+    case("TC-5")
+    signoff.record_execution(rid, "TC-5", "passed")
+    chk = {c["name"]: c for c in signoff.run_checks(rid)["checks"]}
+    assert not chk["Cases approved"]["ok"] and "0 of 1" in chk["Cases approved"]["detail"]
+    so = signoff.request_case("TC-5", "alice")
+    signoff.decide(so["id"], "approved", "bob")
+    assert {c["name"]: c for c in signoff.run_checks(rid)["checks"]}["Cases approved"]["ok"]

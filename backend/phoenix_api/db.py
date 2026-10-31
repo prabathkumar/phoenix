@@ -3,6 +3,7 @@ Without DATABASE_URL a local SQLite file is used so a laptop or a test run still
 Documents (prompts, MCP servers, guardrail rules, run records) live in `docs` as JSON; things people query and sign
 (test cases, sign-offs and their audit trail, executions) are real tables."""
 import os
+import threading
 from datetime import datetime, timezone
 
 from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, create_engine, event
@@ -84,6 +85,7 @@ class SignoffEvent(Base):
 
 
 _engines = {}
+_lock = threading.Lock()
 
 
 def engine_for(url=None):
@@ -92,6 +94,11 @@ def engine_for(url=None):
         url = "postgresql+psycopg://" + url[len("postgres://"):]
     elif url.startswith("postgresql://"):
         url = "postgresql+psycopg://" + url[len("postgresql://"):]
+    with _lock:  # the first requests can arrive together; tables are created once
+        return _engine_locked(url)
+
+
+def _engine_locked(url):
     if url not in _engines:
         kw = {}
         if url.startswith("sqlite"):
@@ -99,7 +106,10 @@ def engine_for(url=None):
             if ":memory:" in url:
                 kw["poolclass"] = StaticPool
         e = create_engine(url, future=True, pool_pre_ping=True, **kw)
-        Base.metadata.create_all(e)
+        try:
+            Base.metadata.create_all(e)
+        except Exception:  # another worker created them at the same moment (Postgres); check again, then fail loudly if still broken
+            Base.metadata.create_all(e)
         _engines[url] = e
     return _engines[url]
 

@@ -58,7 +58,7 @@ async def run_pipeline_request(body, deps: Deps):
     steps = body.get("steps") if isinstance(body.get("steps"), list) else []
     base_url = body["baseUrl"] if isinstance(body.get("baseUrl"), str) and body["baseUrl"].lower().startswith(("http://", "https://")) else None
     project = str(body.get("project") or "")
-    call_json = gateway.wrap(deps.call_json, "pipeline", run=run_id, env=env) if deps.call_json and deps.use_gateway else deps.call_json
+    call_json = gateway.wrap(deps.call_json, "pipeline", run=run_id, env=env, model_name="ollama") if deps.call_json and deps.use_gateway else deps.call_json
     get_prompt = lambda n, p="shared": H.library_prompt(n, p, env)  # noqa: E731
     state, failed_cases, values = {}, [], {}
     run_kw = {"run": deps.run} if deps.run else {}
@@ -77,6 +77,16 @@ async def run_pipeline_request(body, deps: Deps):
         for c in gen.get("items", []):
             if isinstance(c, dict) and c.get("id") and isinstance(c.get("steps"), list) and c["steps"]:
                 cases.append({"id": c["id"], "name": c.get("title") or c.get("name") or c["id"], "platform": (c.get("platform") or ((ctx.get("platforms") or ["web"])[0] if (ctx.get("platforms") or ["web"])[0] != "api" else "web")), "steps": "\n".join(map(str, c["steps"]))})
+        picked = {c.get("id") for c in body.get("cases", []) if isinstance(c, dict)}
+        plat = (ctx.get("platforms") or ["web"])[0]
+        for c in signoff.list_cases(url=url):  # cases a person selected in the UI: run exactly those, by id
+            if c["id"] in picked and c["steps"]:
+                cases.append({"id": c["id"], "name": c["title"], "platform": "mobile" if plat == "mobile" else "web", "steps": "\n".join(map(str, c["steps"]))})
+        names = testdata.required_names([c["steps"] for c in cases] + [body.get("web"), body.get("mobile")] + steps)
+        plan = testdata.plan_test_data(names, body.get("testData") or {}, "pipeline", env)
+        if plan["needs_you"]:
+            return {"ok": False, "detail": f"needs you: {', '.join(plan['needs_you'])} (logins that already exist cannot be made up)", "data": {"names": names}}
+        values.update(plan["values"])
         payload = {"runId": run_id, "testData": values, "web": body.get("web"), "mobile": body.get("mobile"), "api": {"steps": [s for s in steps if isinstance(s, dict) and s.get("kind") == "api"], "baseUrl": base_url},
                    "cases": cases if (body.get("web") or body.get("mobile")) else []}
         r = await exec_client.execute(deps.env.get("ENGINE_URL"), payload, deps.exec_fetch)

@@ -107,3 +107,32 @@ jobs:
       - name: Run root tests (test/*.test.js)
         if: matrix.package == 'root'
         run: node test/check-env.test.js && node test/run-batch-executions.test.js
+
+  # The Python API (FastAPI) and the React UI. Postgres runs as a real service so the production database path is tested, not only SQLite.
+  platform:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_USER: phoenix, POSTGRES_PASSWORD: phoenix, POSTGRES_DB: phoenix }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U phoenix" --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.13" }
+      - name: Python dependencies
+        run: pip install -r backend/requirements.txt "sqlalchemy>=2.0" "psycopg[binary]>=3.2" "clickhouse-connect>=0.8"
+      - name: API tests (SQLite)
+        working-directory: backend
+        run: python -m pytest -q
+      - name: API tests against PostgreSQL
+        working-directory: backend
+        env: { PHOENIX_TEST_POSTGRES: "postgresql+psycopg://phoenix:phoenix@localhost:5432/phoenix" }
+        run: python -m pytest -q tests/test_postgres.py
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: UI tests and build
+        working-directory: web-ui
+        run: npm ci && npm test && npm run build

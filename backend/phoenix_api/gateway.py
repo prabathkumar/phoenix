@@ -113,9 +113,10 @@ async def call_prompt(name, platform="shared", vars=None, input="", providers=No
         i += 1
 
 
-def wrap(call_json, name="adhoc", models=("default",), extra=None, secrets=(), env=None, run=None):
+def wrap(call_json, name="adhoc", models=("default",), extra=None, secrets=(), env=None, run=None, model_name="default"):
     """A drop-in call_json: same checks, log and fallback around a plain async model function. Raises on a block."""
-    providers = {"default": call_json, **(extra or {})}
+    providers = {model_name: call_json, **(extra or {})}
+    models = (model_name,) if tuple(models) == ("default",) else models
 
     async def call(prompt):
         r = await execute(f"{name}:adhoc", 0, prompt, list(models), providers, rules_for(None, env), secrets, name, run)

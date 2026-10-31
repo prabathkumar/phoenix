@@ -13,6 +13,7 @@ def create_app(deps: Deps | None = None) -> FastAPI:
     app.add_middleware(CORSMiddleware, allow_origins=os.environ.get("CORS_ORIGINS", "http://localhost:5173,http://localhost:8091").split(","), allow_methods=["*"], allow_headers=["*"])
     D = deps or Deps()
     url = D.db
+    db.engine_for(url)  # connect and create the tables at start-up, not on the first request
     bad = lambda e: HTTPException(400, str(e))  # noqa: E731
 
     @app.get("/api/health")
@@ -188,6 +189,17 @@ def create_app(deps: Deps | None = None) -> FastAPI:
         except (KeyError, ValueError) as e:
             raise bad(e)
 
+    ui = os.environ.get("PHOENIX_UI_DIR")
+    if ui and os.path.isdir(ui):
+        from fastapi.responses import FileResponse
+        from fastapi.staticfiles import StaticFiles
+        app.mount("/assets", StaticFiles(directory=os.path.join(ui, "assets")), name="assets")
+
+        @app.get("/{path:path}", include_in_schema=False)
+        def spa(path: str):
+            if path.startswith("api/"):
+                raise HTTPException(404, "Unknown API route.")
+            f = os.path.join(ui, path)
+            return FileResponse(f if path and os.path.isfile(f) else os.path.join(ui, "index.html"))
+
     return app
-
-

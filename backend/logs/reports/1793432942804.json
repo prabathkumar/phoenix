@@ -1,0 +1,80 @@
+{
+  "goal": "scan",
+  "stages": [
+    {
+      "id": "scenarios",
+      "status": "skipped",
+      "detail": "not selected"
+    },
+    {
+      "id": "cases",
+      "status": "skipped",
+      "detail": "not selected"
+    },
+    {
+      "id": "testdata",
+      "status": "skipped",
+      "detail": "not selected"
+    },
+    {
+      "id": "execution",
+      "status": "skipped",
+      "detail": "not selected"
+    },
+    {
+      "id": "har",
+      "status": "skipped",
+      "detail": "not selected"
+    },
+    {
+      "id": "performance",
+      "status": "skipped",
+      "detail": "not selected"
+    },
+    {
+      "id": "secrets",
+      "status": "skipped",
+      "detail": "not selected"
+    },
+    {
+      "id": "sast",
+      "status": "skipped",
+      "detail": "not selected"
+    },
+    {
+      "id": "aieval",
+      "status": "skipped",
+      "detail": "not selected"
+    },
+    {
+      "id": "traceability",
+      "status": "skipped",
+      "detail": "not selected"
+    },
+    {
+      "id": "unittests",
+      "status": "skipped",
+      "detail": "not selected"
+    },
+    {
+      "id": "testspr",
+      "status": "skipped",
+      "detail": "not selected"
+    },
+    {
+      "id": "dast",
+      "status": "needs-you",
+      "detail": "it sends attack traffic to a live app, which always needs your approval"
+    },
+    {
+      "id": "defects",
+      "status": "skipped",
+      "detail": "not selected"
+    },
+    {
+      "id": "signoff",
+      "status": "skipped",
+      "detail": "not selected"
+    }
+  ]
+}

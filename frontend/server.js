@@ -111,6 +111,10 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (req.method === "POST" && req.url === "/api/pipeline/run") {
+    require("./pipeline-endpoint").handlePipelineRun(req, res);
+    return;
+  }
   if (req.method === "POST" && req.url === "/api/api-cases/run") {
     require("./testdata-endpoint").handleApiRun(req, res);
     return;

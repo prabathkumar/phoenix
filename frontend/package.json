@@ -8,6 +8,6 @@
   },
   "scripts": {
     "dev": "node server.js",
-    "test": "node test/upload-session.test.js && node test/semantic-action-endpoint.test.js && node test/execute-test-case-endpoint.test.js && node test/record-step-endpoint.test.js && node test/apply-recorded-step-endpoint.test.js && node test/execute-web-test-case-endpoint.test.js && node test/sync-test-cases-endpoint.test.js && node test/record-step-page.test.js && node test/index-scroll.test.js && node test/index-unified.test.js && node test/web-session-endpoint.test.js && node test/english-endpoint.test.js && node test/english-page.test.js && node test/testdata-endpoint.test.js && node test/run-choice.test.js"
+    "test": "node test/upload-session.test.js && node test/semantic-action-endpoint.test.js && node test/execute-test-case-endpoint.test.js && node test/record-step-endpoint.test.js && node test/apply-recorded-step-endpoint.test.js && node test/execute-web-test-case-endpoint.test.js && node test/sync-test-cases-endpoint.test.js && node test/record-step-page.test.js && node test/index-scroll.test.js && node test/index-unified.test.js && node test/web-session-endpoint.test.js && node test/english-endpoint.test.js && node test/english-page.test.js && node test/testdata-endpoint.test.js && node test/pipeline-endpoint.test.js && node test/run-choice.test.js"
   }
 }

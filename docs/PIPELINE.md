@@ -12,9 +12,8 @@ Every stage reports `passed`, `failed`, `needs-you`, `skipped`, `not-built` or `
 | Test data | Built in (`testdata.js`); stops while a must-exist value is missing |
 | Secrets, SAST | Runs `gitleaks` / `semgrep` when installed on the machine, else `unavailable` |
 | Execution | Handler is injected by the caller (English run, test-case runner) |
-| Scenarios, cases | Injected; the prompts live in the registry (`prompts/prompts.yaml`) |
+| Scenarios, cases, HAR, performance, DAST, feedback | Built in `engine/core/handlers.js`; each says `unavailable` when its model or tool is missing |
 | Defects (Jira) | Built: `defectsHandler` in `engine/core/jira.js` (see below); asks first at the default level |
-| HAR, performance, DAST, AI feedback | `not-built` here; inject a handler (TestOps's, or new code) |
 
 ## How much the AI asks
 
@@ -31,6 +30,27 @@ const { runPipeline, llmReviewer } = require("./engine/core/pipeline");
 const r = await runPipeline({ ctx: { steps, dir: "." }, handlers: { execution }, autonomy: "ask-when-matters", ai: llmReviewer() });
 // r.stages, r.summary, r.needsYou
 ```
+
+## One platform: what the TestOps guide has, and where it lives here
+
+From the TestOps user guide (roboticodigital.gitbook.io). Phoenix now has an equivalent for each lab; the pipeline runs them as one flow.
+
+| TestOps module | Phoenix | Notes |
+|---|---|---|
+| Requirement, Test Management (scenarios, cases) | `scenarios`, `cases` stages: model + `prompts/prompts.yaml` | Reads requirements from Jira (`readRequirement`) |
+| Test Automation (record and play) | Recorder + English run, `execution` stage for API | Web and mobile runs start from the English page |
+| API Testing | API steps, `runApiCases`, negative cases | Runs with no device |
+| Performance Test Lab (script from a HAR) | `har` then `performance`: Locust file built from the HAR (or API steps), run headless | Pass/fail on failure rate; Locust must be installed |
+| Security Test Lab (target, mode, Ajax Spider, HTML report) | `dast`: ZAP baseline with `-j` for Ajax Spider, HTML and JSON reports | Always asks first |
+| Code Analyzer: SAST quick scan (ruleset Auto or Security Audit) | `sast`: Semgrep, `ruleset: "security-audit"` picks `p/security-audit` | |
+| Code Analyzer: Secret scan | `secrets`: Gitleaks | |
+| Defect Management + Jira (Bug type; one-way or two-way mapping) | `defects`: `defectsHandler({syncType})` | One-way only sends; two-way also reads status back |
+| FrothAI | the planner and reviewer (`ai-pipeline.js`) | |
+| BrowserStack integration | Run targets (Local or BrowserStack) | |
+
+Not built from the guide: GitHub, GitLab and Plane integrations, Conversation and Live Chat evaluation (AI Evaluation), Scheduler, the report types (traceability, cycle comparison), roles and email notifications. Those stay in TestOps.
+
+One request runs it all: `POST /api/pipeline/run` (`frontend/pipeline-endpoint.js`) with `{goal, requirement | jiraKey, steps, baseUrl, appUrl, autonomy, approvals}`. Stages waiting on you come back in `needsYou`; send the same request with `approvals: {dast: true}` to let them run. Secrets and stage data are never returned.
 
 ## AI decides, code enforces (`engine/core/ai-pipeline.js`)
 
@@ -57,4 +77,4 @@ Settings: `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`, `JIRA_PROJECT_KEY`, `
 
 Tests: `engine/test/pipeline.test.js`, `jira.test.js`, `ai-pipeline.test.js`.
 
-Not yet: an HTTP route or page for the pipeline, real handlers for HAR, performance (Locust) and DAST (ZAP), and a real model run (tested against a fake model; self-hosted Ollama not exercised here).
+Not yet: a page for the pipeline (the route exists), web and mobile execution inside the pipeline request, and any real run of Locust, ZAP, Semgrep, Gitleaks, Jira or the model (all tested against fakes; none installed or reachable from the build sandbox).

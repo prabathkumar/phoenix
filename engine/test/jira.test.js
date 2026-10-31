@@ -56,5 +56,11 @@ const fetchFn = async (url, o) => {
   const h = await J.defectsHandler(off)({ failedCases: [{ name: "x" }] });
   assert.strictEqual(h.unavailable, true);
   assert.deepStrictEqual(await J.defectsHandler(off)({}), { ok: true, detail: "no failed cases" });
+  // One-way mapping only sends; two-way also reads status back.
+  dup = null;
+  const one = await J.defectsHandler(j, { syncType: "one-way" })({ failedCases: [{ id: "A", name: "n" }] });
+  assert.ok(/\(one-way\)/.test(one.detail));
+  const two = await J.defectsHandler(j)({ failedCases: [{ id: "A", name: "n" }] });
+  assert.ok(/already fixed/.test(two.detail));
   console.log("jira tests passed");
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -54,7 +54,7 @@ const defaultExec = (cmd, args, opts = {}) => spawnSync(cmd, args, { encoding: "
 function builtins({ exec = defaultExec } = {}) {
   const scan = (cmd, args, label) => async (ctx) => {
     if (!hasTool(cmd, exec)) return { unavailable: true, detail: `${cmd} is not installed on this machine` };
-    const r = exec(cmd, args(ctx.dir || "."));
+    const r = exec(cmd, args(ctx.dir || ".", ctx));
     // gitleaks exits 1 when it finds leaks; semgrep --error exits 1 on findings.
     return { ok: r.status === 0, detail: r.status === 0 ? `${label}: no findings` : `${label}: findings or error (exit ${r.status})`, data: { stdout: String(r.stdout || "").slice(0, 4000) } };
   };
@@ -68,7 +68,7 @@ function builtins({ exec = defaultExec } = {}) {
         : { ok: true, detail: `${plan.fields.length} field(s) ready`, data: { values: plan.values } };
     },
     secrets: scan("gitleaks", (d) => ["detect", "--no-git", "-s", d, "--redact"], "gitleaks"),
-    sast: scan("semgrep", (d) => ["--config", "auto", "--error", "--quiet", d], "semgrep"),
+    sast: scan("semgrep", (d, ctx) => ["--config", ctx.ruleset === "security-audit" ? "p/security-audit" : "auto", "--error", "--quiet", d], "semgrep"),
   };
 }
 

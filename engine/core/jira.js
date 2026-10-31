@@ -96,14 +96,17 @@ async function transition(j, key, name) {
 }
 
 /** Pipeline handler: drafts a defect for every failed case; logs them only when approved (the pipeline gates this). */
-function defectsHandler(j, { requirement, secrets } = {}) {
+function defectsHandler(j, { requirement, secrets, syncType = "two-way" } = {}) {
   return async (ctx) => {
     const failed = (ctx.failedCases || []);
     if (!failed.length) return { ok: true, detail: "no failed cases" };
     if (j.missing.length) return { unavailable: true, detail: `Jira not connected: set ${j.missing.join(", ")}` };
     const made = [];
     for (const f of failed) made.push(await logDefect(j, draftDefect(f, { requirement, secrets })));
-    return { ok: true, detail: `${made.filter((m) => m.created).length} logged, ${made.filter((m) => m.commented).length} already open`, data: { defects: made } };
+    const keys = made.map((m) => m.key);
+    // Two-way mapping (as in TestOps's Jira setup): also read status back. One-way only sends.
+    const fixed = syncType === "two-way" ? await defectsToRetest(j, keys) : [];
+    return { ok: true, detail: `${made.filter((m) => m.created).length} logged, ${made.filter((m) => m.commented).length} already open${syncType === "two-way" ? `, ${fixed.length} already fixed` : " (one-way)"}`, data: { defects: made, fixed } };
   };
 }
 

@@ -157,6 +157,12 @@ const resolveLogin = async () => ({ resolved: true, selector: { strategy: "css",
         const ctx = await browser.newContext();
         const ok = await runWebSteps(await ctx.newPage(), steps, { baseUrl });
         assert.strictEqual(ok.status, "pass", ok.detail);
+        assert.strictEqual(ok.ranOn.provider, "local");
+        assert.strictEqual(ok.ranOn.engine, "playwright");
+        const ctx3 = await browser.newContext();
+        const moved = await runWebSteps(await ctx3.newPage(), steps, { baseUrl, recordedOn: { provider: "browserstack", engine: "playwright", browser: "chromium", platform: "web" } });
+        assert.strictEqual(moved.status, "pass", "a different provider is a flag, never a failure");
+        assert.match(moved.warnings[0], /Recorded on BrowserStack.*ran on Local/);
 
         const bad = JSON.parse(JSON.stringify(steps));
         bad[2].expect = { appeared: ["Goodbye"] };

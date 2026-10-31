@@ -32,6 +32,15 @@ OS default to Chrome latest on Windows 11; pass a `target` with `browser`, `brow
 Mobile keeps using the server's `TESTOPS_MOBILE_APPIUM_PROVIDER`; a per-run choice for mobile is not built, because
 that setting is process-wide by design (see `engine/remote-provider.js`).
 
+## Recording on BrowserStack
+
+The start screen's **Web** panel has **Record on: Chromium on TestOps / BrowserStack**. `POST /api/web-sessions` takes
+`runOn` (and optionally `target`). On BrowserStack the recording browser is a BrowserStack browser, mirrored into the
+same stage, and the script header and test-case JSON say `provider=browserstack`. It uses the server's
+`TESTOPS_MOBILE_BROWSERSTACK_USER` / `_KEY`, costs BrowserStack minutes, and cannot open pages that are only on your
+own network (BrowserStack Local is not set up for web yet). Replay CLI: `node web/run-web-test-case.js case.json --browserstack`;
+a test case recorded elsewhere replays with a warning, never a failure.
+
 ## TestOps can pass the target in
 
 TestOps already holds the BrowserStack integration and knows the device and session, so it can pass them instead
@@ -42,5 +51,5 @@ anything else are dropped. What the engine can see for itself fills any gaps.
 
 ## Not verified
 
-The BrowserStack web path is unit-tested with a stand-in Playwright and has not been run against a real BrowserStack
+The BrowserStack web path (running and recording) is unit-tested with a stand-in Playwright and has not been run against a real BrowserStack
 account from this sandbox. Try one run from your Mac before relying on it.

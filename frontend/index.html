@@ -350,7 +350,9 @@
     <div id="web-panel">
       <label class="field-label" for="web-url">Start URL</label>
       <input type="text" id="web-url" placeholder="https://yes.my" style="width:100%" />
-      <p class="small-hint">Opens in a Chromium browser on this machine. No device cost.</p>
+      <label class="field-label" for="web-runon" style="margin-top:8px">Record on</label>
+      <select id="web-runon" style="width:100%" aria-label="where to record the web test"><option value="local">Chromium on TestOps</option><option value="browserstack">BrowserStack</option></select>
+      <p class="small-hint">Chromium on TestOps opens on this machine at no cost. BrowserStack uses your BrowserStack minutes and cannot open pages that are only on your own network.</p>
     </div>
     <div id="mobile-panel" style="display:none;">
       <label class="drop-zone" id="drop-zone" for="app-file-input">
@@ -544,7 +546,7 @@
       let response, body;
       if (platform === "web") {
         uploadStatus.textContent = "Opening a browser on " + webUrl.value.trim() + "…";
-        response = await fetch("/api/web-sessions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: webUrl.value.trim() }) });
+        response = await fetch("/api/web-sessions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: webUrl.value.trim(), runOn: $("web-runon").value }) });
       } else {
         const file = fileInput.files[0];
         if (!file) return;

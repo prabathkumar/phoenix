@@ -76,9 +76,15 @@ async function defaultAiLoop({ goal, page, recorder, send, announce }) {
  * @param {{port:number, startUrl?:string, name?:string, browser?:Object, headless?:boolean, aiLoop?:Function}} opts
  * @returns {Promise<{wss:Object, port:number, recorder:Object, page:Object, close:Function}>}
  */
-async function startWebLiveView({ port, startUrl, name, browser, headless, aiLoop = defaultAiLoop } = {}) {
+async function startWebLiveView({ port, startUrl, name, browser, headless, aiLoop = defaultAiLoop, runOn, target } = {}) {
   const ownsBrowser = !browser;
-  const b = browser || (await launchBrowser({ headless }));
+  // Chromium on this machine (default) or a BrowserStack browser, chosen per recording.
+  let where;
+  let b = browser;
+  if (!b && runOn === "browserstack") {
+    const launched = await require("../browser-provider").launchWebBrowser({ runOn, headless, target, name: `TestOps recording: ${name || "web flow"}` });
+    b = launched.browser; where = launched.where;
+  } else if (!b) b = await launchBrowser({ headless });
   const context = await b.newContext({ viewport: VIEWPORT });
   const page = await context.newPage();
   const recorder = new WebRecorder(page);
@@ -131,7 +137,7 @@ async function startWebLiveView({ port, startUrl, name, browser, headless, aiLoo
       const testName = name && name !== "recorded_web_flow" ? name : inferWebFlowName(steps);
       send({ type: "session-finished", stepCount: steps.length });
       let recordedOn;
-      try { recordedOn = require("../../engine/core/run-target").targetFromBrowser(b, { headless }); } catch { /* label is best-effort */ }
+      try { { const rt = require("../../engine/core/run-target"); recordedOn = rt.mergeTarget(rt.normalizeTarget(target), where || rt.targetFromBrowser(b, { headless })); } } catch { /* label is best-effort */ }
       const tc = toTestCase(steps, { name: testName });
       const label = recordedOn ? require("../../engine/core/run-target").targetLabel(recordedOn) : null;
       send({

@@ -1,7 +1,8 @@
 /**
  * POST /api/web-sessions {url, name?} -> starts a web recording (Chromium on
- * this machine, mirrored over WebSocket) and returns {port}. No BrowserStack
- * session involved, so it costs nothing and has no device latency.
+ * this machine by default, mirrored over WebSocket) and returns {port}.
+ * {runOn:"browserstack"} records in a BrowserStack browser instead (uses the
+ * server's TESTOPS_MOBILE_BROWSERSTACK_USER/_KEY; costs BrowserStack minutes).
  */
 const net = require("net");
 const { startWebLiveView } = require("../web/recorder/web-live-view");
@@ -42,10 +43,10 @@ function readJson(req) {
 async function handleStartWebSession(req, res, start = startWebLiveView) {
   const send = (code, obj) => { res.writeHead(code, { "Content-Type": "application/json" }); res.end(JSON.stringify(obj)); };
   try {
-    const { url, name } = await readJson(req);
+    const { url, name, runOn, target } = await readJson(req);
     if (!url || typeof url !== "string") return send(400, { error: "A start URL is required." });
     const port = await freePort();
-    const session = await start({ port, startUrl: url, name: name || "recorded_web_flow" });
+    const session = await start({ port, startUrl: url, name: name || "recorded_web_flow", runOn: String(runOn || "").toLowerCase() === "browserstack" ? "browserstack" : "local", target: require("../engine/core/run-target").normalizeTarget(target) });
     live.add(session);
     session.wss.on("close", () => live.delete(session));
     send(200, { port });

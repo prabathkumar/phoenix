@@ -42,6 +42,14 @@ const fakeChromium = () => { const calls = {}; return { calls, launch: async (o)
     assert.deepStrictEqual(["x", undefined, "BrowserStack", "local"].map(normalizeRunOn), ["local", "local", "browserstack", "local"]);
   });
 
+  await test("recording on BrowserStack without credentials stops with a plain message and starts nothing", async () => {
+    const { startWebLiveView } = require("../recorder/web-live-view");
+    const keep = { u: process.env.TESTOPS_MOBILE_BROWSERSTACK_USER, k: process.env.TESTOPS_MOBILE_BROWSERSTACK_KEY };
+    delete process.env.TESTOPS_MOBILE_BROWSERSTACK_USER; delete process.env.TESTOPS_MOBILE_BROWSERSTACK_KEY;
+    try { await assert.rejects(() => startWebLiveView({ port: 0, startUrl: "https://x.test", runOn: "browserstack" }), /TESTOPS_MOBILE_BROWSERSTACK_USER/); }
+    finally { if (keep.u) process.env.TESTOPS_MOBILE_BROWSERSTACK_USER = keep.u; if (keep.k) process.env.TESTOPS_MOBILE_BROWSERSTACK_KEY = keep.k; }
+  });
+
   if (failed) { console.error(`\n${failed} failed`); process.exit(1); }
   console.log("\nweb/browser-provider tests passed");
 })();

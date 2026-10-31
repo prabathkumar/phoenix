@@ -268,6 +268,19 @@ test("codegen emits parameters, locators and assertions", () => {
     c.ws.close(); c.site.server.close(); await c.session.close();
   });
 
+  await test("the recording says where it was made: local Chromium via Playwright, in the script header and the test case", async () => {
+    const c = await open(PAGE, null, { name: "where" });
+    await c.waitFor((m) => m.type === "frame");
+    c.tap(250, 120);
+    await c.waitFor((m) => m.type === "step-recorded" && m.kind === "tap");
+    const done = await c.finish();
+    assert.strictEqual(done.recordedOn.provider, "local");
+    assert.strictEqual(done.recordedOn.engine, "playwright");
+    assert.match(done.scriptSource, /^\/\/ Recorded on: Local · Chromium/);
+    assert.strictEqual(done.testCaseJson.recordedOn.provider, "local");
+    c.ws.close(); c.site.server.close(); await c.session.close();
+  });
+
   if (failed) { console.error("\nweb recorder tests FAILED"); process.exit(1); }
   console.log("\nweb recorder tests passed"); process.exit(0);
 })();

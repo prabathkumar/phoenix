@@ -43,13 +43,15 @@ function askAtTerminal({ index, step, reason }) {
   const argv = process.argv.slice(2);
   const file = argv.find((a) => !a.startsWith("--"));
   const opt = (name) => { const i = argv.indexOf(`--${name}`); return i >= 0 ? argv[i + 1] : undefined; };
-  if (!file) { console.error("usage: run-web-test-case.js <test-case.json> [--base-url URL] [--headed] [--persist] [--out file]"); process.exit(2); }
+  if (!file) { console.error("usage: run-web-test-case.js <test-case.json> [--base-url URL] [--headed] [--browserstack] [--persist] [--out file]"); process.exit(2); }
   const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
   const steps = Array.isArray(parsed) ? parsed : parsed.steps;
   const result = await runWebTestCase(steps, {
     baseUrl: opt("base-url") || parsed.baseUrl,
     headless: !argv.includes("--headed"),
     testCase: parsed.name || file,
+    runOn: argv.includes("--browserstack") ? "browserstack" : "local",
+    recordedOn: Array.isArray(parsed) ? undefined : parsed.recordedOn,
     contextOptions: {},
     testData: parsed.testData,
     ai: argv.includes("--ai"),

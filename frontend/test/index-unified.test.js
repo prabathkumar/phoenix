@@ -76,7 +76,7 @@ const JPG = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDABsSFBcUERsXFhceHBsgKEIrKCUlKFE6PTB
     assert.ok(/server couldn't be reached/.test(g2.title));
 
     // A failed click shows a guided card; Retry resends the same click.
-    await page.click("#device-frame img", { position: { x: 1, y: 1 } });
+    await page.click("#device-frame img", { position: { x: 30, y: 30 } });
     await page.waitForSelector("#guide.show");
     assert.ok((await page.textContent("#guide")).includes("click was intercepted"));
     await page.click("#guide >> text=Retry");

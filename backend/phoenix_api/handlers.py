@@ -64,7 +64,7 @@ def scenarios_handler(call_json, get_prompt):
     return ai_handler("scenario_batch", call_json, get_prompt, lambda c: f"REQUIREMENT:\n{str(c.get('requirement') or '')[:6000]}")
 
 
-def cases_handler(call_json, get_prompt, project="", requirement_key="", run_id="", url=None):
+def cases_handler(call_json, get_prompt, project="", requirement_key="", run_id="", url=None, scenario_label=""):
     def user_of(c):
         sc = next((s for s in c.get("results", []) if s["id"] == "scenarios"), {}).get("data") or {}
         return f"REQUIREMENT:\n{str(c.get('requirement') or '')[:3000]}\nSCENARIOS:\n{json.dumps(sc.get('items', []))[:4000]}"
@@ -78,7 +78,8 @@ def cases_handler(call_json, get_prompt, project="", requirement_key="", run_id=
                 d = it if isinstance(it, dict) else {"title": str(it)}
                 steps = d.get("steps") or d.get("instructions") or []
                 signoff.upsert_case(str(d.get("id") or f"TC-{suffix}-{n:02d}"), str(d.get("title") or d.get("name") or d.get("summary") or f"Case {n}"), steps if isinstance(steps, list) else [str(steps)],
-                                    project=project, requirement=requirement_key, priority=str(d.get("priority") or "Medium").title(), who="ai", url=url)
+                                    project=project, requirement=requirement_key, priority=str(d.get("priority") or "Medium").title(), who="ai", url=url,
+                                    scenario=str(d.get("scenario") or d.get("scenario_title") or scenario_label or requirement_key or f"run {suffix}")[:200])
                 d["id"] = str(d.get("id") or f"TC-{suffix}-{n:02d}")
                 r["data"]["items"][n - 1] = d
         return r

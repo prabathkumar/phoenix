@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -61,7 +61,7 @@ describe("test cases and sign-off", () => {
   it("warns that unapproved cases will not pass a release sign-off", async () => {
     at("/cases");
     await userEvent.click(await screen.findByLabelText("Select TC-1"));
-    await userEvent.click(screen.getByRole("button", { name: /Start run/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Run selected/ }));
     const dlg = await screen.findByRole("dialog");
     expect(within(dlg).getByText(/not approved yet/)).toBeInTheDocument();
   });
@@ -109,5 +109,22 @@ describe("shell", () => {
     expect(body.stages).not.toContain("dast");
     expect(body.stages).not.toContain("defects");
     expect(await screen.findByRole("heading", { name: "AI Test Manager" })).toBeInTheDocument();
+  });
+});
+
+describe("scenario runs", () => {
+  it("warns before running part of a scenario, and runs all of it from the scenario button", async () => {
+    const cases = Array.from({ length: 4 }, (_, i) => ({ id: `S-${i}`, title: `Case ${i}`, steps: ["x"], priority: "Medium", who: "ai", signoff: "approved", scenario: "Checkout" }));
+    global.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ cases }), text: async () => JSON.stringify({ cases }) }));
+    const { default: Cases } = await import("../src/pages/Cases.jsx");
+    render(<MemoryRouter><Cases /></MemoryRouter>);
+    await screen.findByText("Case 0");
+    fireEvent.click(screen.getByLabelText("Select S-0"));
+    fireEvent.click(screen.getByLabelText("Select S-1"));
+    fireEvent.click(screen.getByRole("button", { name: /Run selected \(2\)/ }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("2 of 4");
+    expect(screen.getByRole("button", { name: /Start run/ })).toBeDisabled();
+    fireEvent.click(screen.getByLabelText(/Run only these, on purpose/));
+    expect(screen.getByRole("button", { name: /Start run/ })).not.toBeDisabled();
   });
 });

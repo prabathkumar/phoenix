@@ -49,3 +49,5 @@ td{padding:10px 12px;border-top:1px solid var(--line);vertical-align:top}
 code,pre{font-family:ui-monospace,Menlo,monospace;font-size:12px}
 pre{background:var(--head);padding:10px;border-radius:8px;overflow:auto;margin:0}
 @media (max-width:760px){.nav{position:static;width:100%;height:auto;flex:1 1 100%;flex-direction:row;overflow:auto}.who{display:none}main{padding:20px 16px}}
+
+tr.group td{background:var(--surface-2,rgba(127,127,127,.08))}

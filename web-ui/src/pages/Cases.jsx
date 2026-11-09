@@ -7,11 +7,12 @@ import { Btn, Card, Chip, ErrorNote, SignoffChip, useLoad } from "../ui.jsx";
 export default function Cases() {
   const { data, error, reload } = useLoad(() => api.cases());
   const [sel, setSel] = useState({});
-  const [drawer, setDrawer] = useState(false);
+  const [drawer, setDrawer] = useState(null); // { cases, scenarios } being started
   const [err, setErr] = useState(null);
   const cases = data ? data.cases : [];
   const chosen = cases.filter((c) => sel[c.id]);
   const total = cases.length;
+  const groups = [...new Set(cases.map((c) => c.scenario || "No scenario"))].map((name) => ({ name, items: cases.filter((c) => (c.scenario || "No scenario") === name) }));
   const approved = cases.filter((c) => c.signoff === "approved").length;
 
   async function request() {
@@ -35,7 +36,7 @@ export default function Cases() {
           <span className="grow" />
           <Btn onClick={() => setSel({})} disabled={!chosen.length}>Clear</Btn>
           <Btn onClick={request} disabled={!chosen.length}>Request sign-off</Btn>
-          <Btn pri onClick={() => setDrawer(true)} disabled={!chosen.length}>Start run ({chosen.length})</Btn>
+          <Btn pri onClick={() => setDrawer({ cases: chosen, scenarios: [] })} disabled={!chosen.length}>Run selected ({chosen.length})</Btn>
         </div>
         <ErrorNote error={err || error} />
       </Card>
@@ -43,36 +44,47 @@ export default function Cases() {
         <table>
           <thead><tr><th style={{ width: 28 }}><input type="checkbox" aria-label="Select all" style={{ width: "auto" }} checked={total > 0 && chosen.length === total} onChange={(e) => setSel(e.target.checked ? Object.fromEntries(cases.map((c) => [c.id, true])) : {})} /></th><th>Test case</th><th>Sign-off</th><th>Priority</th><th>Who runs it</th></tr></thead>
           <tbody>
-            {cases.map((c) => (
-              <tr key={c.id}>
-                <td><input type="checkbox" aria-label={`Select ${c.id}`} style={{ width: "auto" }} checked={!!sel[c.id]} onChange={(e) => setSel({ ...sel, [c.id]: e.target.checked })} /></td>
-                <td><b>{c.title}</b><div className="sub">{c.id}{c.requirement ? ` · ${c.requirement}` : ""}</div></td>
-                <td><SignoffChip state={c.signoff} /></td>
-                <td>{c.priority}</td>
-                <td>{c.who === "ai" ? <Chip kind="info">AI runs it</Chip> : <Chip>You do it, AI guides</Chip>}</td>
-              </tr>
-            ))}
+            {groups.map((g) => [
+              <tr key={`g-${g.name}`} className="group">
+                <td colSpan="3"><b>{g.name}</b> <span className="sub">{g.items.length} case{g.items.length > 1 ? "s" : ""}{g.items.filter((c) => sel[c.id]).length && g.items.filter((c) => sel[c.id]).length < g.items.length ? ` · ${g.items.filter((c) => sel[c.id]).length} selected` : ""}</span></td>
+                <td colSpan="2"><Btn onClick={() => setDrawer({ cases: g.items, scenarios: g.name === "No scenario" ? [] : [g.name] })}>Run whole scenario ({g.items.length})</Btn></td>
+              </tr>,
+              ...g.items.map((c) => (
+                <tr key={c.id}>
+                  <td><input type="checkbox" aria-label={`Select ${c.id}`} style={{ width: "auto" }} checked={!!sel[c.id]} onChange={(e) => setSel({ ...sel, [c.id]: e.target.checked })} /></td>
+                  <td><b>{c.title}</b><div className="sub">{c.id}{c.requirement ? ` · ${c.requirement}` : ""}</div></td>
+                  <td><SignoffChip state={c.signoff} /></td>
+                  <td>{c.priority}</td>
+                  <td>{c.who === "ai" ? <Chip kind="info">AI runs it</Chip> : <Chip>You do it, AI guides</Chip>}</td>
+                </tr>
+              )),
+            ])}
             {!cases.length ? <tr><td colSpan="5" className="sub">No test cases yet. <Link to="/start">Give the AI a requirement</Link> and it will write them.</td></tr> : null}
           </tbody>
         </table>
       </Card>
-      {drawer ? <RunDrawer cases={chosen} onClose={() => setDrawer(false)} /> : null}
+      {drawer ? <RunDrawer cases={drawer.cases} scenarios={drawer.scenarios} all={cases} onClose={() => setDrawer(null)} /> : null}
     </div>
   );
 }
 
-function RunDrawer({ cases, onClose }) {
+function RunDrawer({ cases, scenarios, all, onClose }) {
   const nav = useNavigate();
   const [f, setF] = useState({ url: "", runOn: "local", tdata: "" });
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [partialOk, setPartialOk] = useState(false);
   const unapproved = cases.filter((c) => c.signoff !== "approved");
+  // picking some of a scenario's cases is allowed, but never silently
+  const partial = [...new Set(cases.map((c) => c.scenario).filter(Boolean))]
+    .map((name) => ({ name, total: all.filter((c) => c.scenario === name).length, picked: cases.filter((c) => c.scenario === name).length }))
+    .filter((p) => p.picked < p.total && !scenarios.includes(p.name));
   async function start() {
     setBusy(true); setErr(null);
     try {
       let testData = {};
       if (f.tdata.trim()) { try { testData = JSON.parse(f.tdata); } catch { throw new Error("Test data must be JSON."); } }
-      const out = await startRun({ goal: `Run ${cases.length} test case(s)`, requirement: cases.map((c) => c.title).join("\n"), web: { url: f.url, runOn: f.runOn, steps: "" }, testData, stages: ["execution", "har", "defects", "signoff"], cases: cases.map((c) => ({ id: c.id })), autonomy: "ask-when-matters" });
+      const out = await startRun({ goal: `Run ${cases.length} test case(s)`, requirement: cases.map((c) => c.title).join("\n"), web: { url: f.url, runOn: f.runOn, steps: "" }, testData, stages: ["execution", "har", "defects", "signoff"], cases: cases.map((c) => ({ id: c.id })), scenarios, allowPartial: partial.length > 0 && partialOk, autonomy: "ask-when-matters" });
       nav(`/runs/${out.runId}`);
     } catch (e) { setErr(e); } finally { setBusy(false); }
   }
@@ -80,13 +92,19 @@ function RunDrawer({ cases, onClose }) {
     <aside role="dialog" aria-label="Ready to run" className="card hi">
       <div className="row"><h2 className="grow">Ready to run {cases.length} case{cases.length > 1 ? "s" : ""}</h2><Btn onClick={onClose}>Close</Btn></div>
       <div className="sub">Where it runs and which test data it uses. Nothing runs until you press Start.</div>
+      {partial.length ? (
+        <div className="note" role="alert">
+          <b>This is only part of a scenario.</b> {partial.map((p) => `${p.picked} of ${p.total} in "${p.name}"`).join("; ")}. The rest will be recorded as not run, and a release sign-off will not pass while they are missing.
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}><input type="checkbox" style={{ width: "auto" }} checked={partialOk} onChange={(e) => setPartialOk(e.target.checked)} /> Run only these, on purpose</label>
+        </div>
+      ) : null}
       {unapproved.length ? <div className="note">{unapproved.length} of these cases are not approved yet. You can run them to try them out, but a release sign-off will not pass until they are approved.</div> : null}
       <label htmlFor="d-url">App address</label><input id="d-url" value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })} placeholder="https://test.example.com" />
       <label htmlFor="d-on">Where</label><select id="d-on" value={f.runOn} onChange={(e) => setF({ ...f, runOn: e.target.value })}><option value="local">Local</option><option value="browserstack">BrowserStack</option></select>
       <label htmlFor="d-td">Test data (JSON, passwords stay hidden from the AI)</label><textarea id="d-td" value={f.tdata} onChange={(e) => setF({ ...f, tdata: e.target.value })} style={{ minHeight: 56 }} />
       <div className="sub">Safety: stop at first failure, ask before risky actions.</div>
       <ErrorNote error={err} />
-      <div className="row"><span className="grow" /><Btn pri onClick={start} disabled={busy}>{busy ? "Starting…" : "Start run"}</Btn></div>
+      <div className="row"><span className="grow" /><Btn pri onClick={start} disabled={busy || (partial.length > 0 && !partialOk)}>{busy ? "Starting…" : "Start run"}</Btn></div>
     </aside>
   );
 }

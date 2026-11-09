@@ -29,16 +29,18 @@ def _event(s, sid, action, actor, note=""):
 
 
 # ---- test cases
-def upsert_case(id, title, steps=None, project="", requirement="", priority="Medium", who="ai", url=None):
+def upsert_case(id, title, steps=None, project="", requirement="", priority="Medium", who="ai", url=None, scenario=""):
     with db.session(url) as s:
         c = s.get(TestCase, id)
         if c is None:
-            s.add(TestCase(id=id, title=title[:300], steps=steps or [], project=project, requirement=requirement, priority=priority, who=who))
+            s.add(TestCase(id=id, title=title[:300], steps=steps or [], project=project, requirement=requirement, priority=priority, who=who, scenario=(scenario or "")[:200]))
         else:
             changed = (c.title != title[:300]) or (steps is not None and c.steps != steps)
             c.title, c.project, c.requirement, c.priority, c.who = title[:300], project or c.project, requirement or c.requirement, priority, who
             if steps is not None:
                 c.steps = steps
+            if scenario:
+                c.scenario = scenario[:200]
             if changed and c.signoff in ("approved", "pending"):
                 c.signoff = "draft"  # an edited case needs a new approval
                 for so in s.query(Signoff).filter_by(kind="case", subject=id, status="pending").all():
@@ -48,13 +50,13 @@ def upsert_case(id, title, steps=None, project="", requirement="", priority="Med
 
 
 def _case(c):
-    return {"id": c.id, "project": c.project, "requirement": c.requirement, "title": c.title, "steps": c.steps, "priority": c.priority, "who": c.who, "signoff": c.signoff}
+    return {"id": c.id, "project": c.project, "requirement": c.requirement, "title": c.title, "steps": c.steps, "priority": c.priority, "who": c.who, "signoff": c.signoff, "scenario": c.scenario or ""}
 
 
-def list_cases(project=None, requirement=None, signoff=None, url=None):
+def list_cases(project=None, requirement=None, signoff=None, url=None, scenario=None):
     with db.session(url) as s:
         q = s.query(TestCase)
-        for col, v in ((TestCase.project, project), (TestCase.requirement, requirement), (TestCase.signoff, signoff)):
+        for col, v in ((TestCase.project, project), (TestCase.requirement, requirement), (TestCase.signoff, signoff), (TestCase.scenario, scenario)):
             if v:
                 q = q.filter(col == v)
         return [_case(c) for c in q.order_by(TestCase.id).all()]
@@ -156,6 +158,11 @@ def run_checks(run_id, url=None):
     for c in list_cases(url=url):
         if c["id"] in last:
             cases[c["id"]] = c
+    # a scenario is judged whole: if any of its cases ran, all of them count, so a partial suite shows what was not run
+    for sc in {c["scenario"] for c in cases.values() if c.get("scenario") and c["id"] in last}:
+        for c in list_cases(scenario=sc, url=url):
+            cases[c["id"]] = c
+    ran = {i for i, r in last.items() if r in ("passed", "failed")}
     cases = list(cases.values())
     failed = [c for c, r in last.items() if r == "failed"]
     defect_n = len(rec["defects"]["keys"])
@@ -163,7 +170,7 @@ def run_checks(run_id, url=None):
     tr = rec.get("traceability") or {}
     checks = [
         {"name": "Cases approved", "ok": bool(cases) and all(c["signoff"] == "approved" for c in cases), "detail": f"{sum(c['signoff'] == 'approved' for c in cases)} of {len(cases)} approved" if cases else "no test cases are linked to this run, so there is nothing to approve"},
-        {"name": "Every case executed", "ok": bool(cases) and all(c["id"] in last for c in cases), "detail": f"{len(last)} executed"},
+        {"name": "Every case executed", "ok": bool(cases) and all(c["id"] in ran for c in cases), "detail": f"{sum(c['id'] in ran for c in cases)} of {len(cases)} executed" + (f"; not run: {', '.join(c['id'] for c in cases if c['id'] not in ran)[:200]}" if cases and any(c['id'] not in ran for c in cases) else "")},
         {"name": "No unresolved failures", "ok": not failed or defect_n >= len(failed), "detail": f"{len(failed)} failed, {defect_n} defect(s) logged"},
         {"name": "No failed security stage", "ok": "failed" not in (sec.get("secrets"), sec.get("sast"), sec.get("dast")), "detail": f"secrets {sec.get('secrets')}, SAST {sec.get('sast')}, DAST {sec.get('dast')}"},
         {"name": "Requirements covered", "ok": (not tr) or (tr.get("missing", 0) == 0), "detail": f"{tr.get('missing', 0)} missing" if tr else "traceability not run"},

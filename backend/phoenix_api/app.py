@@ -55,13 +55,13 @@ def create_app(deps: Deps | None = None) -> FastAPI:
 
     # ---- test cases and sign-off
     @app.get("/api/cases")
-    def cases(project: str | None = None, requirement: str | None = None, signoff_state: str | None = Query(None, alias="signoff")):
-        return {"cases": signoff.list_cases(project, requirement, signoff_state, url)}
+    def cases(project: str | None = None, requirement: str | None = None, signoff_state: str | None = Query(None, alias="signoff"), scenario: str | None = None):
+        return {"cases": signoff.list_cases(project, requirement, signoff_state, url, scenario)}
 
     @app.post("/api/cases")
     def upsert(body: dict = Body(...)):
         try:
-            return signoff.upsert_case(body["id"], body["title"], body.get("steps"), body.get("project", ""), body.get("requirement", ""), body.get("priority", "Medium"), body.get("who", "human"), url)
+            return signoff.upsert_case(body["id"], body["title"], body.get("steps"), body.get("project", ""), body.get("requirement", ""), body.get("priority", "Medium"), body.get("who", "human"), url, body.get("scenario", ""))
         except (KeyError, ValueError) as e:
             raise bad(e)
 

@@ -161,3 +161,56 @@ def test_release_check_is_not_vacuous_without_a_requirement():
     so = signoff.request_case("TC-5", "alice")
     signoff.decide(so["id"], "approved", "bob")
     assert {c["name"]: c for c in signoff.run_checks(rid)["checks"]}["Cases approved"]["ok"]
+
+
+# ---- a scenario is run whole; a partial suite is a deliberate, visible choice
+def _fourteen(sc="Checkout"):
+    for n in range(1, 15):
+        signoff.upsert_case(f"SC-{n:02d}", f"Case {n}", [f"step {n}"], scenario=sc)
+
+
+def _engine(seen):
+    async def exec_fetch(m, u, h, b):
+        body = json.loads(b); seen.append([c["id"] for c in body["cases"]])
+        return 200, json.dumps({"ok": True, "detail": "ok", "results": [{"id": c["id"], "result": "passed", "ms": 1, "where": "local"} for c in body["cases"]], "failedCases": []})
+    return exec_fetch
+
+
+async def test_picking_some_cases_of_a_scenario_needs_confirmation(fresh):
+    from phoenix_api.service import run_pipeline_request
+    _fourteen(); seen = []
+    d = Deps(env={"DATABASE_URL": fresh, "ENGINE_URL": "http://e"}, call_json=None, exec_fetch=_engine(seen))
+    code, out = await run_pipeline_request({"goal": "run", "web": {"url": "http://x", "steps": ""}, "cases": [{"id": f"SC-{n:02d}"} for n in range(1, 6)], "stages": ["execution"]}, d)
+    st = next(s for s in out["stages"] if s["id"] == "execution")
+    assert not seen and "5 of 14" in st["detail"] and signoff.executions_for(out["runId"]) == []  # nothing ran
+
+
+async def test_running_a_scenario_runs_all_of_it(fresh):
+    from phoenix_api.service import run_pipeline_request
+    _fourteen(); seen = []
+    d = Deps(env={"DATABASE_URL": fresh, "ENGINE_URL": "http://e"}, call_json=None, exec_fetch=_engine(seen))
+    code, out = await run_pipeline_request({"goal": "run", "web": {"url": "http://x", "steps": ""}, "scenarios": ["Checkout"], "stages": ["execution"]}, d)
+    assert len(seen[0]) == 14 and len(signoff.executions_for(out["runId"])) == 14
+
+
+async def test_confirmed_partial_suite_records_the_rest_as_skipped_and_blocks_release(fresh):
+    from phoenix_api.service import run_pipeline_request
+    _fourteen(); seen = []
+    d = Deps(env={"DATABASE_URL": fresh, "ENGINE_URL": "http://e"}, call_json=None, exec_fetch=_engine(seen))
+    code, out = await run_pipeline_request({"goal": "run", "web": {"url": "http://x", "steps": ""}, "allowPartial": True, "cases": [{"id": f"SC-{n:02d}"} for n in range(1, 6)], "stages": ["execution"]}, d)
+    ex = signoff.executions_for(out["runId"])
+    assert len(seen[0]) == 5 and sum(e["result"] == "skipped" for e in ex) == 9
+    chk = {c["name"]: c for c in signoff.run_checks(out["runId"], fresh)["checks"]}
+    assert not chk["Every case executed"]["ok"] and "5 of 14" in chk["Every case executed"]["detail"]
+
+
+def test_existing_database_gains_the_scenario_column(tmp_path):
+    import sqlalchemy as sa
+    from phoenix_api import db
+    url = f"sqlite:///{tmp_path}/old.db"
+    e = sa.create_engine(url)
+    with e.begin() as c:
+        c.execute(sa.text("CREATE TABLE test_cases (id VARCHAR(64) PRIMARY KEY, project VARCHAR(64), requirement VARCHAR(64), title VARCHAR(300), steps JSON, priority VARCHAR(16), who VARCHAR(16), signoff VARCHAR(24), created_at DATETIME)"))
+        c.execute(sa.text("INSERT INTO test_cases (id,title,steps,project,requirement,priority,who,signoff) VALUES ('OLD-1','old','[]','','','Medium','ai','draft')"))
+    db._engines.pop(url, None)
+    assert signoff.list_cases(url=url)[0]["scenario"] == ""

@@ -43,6 +43,7 @@ class TestCase(Base):
     priority: Mapped[str] = mapped_column(String(16), default="Medium")
     who: Mapped[str] = mapped_column(String(16), default="ai")              # ai | human
     signoff: Mapped[str] = mapped_column(String(24), default="draft", index=True)  # draft|pending|approved|rejected|changes-requested
+    scenario: Mapped[str] = mapped_column(String(200), default="", index=True)  # the scenario (group of cases) this belongs to; running a scenario runs all of them
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
@@ -110,8 +111,24 @@ def _engine_locked(url):
             Base.metadata.create_all(e)
         except Exception:  # another worker created them at the same moment (Postgres); check again, then fail loudly if still broken
             Base.metadata.create_all(e)
+        _migrate(e)
         _engines[url] = e
     return _engines[url]
+
+
+def _migrate(e):
+    """create_all adds tables, never columns: add the ones introduced after a database was first made."""
+    from sqlalchemy import inspect, text
+    try:
+        cols = {c["name"] for c in inspect(e).get_columns("test_cases")}
+        if "scenario" not in cols:
+            with e.begin() as c:
+                c.execute(text("ALTER TABLE test_cases ADD COLUMN scenario VARCHAR(200) NOT NULL DEFAULT ''"))
+                c.execute(text("CREATE INDEX IF NOT EXISTS ix_test_cases_scenario ON test_cases (scenario)"))
+    except Exception:  # another worker added it at the same moment
+        cols = {c["name"] for c in inspect(e).get_columns("test_cases")}
+        if "scenario" not in cols:
+            raise
 
 
 def session(url=None) -> Session:

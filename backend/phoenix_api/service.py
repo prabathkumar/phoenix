@@ -79,7 +79,20 @@ async def run_pipeline_request(body, deps: Deps):
                 cases.append({"id": c["id"], "name": c.get("title") or c.get("name") or c["id"], "platform": (c.get("platform") or ((ctx.get("platforms") or ["web"])[0] if (ctx.get("platforms") or ["web"])[0] != "api" else "web")), "steps": "\n".join(map(str, c["steps"]))})
         picked = {c.get("id") for c in body.get("cases", []) if isinstance(c, dict)}
         plat = (ctx.get("platforms") or ["web"])[0]
-        for c in signoff.list_cases(url=url):  # cases a person selected in the UI: run exactly those, by id
+        everyone = signoff.list_cases(url=url)
+        for sc in body.get("scenarios") or []:  # "run this scenario": every case in it, always
+            picked |= {c["id"] for c in everyone if c.get("scenario") == str(sc)}
+        # picking some cases of a scenario is allowed only on purpose: say how many would not run
+        partial = []
+        for sc in sorted({c["scenario"] for c in everyone if c["id"] in picked and c.get("scenario")}):
+            mine = [c for c in everyone if c.get("scenario") == sc]
+            left = [c for c in mine if c["id"] not in picked]
+            if left:
+                partial.append({"scenario": sc, "total": len(mine), "picked": len(mine) - len(left), "notRun": [c["id"] for c in left]})
+        if partial and body.get("allowPartial") is not True:
+            w = "; ".join(f"{p['picked']} of {p['total']} in '{p['scenario']}'" for p in partial)
+            return {"ok": False, "detail": f"needs you: only part of a scenario was picked ({w}). Run the whole scenario, or confirm a partial suite.", "data": {"partial": partial}}
+        for c in everyone:  # cases a person selected in the UI: run exactly those, by id
             if c["id"] in picked and c["steps"]:
                 cases.append({"id": c["id"], "name": c["title"], "platform": "mobile" if plat == "mobile" else "web", "steps": "\n".join(map(str, c["steps"]))})
         names = testdata.required_names([c["steps"] for c in cases] + [body.get("web"), body.get("mobile")] + steps)
@@ -94,10 +107,13 @@ async def run_pipeline_request(body, deps: Deps):
             return {"unavailable": True, "detail": r["detail"]}
         for x in r.get("results", []):
             signoff.record_execution(run_id, x["id"], x["result"], "ai", x.get("where", ""), x.get("detail", ""), x.get("ms", 0), url)
+        for p in partial:  # the cases left out are recorded as skipped, so nobody can mistake a partial suite for a full one
+            for cid in p["notRun"]:
+                signoff.record_execution(run_id, cid, "skipped", "ai", "", f"left out of a partial suite ({p['picked']} of {p['total']} in '{p['scenario']}')", 0, url)
         failed_cases.extend(r.get("failedCases", []))
         if r.get("harPath"):
             state["harPath"] = r["harPath"]
-        return {"ok": r.get("ok", False), "detail": r.get("detail", ""), "data": {"failedCases": [{"name": c["name"]} for c in r.get("failedCases", [])]}}
+        return {"ok": r.get("ok", False), "detail": r.get("detail", ""), "data": {"failedCases": [{"name": c["name"]} for c in r.get("failedCases", [])], "partial": partial}}
 
     async def har_h(ctx):
         return await H.har_handler()({**ctx, "harPath": state.get("harPath")})
@@ -106,7 +122,7 @@ async def run_pipeline_request(body, deps: Deps):
         return await J.defects_handler(deps.jira, jira_key, list(values.values()))({**ctx, "failedCases": failed_cases})
 
     hs = {
-        "scenarios": H.scenarios_handler(call_json, get_prompt), "cases": H.cases_handler(call_json, get_prompt, project, jira_key or "", run_id, url),
+        "scenarios": H.scenarios_handler(call_json, get_prompt), "cases": H.cases_handler(call_json, get_prompt, project, jira_key or "", run_id, url, str(body.get("goal") or "")[:120]),
         "testdata": testdata_h, "execution": execution_h, "har": har_h, "performance": H.performance_handler(**run_kw), "dast": H.dast_handler(env=env, **run_kw),
         "traceability": H.traceability_handler(call_json, deps.connect_repo), "aieval": H.aieval_handler(env=env, run_id=run_id, **run_kw),
         "unittests": H.unittests_handler(call_json, get_prompt, deps.connect_repo), "testspr": H.testspr_handler(deps.connect_repo),

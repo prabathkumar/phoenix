@@ -86,6 +86,12 @@ async function runGoalLoop(surface, goal, opts = {}) {
     let decision;
     const typed = n === 0 ? enterTarget(goal, elements) : null; // "Enter 0102... in the mobile number field": read the page
     let dom = n === 0 ? (domMatch(goal, elements) || plainName(goal, elements)) : null; // "click Buy now on the vivo X500": read the card, no model needed
+    // Choices often appear a moment after the previous tap (contract period after the plan): if nothing matched yet, look again briefly before asking the model.
+    for (let settle = 0; n === 0 && !typed && !(dom && (dom.element || dom.blocked)) && settle < 3; settle += 1) {
+      await new Promise((r) => setTimeout(r, opts.blockedWaitMs ?? 700));
+      elements = (await surface.snapshot()).filter((e) => !excluded.has(e.ref));
+      dom = domMatch(goal, elements) || plainName(goal, elements);
+    }
     // A button is often enabled a moment after the choice that unlocks it: look again for a few seconds before calling it disabled.
     for (let wait = 0; dom && dom.blocked && wait < 6; wait += 1) {
       await new Promise((r) => setTimeout(r, opts.blockedWaitMs ?? 700));

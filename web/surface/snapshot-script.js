@@ -31,7 +31,21 @@ function SNAPSHOT_SCRIPT() {
   };
   var out = [];
   var nodes = Array.prototype.slice.call(document.querySelectorAll(SEL));
-  for (var i = 0; i < nodes.length && out.length < 250; i++) {
+  // Menus and cards are often plain div/span/li with a script listener: no tag, role or onclick says "clickable", the pointer cursor does.
+  var seen = new Set(nodes);
+  var extras = document.querySelectorAll("div,span,li,p,h1,h2,h3,h4,h5,h6,b,strong,em,small,td,dt,dd");
+  for (var k = 0; k < extras.length && k < 6000; k++) {
+    var x = extras[k];
+    if (seen.has(x)) continue;
+    var xt = String(x.innerText || "").replace(/\s+/g, " ").trim();
+    if (!xt || xt.length > 80) continue;
+    if (window.getComputedStyle(x).cursor !== "pointer") continue;
+    var px = x.parentElement;
+    if (px && window.getComputedStyle(px).cursor === "pointer") continue; // the outermost pointer element is the thing to click
+    if (x.closest("a,button,[role=button],[role=link],[onclick],[tabindex]")) continue;
+    nodes.push(x);
+  }
+  for (var i = 0; i < nodes.length && out.length < 400; i++) {
     var el = nodes[i];
     var tag = el.tagName.toLowerCase();
     if ((tag === "img" || tag === "svg") && !logoish(el)) continue; // plain pictures are not actions; only logo-like ones are listed

@@ -89,6 +89,10 @@ function page() {
   r = await runGoalLoop(p.surface, "Select colour Starry Gray", { callModel: async () => { throw new Error("model must not be called"); } });
   assert.ok(r.success && p.clicks.join() === "1", `one tap on the swatch, then stop: ${p.clicks}`);
 
+  // the word "colour" appears in every swatch's id; it must not make "Sunny White" pass for "Starry Gray"
+  assert.ok(mismatch("Select colour Starry Gray", { name: "Sunny White", role: "button", id: "colour-sunny-white" }));
+  assert.strictEqual(mismatch("Select colour Starry Gray", { name: "Starry Gray", role: "button", id: "colour-starry-gray" }), null);
+
   // semantic layer: same guard
   p = page();
   let res = await resolveByInstruction(p.surface, "click the logo", { callModel: async () => ({ ref: 1 }) });

@@ -66,6 +66,7 @@ async function runGoalLoop(surface, goal, opts = {}) {
   const actions = [];
   const excluded = new Set();
   let lastKey = "";
+  const tapped = new Map(); // what was already tapped for this goal: going back to it is going in circles
   let stuck = 0;
   let note = "";
 
@@ -96,6 +97,11 @@ async function runGoalLoop(surface, goal, opts = {}) {
     if (needsRef && !element) { note = `ref ${decision.ref} is not in the list; choose from the list.`; stuck += 1; if (stuck >= 3) break; continue; }
     const wrong = needsRef ? mismatch(namedGoal, element) : null;
     if (wrong) { note = `${wrong}. Choose the element that is actually named, or fail if it is not on the page.`; excluded.add(element.ref); stuck += 1; if (stuck >= 3) return { success: false, reason: wrong, steps, actions }; continue; }
+    if (kind === "tap" && rep.times === 1) {
+      const who = `${element.role}|${String(element.name || "").toLowerCase()}`;
+      if ((tapped.get(who) || 0) >= 1) { note = `"${element.name}" was already tapped and did not reach the goal. Pick something else, or fail if the named thing is not on the page.`; excluded.add(element.ref); stuck += 1; if (stuck >= 3) return { success: false, reason: `went in circles (kept choosing "${element.name}"); the thing asked for may not be on the page`, steps, actions }; continue; }
+      tapped.set(who, 1);
+    }
     if (needsRef && element.disabled) { note = `"${element.name}" is disabled.`; excluded.add(element.ref); continue; }
     if (kind === "type" && !element.editable) { note = `"${element.name}" is not an editable field.`; excluded.add(element.ref); continue; }
     if (kind === "navigate") {

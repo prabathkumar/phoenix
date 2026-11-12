@@ -12,7 +12,10 @@
  */
 const { assertSurface, diffLines } = require("./surface");
 const { snapshotToText } = require("./semantic-resolve");
-const { parseRepeat, mismatch, MATCH_RULES } = require("./named-target");
+const { parseRepeat, mismatch, domMatch, MATCH_RULES } = require("./named-target");
+
+/** One plain click, not a multi-part goal such as "go to X and click Y". */
+const isSingleClick = (g) => /^\s*(click|tap|press)\b/i.test(g) && !/\b(and|then|after|before)\b|[,;]/i.test(String(g).replace(/^\s*(click|tap|press)\s+(on\s+)?/i, ""));
 
 const RISKY_RE = /\b(delete|remove account|pay now|place order|confirm payment|purchase|cancel subscription|deactivate|terminate)\b/i;
 
@@ -78,7 +81,10 @@ async function runGoalLoop(surface, goal, opts = {}) {
     if (opts.vision) { try { image = await surface.screenshot(); } catch { /* no screenshot */ } }
 
     let decision;
-    try {
+    const dom = n === 0 ? domMatch(goal, elements) : null; // "click Buy now on the vivo X500": read the card, no model needed
+    if (dom && dom.element) { decision = { action: "tap", ref: dom.element.ref }; history.push(`page read: ${dom.why}`); }
+    else try {
+      if (dom) note = dom.why;
       decision = await callModel(buildPrompt({ goal, elements, lines: before, history, note, hasImage: Boolean(image) }), image ? { images: [image] } : {});
     } catch (err) {
       return { success: false, reason: `model call failed: ${err.message}`, steps, actions };
@@ -146,6 +152,10 @@ async function runGoalLoop(surface, goal, opts = {}) {
       return why
         ? { success: false, reason: `clicked "${element.name || element.role}" ${done} of ${rep.times} times, then: ${why}`, steps, actions }
         : { success: true, reason: `clicked "${element.name || element.role}" ${rep.times} times`, steps, actions };
+    }
+    if (kind === "tap" && isSingleClick(goal)) {
+      // "Click the Devices menu" is one action: once it has been done, the step is done. Do not keep going and re-tap it.
+      return { success: true, reason: `clicked "${element.name || element.role}"${changed ? "" : " (no visible change)"}`, steps, actions };
     }
     if (key === lastKey && !changed) {
       stuck += 1;

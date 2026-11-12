@@ -41,10 +41,29 @@ function page() {
   r = await runGoalLoop(p.surface, "click the logo", { callModel: async () => ({ action: "tap", ref: 1 }) });
   assert.ok(!r.success && !p.clicks.length, "no click on a substitute");
 
+  // a single plain click is finished after one click (reported: "Click the Devices menu" tapped Devices 8 times)
+  p = page(); let calls = 0;
+  r = await runGoalLoop(p.surface, "Click the Login button", { callModel: async () => { calls++; return { action: "tap", ref: 1 }; } });
+  assert.ok(r.success && p.clicks.length === 1 && calls === 1, `one click, got ${p.clicks}`);
+  p = page(); calls = 0;
+  r = await runGoalLoop(p.surface, "go to the page and click Login", { maxSteps: 3, callModel: async () => { calls++; return { action: "tap", ref: 1 }; } });
+  assert.ok(calls > 1, "multi-part goals keep going");
+
   // identical "Buy now" buttons are told apart by the card they sit in
   const cards = [{ ref: 0, tag: "a", role: "link", name: "BUY NOW", within: "Apple iPhone 17 RRP RM 4,299" }, { ref: 1, tag: "a", role: "link", name: "BUY NOW", within: "vivo X500 RRP RM 5,299" }];
   const pr = buildPrompt({ instruction: "Click Buy now on the vivo X500", kind: "tap", elements: cards });
   assert.ok(/\[1\] link "BUY NOW" \(in: "vivo X500/.test(pr) && /whose in: text/.test(pr), "card context reaches the model");
+
+  // reading the page: the Buy now inside the vivo X500 card, chosen with no model at all
+  const { domMatch } = require("../core/named-target");
+  let dm = domMatch("Click Buy now on the vivo X500", cards);
+  assert.ok(dm.element && dm.element.ref === 1, dm.why);
+  assert.strictEqual(domMatch("click buy now against the vivoX500.", cards).element.ref, 1, "spacing and case do not matter");
+  assert.ok(!domMatch("Click Buy now on the Pixel 9", cards).element, "not on the page: no substitute");
+  assert.strictEqual(domMatch("Click Login", cards), null);
+  let asked = 0; p = page(); p.surface.snapshot = async () => cards.map((e) => ({ ...e, editable: false, disabled: false }));
+  r = await runGoalLoop(p.surface, "Click Buy now on the vivo X500", { callModel: async () => { asked++; return { action: "done" }; } });
+  assert.ok(r.success && asked === 0 && p.clicks.join() === "1", `model not asked, card 1 clicked: ${asked} ${p.clicks}`);
 
   // semantic layer: same guard
   p = page();

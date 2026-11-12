@@ -77,7 +77,7 @@ async function runEnglish({ steps: stepsText, testData = {}, runner, onEvent = (
 }
 
 /** Screenshots go to the model only when it can read images (a text-only model such as llama3 answers 400 to them). Opt in: TESTOPS_MOBILE_VISION=1 with TESTOPS_MOBILE_OLLAMA_MODEL=llava (or another vision model). */
-function visionEnabled(env = process.env) { return /^(1|true|yes)$/i.test(String(env.TESTOPS_MOBILE_VISION || "")); }
+function visionEnabled(env = process.env) { return /^(1|true|yes)$/i.test(String(env.TESTOPS_MOBILE_VISION || "")) || !!env.TESTOPS_MOBILE_VISION_MODEL; }
 
 /** Web: the shared goal loop over a Playwright page. */
 function webRunner(page, { runGoalLoop, createPlaywrightSurface, callModel, maxSteps = 8, vision = visionEnabled() } = {}) {

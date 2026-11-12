@@ -21,6 +21,7 @@
 
 const OLLAMA_HOST = process.env.TESTOPS_MOBILE_OLLAMA_HOST || "http://localhost:11434";
 const OLLAMA_MODEL = process.env.TESTOPS_MOBILE_OLLAMA_MODEL || "llama3";
+const OLLAMA_VISION_MODEL = process.env.TESTOPS_MOBILE_VISION_MODEL || ""; // e.g. llava: used only for calls that carry a screenshot
 const TIMEOUT_MS = Number(process.env.TESTOPS_MOBILE_LLM_TIMEOUT_MS) || 8000;
 
 /**
@@ -51,7 +52,7 @@ async function callOllamaJson(prompt, options = {}) {
 
   try {
     const requestBody = {
-      model: OLLAMA_MODEL,
+      model: options.images && options.images.length > 0 && OLLAMA_VISION_MODEL ? OLLAMA_VISION_MODEL : OLLAMA_MODEL,
       prompt,
       stream: false,
       format: "json",

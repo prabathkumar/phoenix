@@ -36,7 +36,7 @@ function evidenceOf(step, diff, verification) {
     typed: step.kind === "type",
   };
 }
-const visionOn = (v) => (v === undefined ? /^(1|true|yes)$/i.test(String(process.env.TESTOPS_MOBILE_VISION || "")) : !!v); // off unless asked: a text-only model rejects images
+const visionOn = (v) => (v === undefined ? (/^(1|true|yes)$/i.test(String(process.env.TESTOPS_MOBILE_VISION || "")) || !!process.env.TESTOPS_MOBILE_VISION_MODEL) : !!v); // off unless asked: a text-only model rejects images
 const hasEvidence = (e) => e.expectPassed || e.pageChanged || e.typed;
 
 async function trySemantic(surface, step, ctx, options) {

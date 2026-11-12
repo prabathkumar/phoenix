@@ -8,7 +8,7 @@
  * guesses - an unconfident or invalid answer is `{resolved:false, reason}`.
  */
 const { assertSurface } = require("./surface");
-const { mismatch, MATCH_RULES } = require("./named-target");
+const { mismatch, domMatch, MATCH_RULES } = require("./named-target");
 
 function snapshotToText(elements) {
   return elements.map((el) => {
@@ -81,6 +81,10 @@ async function resolveByInstruction(surface, instruction, opts = {}) {
     const elements = all.filter((e) => !exclude.has(e.ref));
     if (!elements.length) return { resolved: false, reason: "no interactive elements to choose from", elements: all };
 
+    if (kind === "tap") { // read the page first: it needs no model and can be explained
+      const dom = domMatch(instruction, elements);
+      if (dom && dom.element) return { resolved: true, ref: dom.element.ref, element: dom.element, usedVision: false, via: "dom", viaWhy: dom.why, elements: all };
+    }
     let usedVision = false;
     let result;
     if (opts.vision) {

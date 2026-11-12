@@ -37,6 +37,24 @@ function mismatch(instruction, el) {
   return null;
 }
 
+const squash = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+const STOP = new Set(["the", "a", "an", "button", "link", "icon", "on", "against", "for", "of", "in", "under", "next", "to"]);
+
+/**
+ * Reading the page, no model: "click Buy now on the vivo X500" = the control called "Buy now" that sits in the card
+ * whose text names "vivo X500". Exactly one match -> that element; none or several -> says why and the model/person decides.
+ */
+function domMatch(instruction, elements) {
+  const m = String(instruction || "").trim().match(/^(?:click|tap|press)\s+(?:on\s+)?(?:the\s+)?(.+?)\s+(?:on|against|for|of|in|under|next to|beside)\s+(?:the\s+)?(.+)$/i);
+  if (!m) return null;
+  const control = squash(m[1]), target = squash(m[2].replace(/[.!]+$/, ""));
+  if (!control || !target) return null;
+  const hits = elements.filter((e) => !e.disabled && squash(e.name).includes(control) && squash(e.within).includes(target));
+  if (hits.length === 1) return { element: hits[0], why: `the "${m[1]}" control inside the card that names "${m[2].replace(/[.!]+$/, "")}"` };
+  if (!hits.length) return { element: null, why: `no "${m[1]}" control sits next to text naming "${m[2].replace(/[.!]+$/, "")}"` };
+  return { element: null, why: `${hits.length} "${m[1]}" controls sit next to text naming "${m[2]}"; cannot tell which` };
+}
+
 /** Rules every prompt carries, so the model matches the NAMED thing and declines rather than substitutes. */
 const MATCH_RULES = [
   "Matching rules:",
@@ -48,4 +66,4 @@ const MATCH_RULES = [
   "- Counts such as \"10 times\" are handled by the test runner, not by you: resolve the element once.",
 ].join("\n");
 
-module.exports = { parseRepeat, mismatch, MATCH_RULES, MAX_REPEAT };
+module.exports = { parseRepeat, mismatch, domMatch, MATCH_RULES, MAX_REPEAT };

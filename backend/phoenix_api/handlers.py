@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from . import ai_eval, jira as J, prompt_store, signoff, traceability, unit_tests
+from . import llm as _llm, ai_eval, jira as J, prompt_store, signoff, traceability, unit_tests
 from . import http as _http
 
 
@@ -74,12 +74,13 @@ def cases_handler(call_json, get_prompt, project="", requirement_key="", run_id=
         r = await inner(ctx)
         if r.get("ok"):  # keep them: people sign off these cases, in Postgres
             suffix = run_id[-6:] if run_id else "000000"
+            label = f"{str(scenario_label or requirement_key or 'run')[:100]} ({suffix})"  # one batch of cases = one scenario; the run's short id keeps batches apart
             for n, it in enumerate(r["data"]["items"], 1):
                 d = it if isinstance(it, dict) else {"title": str(it)}
                 steps = d.get("steps") or d.get("instructions") or []
                 signoff.upsert_case(str(d.get("id") or f"TC-{suffix}-{n:02d}"), str(d.get("title") or d.get("name") or d.get("summary") or f"Case {n}"), steps if isinstance(steps, list) else [str(steps)],
                                     project=project, requirement=requirement_key, priority=str(d.get("priority") or "Medium").title(), who="ai", url=url,
-                                    scenario=str(d.get("scenario") or d.get("scenario_title") or scenario_label or requirement_key or f"run {suffix}")[:200])
+                                    scenario=label)
                 d["id"] = str(d.get("id") or f"TC-{suffix}-{n:02d}")
                 r["data"]["items"][n - 1] = d
         return r
@@ -298,17 +299,17 @@ def aieval_handler(run=_run, env=None, run_id=""):
     return h
 
 
-def signoff_handler(run_id, url=None):
+def signoff_handler(run_id, url=None, actor="Phoenix AI"):
     """Asks people to sign off. The AI never approves: it files the requests, and the trail shows who decided."""
     async def h(ctx):
         cases = [c for c in signoff.list_cases(requirement=ctx.get("requirementKey") or None, url=url)] if ctx.get("requirementKey") else []
         made = 0
         for c in cases:
             if c["signoff"] in ("draft", "changes-requested", "rejected"):
-                signoff.request_case(c["id"], "Phoenix AI", "requested by the pipeline", url)
+                signoff.request_case(c["id"], actor, "requested by the pipeline" + ("" if actor == "Phoenix AI" else f" (avatar of {actor})"), url)
                 made += 1
         try:
-            signoff.request_run(run_id, "Phoenix AI", "requested by the pipeline", url)
+            signoff.request_run(run_id, actor, "requested by the pipeline" + ("" if actor == "Phoenix AI" else f" (avatar of {actor})"), url)
             run_req = True
         except signoff.SignoffError:
             run_req = False
@@ -337,7 +338,8 @@ def tool_status(run=_run, env=None):
     out["jira"] = all(env.get(k) for k in ("JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN"))
     out["github"], out["gitlab"] = bool(env.get("GITHUB_TOKEN")), bool(env.get("GITLAB_TOKEN"))
     out["browserstack"] = bool(env.get("TESTOPS_MOBILE_BROWSERSTACK_USER") and env.get("TESTOPS_MOBILE_BROWSERSTACK_KEY"))
-    out["ollama"] = any(env.get(k) for k in ("OLLAMA_HOST", "TESTOPS_OLLAMA_URL", "OLLAMA_URL", "TESTOPS_MOBILE_OLLAMA_HOST"))
+    out["ollama"] = _llm.provider(env) == "ollama"
+    out["model"] = _llm.provider(env) or False  # the model door the platform actually uses
     out["clickhouse"] = bool(env.get("CLICKHOUSE_URL"))
     out["postgres"] = str(env.get("DATABASE_URL", "")).startswith(("postgres", "postgresql"))
     return out

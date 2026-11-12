@@ -30,6 +30,36 @@ NEEDS = {
 
 
 def judge_model():
+    base = os.environ.get("DEEPEVAL_BASE_URL") or os.environ.get("LLM_BASE_URL")
+    if base and not os.environ.get("DEEPEVAL_OLLAMA_MODEL"):  # an OpenAI-compatible server, e.g. llama.cpp on the GPU server
+        import httpx
+        from deepeval.models import DeepEvalBaseLLM
+        name = os.environ.get("DEEPEVAL_MODEL") or os.environ.get("LLM_MODEL") or "qwen3-8b"
+        key = os.environ.get("DEEPEVAL_API_KEY") or os.environ.get("LLM_API_KEY") or ""
+
+        class Judge(DeepEvalBaseLLM):
+            def __init__(self):
+                self.model = name
+            def load_model(self):
+                return self
+            def generate(self, prompt, schema=None):
+                body = {"model": name, "messages": [{"role": "user", "content": prompt}], "temperature": 0, "stream": False}
+                if schema is not None:
+                    body["response_format"] = {"type": "json_object"}
+                r = httpx.post(base.rstrip("/") + "/chat/completions", json=body, timeout=300, headers={"Authorization": f"Bearer {key}"} if key else {})
+                r.raise_for_status()
+                import re as _re
+                text = _re.sub(r"<think>[\s\S]*?</think>", "", r.json()["choices"][0]["message"]["content"] or "")
+                if schema is None:
+                    return text
+                import json as _json
+                m = _re.search(r"\{[\s\S]*\}", text)
+                return schema(**_json.loads(m.group(0) if m else text))
+            async def a_generate(self, prompt, schema=None):
+                return self.generate(prompt, schema)
+            def get_model_name(self):
+                return name
+        return Judge()
     if os.environ.get("DEEPEVAL_OLLAMA_MODEL"):
         from deepeval.models import OllamaModel
         return OllamaModel(model=os.environ["DEEPEVAL_OLLAMA_MODEL"], base_url=os.environ.get("DEEPEVAL_OLLAMA_URL") or None)
@@ -48,7 +78,7 @@ def run(spec):
 
     model = judge_model()
     if model is False:
-        print("No judge model: set DEEPEVAL_OLLAMA_MODEL (and DEEPEVAL_OLLAMA_URL) or OPENAI_API_KEY.", file=sys.stderr)
+        print("No judge model: set DEEPEVAL_OLLAMA_MODEL (and DEEPEVAL_OLLAMA_URL), DEEPEVAL_BASE_URL (an OpenAI-compatible server) or OPENAI_API_KEY.", file=sys.stderr)
         sys.exit(3)
     threshold = float(spec.get("threshold", 0.5))
     results = []

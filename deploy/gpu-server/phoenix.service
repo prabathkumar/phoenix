@@ -1,0 +1,16 @@
+[Unit]
+Description=Phoenix (TestOps ai-automate platform)
+Requires=docker.service
+After=docker.service llama-server.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/phoenix
+ExecStart=/usr/bin/docker compose -f docker-compose.yml -f deploy/gpu-server/docker-compose.gpu.yml --profile platform up -d
+ExecStop=/usr/bin/docker compose -f docker-compose.yml -f deploy/gpu-server/docker-compose.gpu.yml --profile platform stop
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target

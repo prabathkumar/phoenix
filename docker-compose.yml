@@ -105,7 +105,7 @@ services:
       ZAP_API_KEY: ${ZAP_API_KEY:-change-me}
       PHOENIX_REPORTS_DIR: /data/reports
     volumes: [platform-data:/data]
-    ports: ["8000:8000"]
+    ports: ["${PHOENIX_BIND:-0.0.0.0}:8000:8000"]  # the GPU server sets PHOENIX_BIND=127.0.0.1
     profiles: ["platform"]
     restart: unless-stopped
 

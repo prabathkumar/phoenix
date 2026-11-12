@@ -1,0 +1,10 @@
+<clickhouse>
+  <!-- ClickHouse assumes a dedicated server. On a shared 16 GB box, hold it to about 2 GB. -->
+  <max_server_memory_usage_to_ram_ratio>0.15</max_server_memory_usage_to_ram_ratio>
+  <mark_cache_size>134217728</mark_cache_size>
+  <uncompressed_cache_size>0</uncompressed_cache_size>
+  <max_concurrent_queries>20</max_concurrent_queries>
+  <background_pool_size>4</background_pool_size>
+  <logger><level>warning</level></logger>
+  <query_log remove="1"/><trace_log remove="1"/><metric_log remove="1"/><asynchronous_metric_log remove="1"/><part_log remove="1"/><text_log remove="1"/>
+</clickhouse>

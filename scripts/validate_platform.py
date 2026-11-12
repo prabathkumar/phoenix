@@ -62,8 +62,8 @@ def tools():
     c, t = call("GET", "/api/pipeline/tools")
     assert c == 200
     for k, v in t["tools"].items():
-        if k.endswith("Why"):
-            continue
+        if k.endswith("Why") or (k == "ollama" and not v and t["tools"].get("model")):
+            continue  # the model is set up through another provider; no need to report Ollama as missing
         why = t["tools"].get(k + "Why")
         report("PASS" if v else "NOT SET UP", f"tool: {k}", why or (str(v) if v not in (True, False) else ""))
     return None

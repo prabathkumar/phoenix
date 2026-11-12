@@ -18,12 +18,15 @@ def summary(days=14, url=None):
         total_cases = s.query(func.count(TestCase.id)).scalar()
     per_day = defaultdict(lambda: {"passed": 0, "failed": 0, "other": 0})
     by_who = defaultdict(lambda: {"passed": 0, "failed": 0})
+    by_avatar = defaultdict(lambda: {"passed": 0, "failed": 0})
     fails = defaultdict(int)
     for e in rows:
         d = per_day[e.at.date().isoformat()]
         d[e.result if e.result in ("passed", "failed") else "other"] += 1
+        if e.who.startswith("avatar:") and e.result in ("passed", "failed"):
+            by_avatar[e.who[7:]][e.result] += 1
         if e.result in ("passed", "failed"):
-            by_who[e.who][e.result] += 1
+            by_who["ai" if e.who.startswith("avatar:") else e.who][e.result] += 1
         if e.result == "failed":
             fails[e.case_id] += 1
     ran = sum(1 for e in rows if e.result in ("passed", "failed"))
@@ -34,7 +37,7 @@ def summary(days=14, url=None):
     return {
         "days": days,
         "execution": {"total": len(rows), "passRate": round(passed / ran, 3) if ran else None, "passed": passed, "failed": ran - passed,
-                      "perDay": [{"day": d, **v} for d, v in sorted(per_day.items())], "byWho": {k: v for k, v in by_who.items()},
+                      "perDay": [{"day": d, **v} for d, v in sorted(per_day.items())], "byWho": {k: v for k, v in by_who.items()}, "byAvatar": {k: v for k, v in by_avatar.items()},
                       "topFailing": [{"caseId": c, "failures": n} for c, n in sorted(fails.items(), key=lambda x: -x[1])[:8]]},
         "signoff": {**signoff.funnel(url), "totalCases": total_cases, "waitingOnYou": pend},
         "ai": {**a, "stages": stage},

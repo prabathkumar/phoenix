@@ -1,0 +1,58 @@
+# Phoenix on the GPU server (AWS g4dn.xlarge: Tesla T4 16 GB, 4 vCPU, 16 GB RAM).
+# Layer this over the main file:   docker compose -f docker-compose.yml -f deploy/gpu-server/docker-compose.gpu.yml --profile platform up -d
+#
+# What changes on this box:
+#  - The model is llama.cpp's llama-server already running on the host (Qwen3-8B on :8080, OpenAI-compatible), not Ollama.
+#  - Memory is capped per service so Phoenix + the model fit in 16 GB (budget below). Phoenix is bound to 127.0.0.1 (PHOENIX_BIND in .env):
+#    nothing new is exposed to the internet. Reach it with an SSH/SSM tunnel, or turn on the `proxy` profile (HTTPS + password).
+#
+# Memory budget (16 GB): llama-server ~2 GB (the model itself sits on the GPU, ~7.4 GB of 16 GB VRAM) | OS ~1 GB
+#   postgres 1 GB | clickhouse 2.5 GB | zap 1.5 GB | engine (Chromium) 3 GB | phoenix-api 2 GB  => ~13 GB, ~3 GB spare.
+#   One browser run at a time: a second concurrent run is the first thing that would not fit.
+services:
+  postgres:
+    mem_limit: 1g
+    command: ["postgres", "-c", "shared_buffers=256MB", "-c", "max_connections=50"]
+
+  clickhouse:
+    mem_limit: 2560m
+    volumes:
+      - ch-data:/var/lib/clickhouse
+      - ./deploy/gpu-server/clickhouse-low-memory.xml:/etc/clickhouse-server/config.d/low-memory.xml:ro
+
+  zap:
+    mem_limit: 1536m
+    environment:
+      JAVA_OPTS: "-Xmx1g"
+
+  engine:
+    mem_limit: 3g
+    shm_size: "1gb"
+
+  phoenix-api:
+    mem_limit: 2g
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    environment:
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://host.docker.internal:8080/v1}
+      LLM_MODEL: ${LLM_MODEL:-qwen3-8b}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      DEEPEVAL_BASE_URL: ${LLM_BASE_URL:-http://host.docker.internal:8080/v1}
+      TESTOPS_MOBILE_LLM_TIMEOUT_MS: "300000"   # 8B on a T4: long answers take minutes, not seconds
+
+  # Optional: HTTPS in front of Phoenix with a username and password.  docker compose ... --profile proxy up -d
+  proxy:
+    image: caddy:2
+    profiles: ["proxy"]
+    mem_limit: 128m
+    depends_on: [phoenix-api]
+    ports: ["443:443"]
+    volumes:
+      - ./deploy/gpu-server/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    environment:
+      PHOENIX_PROXY_USER: ${PHOENIX_PROXY_USER:-phoenix}
+      PHOENIX_PROXY_HASH: ${PHOENIX_PROXY_HASH:-}
+    restart: unless-stopped
+
+volumes:
+  caddy-data:

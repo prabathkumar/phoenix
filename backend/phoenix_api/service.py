@@ -11,7 +11,7 @@ from . import llm as _llm
 class Deps:
     def __init__(self, env=None, call_json=None, jira=None, fetch=None, fetcher=None, connect_repo=None, run=None, exec_fetch=None, allow_private=False, use_gateway=True):
         self.env = dict(os.environ if env is None else env)
-        self.call_json = call_json if call_json is not None else (_llm.ollama_call_json(self.env) if _llm.ollama_configured(self.env) else None)
+        self.call_json = call_json if call_json is not None else _llm.call_json_from_env(self.env)
         self.jira = jira or J.Jira(self.env, **({"fetch": fetch} if fetch else {}))
         self.fetcher = fetcher or requirements_loader.fetch_public
         self.connect_repo = connect_repo or (lambda rq: R.from_env(rq.get("provider", "github"), rq.get("project"), self.env, rq.get("baseUrl"), **({"fetch": fetch} if fetch else {})))
@@ -58,9 +58,10 @@ async def run_pipeline_request(body, deps: Deps):
     steps = body.get("steps") if isinstance(body.get("steps"), list) else []
     base_url = body["baseUrl"] if isinstance(body.get("baseUrl"), str) and body["baseUrl"].lower().startswith(("http://", "https://")) else None
     project = str(body.get("project") or "")
-    call_json = gateway.wrap(deps.call_json, "pipeline", run=run_id, env=env, model_name="ollama") if deps.call_json and deps.use_gateway else deps.call_json
+    call_json = gateway.wrap(deps.call_json, "pipeline", run=run_id, env=env, model_name=_llm.provider(env) or "model") if deps.call_json and deps.use_gateway else deps.call_json
     get_prompt = lambda n, p="shared": H.library_prompt(n, p, env)  # noqa: E731
     state, failed_cases, values = {}, [], {}
+    who = f"avatar:{body['avatar']}" if body.get("avatar") else "ai"  # work done through a tester's avatar is theirs
     run_kw = {"run": deps.run} if deps.run else {}
 
     async def testdata_h(ctx):
@@ -106,10 +107,10 @@ async def run_pipeline_request(body, deps: Deps):
         if r.get("unavailable"):
             return {"unavailable": True, "detail": r["detail"]}
         for x in r.get("results", []):
-            signoff.record_execution(run_id, x["id"], x["result"], "ai", x.get("where", ""), x.get("detail", ""), x.get("ms", 0), url)
+            signoff.record_execution(run_id, x["id"], x["result"], who, x.get("where", ""), x.get("detail", ""), x.get("ms", 0), url)
         for p in partial:  # the cases left out are recorded as skipped, so nobody can mistake a partial suite for a full one
             for cid in p["notRun"]:
-                signoff.record_execution(run_id, cid, "skipped", "ai", "", f"left out of a partial suite ({p['picked']} of {p['total']} in '{p['scenario']}')", 0, url)
+                signoff.record_execution(run_id, cid, "skipped", who, "", f"left out of a partial suite ({p['picked']} of {p['total']} in '{p['scenario']}')", 0, url)
         failed_cases.extend(r.get("failedCases", []))
         if r.get("harPath"):
             state["harPath"] = r["harPath"]
@@ -126,7 +127,7 @@ async def run_pipeline_request(body, deps: Deps):
         "testdata": testdata_h, "execution": execution_h, "har": har_h, "performance": H.performance_handler(**run_kw), "dast": H.dast_handler(env=env, **run_kw),
         "traceability": H.traceability_handler(call_json, deps.connect_repo), "aieval": H.aieval_handler(env=env, run_id=run_id, **run_kw),
         "unittests": H.unittests_handler(call_json, get_prompt, deps.connect_repo), "testspr": H.testspr_handler(deps.connect_repo),
-        "defects": defects_h, "signoff": H.signoff_handler(run_id, url), "feedback": H.feedback_handler(env.get("PHOENIX_REPORTS_DIR", "logs/reports")),
+        "defects": defects_h, "signoff": H.signoff_handler(run_id, url, str(body.get("onBehalfOf") or "Phoenix AI")), "feedback": H.feedback_handler(env.get("PHOENIX_REPORTS_DIR", "logs/reports")),
     }
     ev = body.get("evaluate") if isinstance(body.get("evaluate"), dict) else None
     out = await ai_pipeline.run_ai_pipeline(
@@ -135,6 +136,10 @@ async def run_pipeline_request(body, deps: Deps):
         hs, autonomy, body.get("approvals") if isinstance(body.get("approvals"), dict) else {}, body.get("production") is True, call_json, deps.run, run_id,
         body.get("stages") if isinstance(body.get("stages"), list) else None, run_record.brief_for(jira_key, url=url))
     rec = run_record.link(out["stages"], jira_key, body["goal"], out["plan"], run_id, retest, source, project)
+    if body.get("agent"):
+        rec["agent"] = str(body["agent"])[:40]  # which saved agent ran this
+    if body.get("avatar"):
+        rec["avatar"] = str(body["avatar"])[:60]
     try:
         run_record.save(rec, url)
     except Exception:
@@ -142,3 +147,22 @@ async def run_pipeline_request(body, deps: Deps):
     clean = [{k: v for k, v in s.items() if k != "data"} for s in out["stages"]]
     return 200, {"ok": out["ok"], "runId": run_id, "retest": retest, "requirement": {**source, "notes": notes, "characters": len(requirement)} if source else None,
                  "plan": {"source": out["plan"]["source"], "platforms": out["plan"]["platforms"], "reason": out["plan"].get("reason")}, "stages": clean, "summary": out["summary"], "needsYou": out["needsYou"]}
+
+
+async def run_chain(steps, deps: Deps):
+    """Runs linked agents one after another. Each step hands the next the scenarios it just wrote (so the next agent runs the WHOLE batch),
+    stops at the first step that needs a person or fails, and says exactly where it stopped. Approvals the caller gave apply to every step."""
+    done, handoff = [], []
+    for n, body in enumerate(steps):
+        body = {k: v for k, v in body.items() if k != "_platform"}
+        if handoff and not body.get("cases") and not body.get("scenarios"):
+            body["scenarios"] = handoff
+        code, out = await run_pipeline_request(body, deps)
+        entry = {"agent": body.get("agent"), "ok": code == 200 and bool(out.get("ok")), "runId": out.get("runId") if code == 200 else None, "needsYou": out.get("needsYou", []) if code == 200 else [], "error": out.get("error") if code != 200 else None}
+        done.append(entry)
+        if not entry["ok"]:
+            why = entry["error"] or (f"needs you at {', '.join(entry['needsYou'])}" if entry["needsYou"] else "a stage failed")
+            return {"ok": False, "chain": done, "stoppedAt": body.get("agent"), "detail": f"stopped at {body.get('agent')} ({n + 1} of {len(steps)}): {why}", "runId": entry["runId"] or (done[-2]["runId"] if len(done) > 1 else None)}
+        more = signoff.scenarios_of_run(out["runId"], deps.db)
+        handoff = more or handoff  # an agent that wrote no cases leaves the previous batch in place for the next one
+    return {"ok": True, "chain": done, "detail": f"{len(done)} agent(s) ran: {', '.join(d['agent'] for d in done)}", "runId": done[-1]["runId"]}

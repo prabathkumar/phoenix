@@ -4,8 +4,8 @@ import os
 from fastapi import Body, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import ai_eval, analytics, dashboard, db, gateway, guardrails, handlers as H, mcp_registry, pipeline, prompt_store, run_record, signoff
-from .service import Deps, run_pipeline_request
+from . import agents, ai_eval, avatars, analytics, dashboard, db, gateway, guardrails, handlers as H, mcp_registry, pipeline, prompt_store, run_record, signoff
+from .service import Deps, run_chain, run_pipeline_request
 
 
 def create_app(deps: Deps | None = None) -> FastAPI:
@@ -52,6 +52,85 @@ def create_app(deps: Deps | None = None) -> FastAPI:
         if not rec:
             raise HTTPException(404, "No such run.")
         return {"run": rec, "calls": gateway.read_log(200, run_id), "executions": signoff.executions_for(run_id, url), "checks": signoff.run_checks(run_id, url)}
+
+
+    # ---- agents (saved AI workers; they run through the same pipeline, gates and sign-off)
+    def _agent_err(e):
+        return HTTPException(404 if str(e).startswith("No agent") else 400, str(e))
+
+    @app.get("/api/agents")
+    def agents_list():
+        return {"agents": agents.list_agents(url), "stages": [{"id": s["id"], "name": s["name"]} for s in pipeline.STAGES]}
+
+    @app.get("/api/agents/{name}")
+    def agents_get(name: str):
+        try:
+            return agents.get(name, url)
+        except agents.AgentError as e:
+            raise _agent_err(e)
+
+    @app.post("/api/agents")
+    def agents_create(body: dict = Body(...), x_user: str = Header(default=""), x_source: str = Header(default="ui")):
+        try:
+            return agents.create(body, body.get("actor") or x_user, "mcp" if x_source == "mcp" else "ui", url)
+        except agents.AgentError as e:
+            raise _agent_err(e)
+
+    @app.put("/api/agents/{name}")
+    def agents_update(name: str, body: dict = Body(...), x_user: str = Header(default=""), x_source: str = Header(default="ui")):
+        try:
+            return agents.update(name, body, body.get("actor") or x_user, "mcp" if x_source == "mcp" else "ui", url)
+        except agents.AgentError as e:
+            raise _agent_err(e)
+
+    @app.post("/api/agents/{name}/enabled")
+    def agents_enable(name: str, body: dict = Body(...), x_user: str = Header(default="")):
+        try:
+            return agents.set_enabled(name, body.get("enabled") is True, body.get("actor") or x_user, D.env, url)
+        except agents.AgentError as e:
+            raise _agent_err(e)
+
+    @app.delete("/api/agents/{name}")
+    def agents_delete(name: str, x_user: str = Header(default="")):
+        try:
+            return agents.delete(name, x_user, url)
+        except agents.AgentError as e:
+            raise _agent_err(e)
+
+    @app.post("/api/agents/{name}/run")
+    async def agents_run(name: str, body: dict = Body(default={})):
+        try:
+            req = agents.request_for(name, body.get("input"), url)
+        except agents.AgentError as e:
+            raise _agent_err(e)
+        code, out = await run_pipeline_request(req, D)
+        if code != 200:
+            raise HTTPException(code, out["error"])
+        return {**out, "agent": name}
+
+
+    # ---- avatars: a tester's own identity for calling agents
+    def _avatar_err(e):
+        return HTTPException(403 if "only" in str(e) else 400, str(e))
+
+    @app.get("/api/avatars/{owner}")
+    def avatar_get(owner: str):
+        return {"avatar": avatars.get(owner, url)}
+
+    @app.put("/api/avatars/{owner}")
+    def avatar_save(owner: str, body: dict = Body(...), x_user: str = Header(default="")):
+        try:
+            return {"avatar": avatars.save(owner, body, body.get("actor") or x_user, url)}
+        except avatars.AvatarError as e:
+            raise _avatar_err(e)
+
+    @app.post("/api/avatars/{owner}/call")
+    async def avatar_call(owner: str, body: dict = Body(...), x_user: str = Header(default="")):
+        try:
+            steps = avatars.plan(owner, body.get("agent"), body.get("input"), body.get("actor") or x_user, url)
+        except (avatars.AvatarError, agents.AgentError) as e:
+            raise _avatar_err(e) if isinstance(e, avatars.AvatarError) else _agent_err(e)
+        return await run_chain(steps, D)
 
     # ---- test cases and sign-off
     @app.get("/api/cases")

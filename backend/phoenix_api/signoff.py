@@ -196,3 +196,10 @@ def funnel(url=None):
         c = dict(s.query(TestCase.signoff, func.count()).group_by(TestCase.signoff).all())
         r = dict(s.query(Signoff.status, func.count()).filter(Signoff.kind == "run").group_by(Signoff.status).all())
     return {"cases": {k: c.get(k, 0) for k in CASE_STATES}, "runs": {k: r.get(k, 0) for k in ("pending", "approved", "rejected")}}
+
+
+def scenarios_of_run(run_id, url=None):
+    """Scenarios (batches of cases) written by one run: their label ends with the run's short id."""
+    tag = f"({str(run_id)[-6:]})"
+    with db.session(url) as s:
+        return sorted({c.scenario for c in s.query(TestCase).filter(TestCase.scenario.like(f"%{tag}")).all()})

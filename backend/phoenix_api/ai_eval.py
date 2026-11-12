@@ -55,8 +55,8 @@ def available(run=subprocess.run, env=None):
     env = env if env is not None else os.environ
     if run([sys.executable, "-c", "import deepeval"], capture_output=True).returncode != 0:
         return {"ok": False, "why": "DeepEval is not installed (pip install deepeval)"}
-    if not env.get("DEEPEVAL_OLLAMA_MODEL") and not env.get("OPENAI_API_KEY"):
-        return {"ok": False, "why": "no judge model: set DEEPEVAL_OLLAMA_MODEL (and DEEPEVAL_OLLAMA_URL), or OPENAI_API_KEY"}
+    if not any(env.get(k) for k in ("DEEPEVAL_OLLAMA_MODEL", "DEEPEVAL_BASE_URL", "LLM_BASE_URL", "OPENAI_API_KEY")):
+        return {"ok": False, "why": "no judge model: set DEEPEVAL_BASE_URL (an OpenAI-compatible server such as the GPU server), DEEPEVAL_OLLAMA_MODEL (and DEEPEVAL_OLLAMA_URL), or OPENAI_API_KEY"}
     return {"ok": True}
 
 

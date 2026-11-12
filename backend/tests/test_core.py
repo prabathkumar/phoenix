@@ -148,3 +148,24 @@ async def test_generate_tests_checks_shape_and_syntax():
     assert len((await unit_tests.generate_tests(["a.py"], read, good, gp))["files"]) == 1
     assert "syntax" in (await unit_tests.generate_tests(["a.py"], read, bad_syntax, gp))["skipped"][0]["why"]
     assert (await unit_tests.generate_tests(["a.py"], read, no_test, gp))["files"] == []
+
+
+# ---- an OpenAI-compatible model server (llama.cpp on the GPU server)
+async def test_openai_compatible_model_call(monkeypatch):
+    import httpx
+    from phoenix_api import llm
+    seen = {}
+
+    class FakeClient:
+        def __init__(self, **kw): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def post(self, url, json=None, headers=None):
+            seen.update(url=url, body=json, headers=headers)
+            return httpx.Response(200, json={"choices": [{"message": {"content": "<think>hmm</think>```json\n{\"ok\": true}\n```"}}]}, request=httpx.Request("POST", url))
+    monkeypatch.setattr(llm.httpx, "AsyncClient", FakeClient)
+    env = {"LLM_BASE_URL": "http://gpu:8080/v1/", "LLM_MODEL": "qwen3-8b", "LLM_API_KEY": "k", "OLLAMA_HOST": "http://ignored"}
+    assert llm.provider(env) == "openai-compatible"  # it wins over Ollama
+    assert await llm.call_json_from_env(env)("hi") == {"ok": True}
+    assert seen["url"] == "http://gpu:8080/v1/chat/completions" and seen["headers"] == {"Authorization": "Bearer k"} and seen["body"]["response_format"] == {"type": "json_object"}
+    assert llm.provider({"OLLAMA_HOST": "h"}) == "ollama" and llm.provider({}) is None and llm.call_json_from_env({}) is None

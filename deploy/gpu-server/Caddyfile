@@ -1,0 +1,9 @@
+# HTTPS (a certificate Caddy makes for itself: browsers warn once) + one shared username and password in front of Phoenix.
+# This is a stop-gap: Phoenix still has no login of its own, so everyone behind the password can claim any name.
+:443 {
+	tls internal
+	basicauth {
+		{$PHOENIX_PROXY_USER} {$PHOENIX_PROXY_HASH}
+	}
+	reverse_proxy phoenix-api:8000
+}

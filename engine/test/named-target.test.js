@@ -41,6 +41,11 @@ function page() {
   r = await runGoalLoop(p.surface, "click the logo", { callModel: async () => ({ action: "tap", ref: 1 }) });
   assert.ok(!r.success && !p.clicks.length, "no click on a substitute");
 
+  // identical "Buy now" buttons are told apart by the card they sit in
+  const cards = [{ ref: 0, tag: "a", role: "link", name: "BUY NOW", within: "Apple iPhone 17 RRP RM 4,299" }, { ref: 1, tag: "a", role: "link", name: "BUY NOW", within: "vivo X500 RRP RM 5,299" }];
+  const pr = buildPrompt({ instruction: "Click Buy now on the vivo X500", kind: "tap", elements: cards });
+  assert.ok(/\[1\] link "BUY NOW" \(in: "vivo X500/.test(pr) && /whose in: text/.test(pr), "card context reaches the model");
+
   // semantic layer: same guard
   p = page();
   let res = await resolveByInstruction(p.surface, "click the logo", { callModel: async () => ({ ref: 1 }) });

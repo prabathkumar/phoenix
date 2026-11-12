@@ -18,6 +18,7 @@ function snapshotToText(elements) {
     if (el.testid) bits.push(`testid: ${el.testid}`);
     if (el.placeholder) bits.push(`placeholder: ${el.placeholder}`);
     if (el.hint) bits.push(el.hint);
+    if (el.within) bits.push(`in: "${el.within}"`);
     if (el.disabled) bits.push("disabled");
     if (el.inViewport === false) bits.push("off-screen");
     return `[${el.ref}] ${el.role}${el.name ? ` "${el.name}"` : ""}${bits.length ? ` (${bits.join(", ")})` : ""}`;

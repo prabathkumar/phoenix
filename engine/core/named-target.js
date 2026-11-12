@@ -44,6 +44,7 @@ const MATCH_RULES = [
   "- A logo is the brand image or brand link, usually at the top-left of the header; it may be named after the company, \"logo\" or \"home\". Elements marked logo are the candidates.",
   "- If no element in the list is the named thing, say so (decline or fail with the reason \"no element called <name>\"). Do not pick a substitute.",
   "- A click that changes nothing visible (a logo that reloads the same page) is still a correct click. Do not switch to another element because nothing changed.",
+  "- Several elements can have the same name (every product card has \"Buy now\"). Choose the one whose in: text (the card, row or section it sits in) names the thing asked for, e.g. \"Buy now on the vivo X500\" is the Buy now whose in: text contains X500.",
   "- Counts such as \"10 times\" are handled by the test runner, not by you: resolve the element once.",
 ].join("\n");
 

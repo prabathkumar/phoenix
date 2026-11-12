@@ -12,6 +12,19 @@ function SNAPSHOT_SCRIPT() {
     return !!home;
   };
   Array.prototype.forEach.call(document.querySelectorAll("[data-tm-ref]"), function (n) { n.removeAttribute("data-tm-ref"); });
+  // Several controls can share a name (every product card has "Buy now"): say what card/row/section each one sits in.
+  var around = function (el, own) {
+    var node = el.parentElement, ownLen = String(own || "").length;
+    for (var hop = 0; node && node !== document.body && hop < 8; hop++, node = node.parentElement) {
+      var t = String(node.innerText || "").replace(/\s+/g, " ").trim();
+      if (t.length > ownLen + 25) {
+        if (t.length > 420) return "";
+        var rest = own ? t.split(own).join(" ").replace(/\s+/g, " ").trim() : t;
+        return rest.slice(0, 120);
+      }
+    }
+    return "";
+  };
   var firstLine = function (s, n) {
     var line = String(s || "").split("\n").map(function (l) { return l.replace(/\s+/g, " ").trim(); }).filter(Boolean)[0] || "";
     return line.length > n ? line.slice(0, n) : line;
@@ -50,6 +63,7 @@ function SNAPSHOT_SCRIPT() {
       ref: ref, tag: tag, role: role, name: name, type: type || undefined,
       editable: !!editable, disabled: !!el.disabled || el.getAttribute("aria-disabled") === "true",
       hint: isLogo ? "logo" : undefined,
+      within: around(el, name) || undefined,
       id: id, testid: el.getAttribute("data-testid") || el.getAttribute("data-test") || el.getAttribute("data-qa") || undefined,
       placeholder: el.getAttribute("placeholder") || undefined,
       inViewport: rect.bottom > 0 && rect.right > 0 && rect.top < window.innerHeight && rect.left < window.innerWidth,

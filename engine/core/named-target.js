@@ -76,6 +76,21 @@ function plainName(instruction, elements) {
   return null;
 }
 
+/**
+ * "Enter 010246789 in the mobile number field": the value, and the one editable field whose label shares a word with
+ * "mobile number" ("Yes Number *" shares "number"). One match -> that field; none or several -> the model decides.
+ */
+function enterTarget(instruction, elements) {
+  const m = String(instruction || "").trim().match(/^(?:enter|type|fill(?:\s+in)?|input)\s+("[^"]+"|'[^']+'|\S+)\s+(?:in|into|on)\s+(?:the\s+)?(.+?)(?:\s+(?:field|box|input|textbox))?\s*[.!]?$/i);
+  if (!m) return null;
+  const text = m[1].replace(/^["']|["']$/g, "");
+  const words = m[2].toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 3 && !STOP.has(w) && !GENERIC.has(w) && !["field", "box", "input"].includes(w));
+  if (!words.length || !text) return null;
+  const hits = elements.filter((e) => e.editable && !e.disabled && words.some((w) => squash([e.name, e.placeholder, e.id].filter(Boolean).join(" ")).includes(squash(w))));
+  if (hits.length === 1) return { element: hits[0], text, why: `the field labelled "${hits[0].name}"` };
+  return null;
+}
+
 function domMatch(instruction, elements) {
   const m = String(instruction || "").trim().match(/^(?:click|tap|press|select|choose|pick)\s+(?:on\s+)?(?:the\s+)?(.+?)\s+(?:on|against|for|of|in|under|next to|beside)\s+(?:the\s+)?(.+)$/i);
   if (!m) return null;
@@ -98,4 +113,4 @@ const MATCH_RULES = [
   "- Counts such as \"10 times\" are handled by the test runner, not by you: resolve the element once.",
 ].join("\n");
 
-module.exports = { parseRepeat, mismatch, domMatch, plainName, MATCH_RULES, MAX_REPEAT };
+module.exports = { parseRepeat, mismatch, domMatch, plainName, enterTarget, MATCH_RULES, MAX_REPEAT };

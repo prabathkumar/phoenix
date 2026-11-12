@@ -12,10 +12,13 @@
  */
 const { assertSurface, diffLines } = require("./surface");
 const { snapshotToText } = require("./semantic-resolve");
-const { parseRepeat, mismatch, domMatch, plainName, MATCH_RULES } = require("./named-target");
+const { parseRepeat, mismatch, domMatch, plainName, enterTarget, MATCH_RULES } = require("./named-target");
 
 /** One plain click, not a multi-part goal such as "go to X and click Y". */
 const isSingleClick = (g) => /^\s*(click|tap|press|select|choose|pick)\b/i.test(g) && !/\b(and|then|after|before)\b|[,;]/i.test(String(g).replace(/^\s*(click|tap|press|select|choose|pick)\s+(on\s+)?/i, ""));
+
+/** One value into one field, not a multi-part goal. */
+const isSingleEntry = (g) => /^\s*(enter|type|fill|input)\b/i.test(g) && !/\b(and then|then|after|before)\b|[;]/i.test(String(g));
 
 const RISKY_RE = /\b(delete|remove account|pay now|place order|confirm payment|purchase|cancel subscription|deactivate|terminate)\b/i;
 
@@ -81,8 +84,10 @@ async function runGoalLoop(surface, goal, opts = {}) {
     if (opts.vision) { try { image = await surface.screenshot(); } catch { /* no screenshot */ } }
 
     let decision;
+    const typed = n === 0 ? enterTarget(goal, elements) : null; // "Enter 0102... in the mobile number field": read the page
     const dom = n === 0 ? (domMatch(goal, elements) || plainName(goal, elements)) : null; // "click Buy now on the vivo X500": read the card, no model needed
-    if (dom && dom.element) { decision = { action: "tap", ref: dom.element.ref }; history.push(`page read: ${dom.why}`); }
+    if (typed) { decision = { action: "type", ref: typed.element.ref, text: typed.text }; history.push(`page read: ${typed.why}`); }
+    else if (dom && dom.element) { decision = { action: "tap", ref: dom.element.ref }; history.push(`page read: ${dom.why}`); }
     else try {
       if (dom) note = dom.why;
       decision = await callModel(buildPrompt({ goal, elements, lines: before, history, note, hasImage: Boolean(image) }), image ? { images: [image] } : {});
@@ -153,6 +158,9 @@ async function runGoalLoop(surface, goal, opts = {}) {
       return why
         ? { success: false, reason: `clicked "${element.name || element.role}" ${done} of ${rep.times} times, then: ${why}`, steps, actions }
         : { success: true, reason: `clicked "${element.name || element.role}" ${rep.times} times`, steps, actions };
+    }
+    if (kind === "type" && isSingleEntry(goal)) { // one value into one field: done once it has been typed
+      return { success: true, reason: `typed into "${element.name || element.role}"`, steps, actions };
     }
     if (kind === "tap" && isSingleClick(goal)) {
       // "Click the Devices menu" is one action: once it has been done, the step is done. Do not keep going and re-tap it.

@@ -55,7 +55,7 @@ function page() {
   assert.ok(/\[1\] link "BUY NOW" \(in: "vivo X500/.test(pr) && /whose in: text/.test(pr), "card context reaches the model");
 
   // reading the page: the Buy now inside the vivo X500 card, chosen with no model at all
-  const { domMatch, plainName } = require("../core/named-target");
+  const { domMatch, plainName, enterTarget } = require("../core/named-target");
   let dm = domMatch("Click Buy now on the vivo X500", cards);
   assert.ok(dm.element && dm.element.ref === 1, dm.why);
   assert.strictEqual(domMatch("click buy now against the vivoX500.", cards).element.ref, 1, "spacing and case do not matter");
@@ -92,6 +92,16 @@ function page() {
   // the word "colour" appears in every swatch's id; it must not make "Sunny White" pass for "Starry Gray"
   assert.ok(mismatch("Select colour Starry Gray", { name: "Sunny White", role: "button", id: "colour-sunny-white" }));
   assert.strictEqual(mismatch("Select colour Starry Gray", { name: "Starry Gray", role: "button", id: "colour-starry-gray" }), null);
+
+  // reported: "Enter 010246789 in the mobile number field" typed into 'Yes Number *' again and again
+  const form = [{ ref: 0, role: "textbox", name: "Yes Number *", editable: true }, { ref: 1, role: "button", name: "REQUEST TAC" }];
+  const et = enterTarget("Enter 010246789 in the mobile number field", form);
+  assert.ok(et && et.element.ref === 0 && et.text === "010246789", "field found by the shared word 'number'");
+  assert.strictEqual(enterTarget("Enter 1 in the postcode field", form), null, "no field with that name: the model or a person decides");
+  p = page(); p.surface.snapshot = async () => form.map((e) => ({ ...e, disabled: false, editable: !!e.editable }));
+  let typedN = 0; p.surface.perform = async (a) => { if (a.kind === "type") typedN++; return { ok: true }; };
+  r = await runGoalLoop(p.surface, "Enter 010246789 in the mobile number field", { callModel: async () => { throw new Error("model must not be called"); } });
+  assert.ok(r.success && typedN === 1, `one type, then stop: ${typedN} ${r.reason}`);
 
   // semantic layer: same guard
   p = page();

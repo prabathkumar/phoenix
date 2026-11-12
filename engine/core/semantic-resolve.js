@@ -104,7 +104,7 @@ async function resolveByInstruction(surface, instruction, opts = {}) {
     const element = elements.find((e) => e.ref === result.ref);
     if (!element) return { resolved: false, reason: `model chose ref ${result.ref}, which is not an offered element`, usedVision, elements: all };
     const wrong = mismatch(instruction, element);
-    if (wrong) return { resolved: false, reason: wrong, usedVision, elements: all };
+    if (wrong) return { resolved: false, reason: wrong, rejected: element.ref, usedVision, elements: all };
     if (element.disabled) return { resolved: false, reason: `"${element.name}" is disabled`, usedVision, elements: all };
     if (kind === "type" && !element.editable) return { resolved: false, reason: `"${element.name}" is not an editable field`, usedVision, elements: all };
     if (kind === "select" && element.tag !== "select") return { resolved: false, reason: `"${element.name}" is not a dropdown`, usedVision, elements: all };

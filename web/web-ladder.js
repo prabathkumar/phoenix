@@ -48,7 +48,10 @@ async function trySemantic(surface, step, ctx, options) {
       kind, exclude, vision: visionOn(options.vision), callModel: options.callModel,
       context: { failedSelector: ctx.failedSelector, reason: ctx.reason, pageDiff: ctx.pageDiff, pastFailures: ctx.pastFailures },
     });
-    if (!res.resolved) return { ok: false, reason: res.reason };
+    if (!res.resolved) {
+      if (res.rejected !== undefined && attempt === 0) { exclude.push(res.rejected); lastReason = res.reason; continue; } // the pick was not what the instruction names: ask again without it
+      return { ok: false, reason: res.reason };
+    }
     const located = await surface.selectorFor(res.ref);
     const before = await surface.lines();
     const act = await surface.perform(actionFor(step, res.ref));

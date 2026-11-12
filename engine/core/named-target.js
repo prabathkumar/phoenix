@@ -26,8 +26,23 @@ const NAMED = [
 /** Evidence text for an element: everything that could say what it is. */
 const evidence = (el) => [el.name, el.id, el.testid, el.placeholder, el.hint, el.alt].filter(Boolean).join(" ");
 
+/** The words a plain click instruction names: "Click Explore Devices" -> ["explore","devices"]; "Click Buy now on the vivo X500" -> ["buy","now"]. null when it is not a plain click. */
+function namedWords(instruction) {
+  const t = String(instruction || "").trim().replace(/[.!]+$/, "");
+  let m = t.match(/^(?:click|tap|press)\s+(?:on\s+)?(?:the\s+)?(.+?)\s+(?:on|against|for|of|in|under|next to|beside)\s+(?:the\s+)?.+$/i)
+    || t.match(/^(?:click|tap|press)\s+(?:on\s+)?(?:the\s+)?(.+)$/i);
+  if (!m || /\b(and|then)\b|[,;]/i.test(m[1])) return null;
+  const words = m[1].toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 3 && !STOP.has(w) && !["menu", "tab", "option", "item", "icon"].includes(w));
+  return words.length ? words : null;
+}
+
 /** If the instruction names a known thing and the element is clearly a different thing, say why. */
 function mismatch(instruction, el) {
+  const words = namedWords(instruction);
+  if (words && !/\b(logo|brand mark|company icon|site icon)\b/i.test(String(instruction))) {
+    const ev = squash([el.name, el.id, el.testid, el.placeholder, el.alt, el.hint].filter(Boolean).join(" "));
+    if (!words.some((w) => ev.includes(w))) return `the instruction names "${words.join(" ")}", but "${el.name || el.role}" does not match it`;
+  }
   for (const n of NAMED) {
     if (!n.asked.test(String(instruction))) continue;
     const ev = evidence(el);

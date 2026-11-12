@@ -65,6 +65,17 @@ function page() {
   r = await runGoalLoop(p.surface, "Click Buy now on the vivo X500", { callModel: async () => { asked++; return { action: "done" }; } });
   assert.ok(r.success && asked === 0 && p.clicks.join() === "1", `model not asked, card 1 clicked: ${asked} ${p.clicks}`);
 
+  // reported: "Click Explore Devices" tapped a BUY NOW button because the menu item was not on the page
+  p = page(); p.surface.snapshot = async () => [{ ref: 0, tag: "a", role: "link", name: "BUY NOW", editable: false, disabled: false, inViewport: true }];
+  r = await runGoalLoop(p.surface, "Click Explore Devices", { callModel: async () => ({ action: "tap", ref: 0 }) });
+  assert.ok(!r.success && !p.clicks.length, `no substitute click: ${p.clicks} ${r.reason}`);
+  r = await runGoalLoop(p.surface, "Click Buy now on the vivo X500", { callModel: async () => ({ action: "none" }) });
+  assert.ok(!r.success && /nothing|vivo/i.test(r.reason) && !/unknown action/.test(r.reason), r.reason);
+  assert.strictEqual(mismatch("Click Explore Devices", { name: "Explore Devices", role: "link" }), null);
+  assert.strictEqual(mismatch("Click the Devices menu", { name: "Devices", role: "link" }), null);
+  assert.ok(mismatch("Click Buy now on the vivo X500", { name: "iPhone", role: "link" }));
+  assert.strictEqual(mismatch("click the logo", { name: "Acme", role: "link", hint: "logo" }), null);
+
   // semantic layer: same guard
   p = page();
   let res = await resolveByInstruction(p.surface, "click the logo", { callModel: async () => ({ ref: 1 }) });

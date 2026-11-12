@@ -93,6 +93,7 @@ async function runGoalLoop(surface, goal, opts = {}) {
     if (!decision || typeof decision.action !== "string") return { success: false, reason: "model gave no valid action", steps, actions };
 
     if (decision.action === "done") return { success: true, reason: String(decision.reason || "goal reached"), steps, actions };
+    if (/^(none|nothing|null|no|cannot|can't|unknown|n\/a)$/i.test(decision.action)) return { success: false, reason: String(decision.reason || `the model found nothing on the page matching "${goal}"`), steps, actions };
     if (decision.action === "fail") return { success: false, reason: String(decision.reason || "model gave up"), steps, actions };
 
     const kind = { tap: "tap", type: "type", select: "select", press: "press", scroll: "scroll", navigate: "navigate" }[decision.action];

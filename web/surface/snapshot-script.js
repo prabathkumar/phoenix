@@ -56,7 +56,7 @@ function SNAPSHOT_SCRIPT() {
     if (window.getComputedStyle(x).cursor !== "pointer") continue;
     if (!xt) { var xr = x.getBoundingClientRect(); if (!(xr.width >= 12 && xr.width <= 64 && xr.height >= 12 && xr.height <= 64) || !colourName(x)) continue; }
     var px = x.parentElement;
-    if (px && window.getComputedStyle(px).cursor === "pointer") continue; // the outermost pointer element is the thing to click
+    if (px && window.getComputedStyle(px).cursor === "pointer" && String(px.innerText || "").replace(/\s+/g, " ").trim().length <= 80) continue; // the outermost pointer element is the thing to click (unless it is a whole card too long to list: then its heading is)
     if (x.closest("a,button,[role=button],[role=link],[onclick],[tabindex]")) continue;
     nodes.push(x);
   }

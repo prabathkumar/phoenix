@@ -112,6 +112,18 @@ RUN cd web && npx playwright install --with-deps chromium \
  && rm -rf /var/lib/apt/lists/*
 
 # Now bring in the actual source.
+# Scanners the pipeline runs (installed BEFORE the code is copied, so editing code never re-downloads them): Semgrep (SAST), Gitleaks (secrets), Locust (performance). On by default, ~600MB;
+# skip with --build-arg WITH_SECURITY_TOOLS=false.
+# ZAP (DAST) is not in this image: the compose file runs it as its own `zap` service and the DAST stage
+# talks to it through ZAP_API_URL.
+ARG WITH_SECURITY_TOOLS=true
+RUN if [ "$WITH_SECURITY_TOOLS" = "true" ]; then \
+      apt-get update && apt-get install -y --no-install-recommends python3 python3-pip curl ca-certificates \
+      && pip3 install --break-system-packages semgrep locust \
+      && curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz | tar -xz -C /usr/local/bin gitleaks \
+      && rm -rf /var/lib/apt/lists/*; \
+    fi
+
 COPY engine/ ./engine/
 COPY capture/ ./capture/
 COPY generation/ ./generation/
@@ -123,18 +135,6 @@ COPY run-batch-executions.js ./run-batch-executions.js
 COPY test-cases/ ./test-cases/
 COPY prompts/ ./prompts/
 COPY scripts/ ./scripts/
-
-# Scanners the pipeline runs: Semgrep (SAST), Gitleaks (secrets), Locust (performance). On by default, ~600MB;
-# skip with --build-arg WITH_SECURITY_TOOLS=false.
-# ZAP (DAST) is not in this image: the compose file runs it as its own `zap` service and the DAST stage
-# talks to it through ZAP_API_URL.
-ARG WITH_SECURITY_TOOLS=true
-RUN if [ "$WITH_SECURITY_TOOLS" = "true" ]; then \
-      apt-get update && apt-get install -y --no-install-recommends python3 python3-pip curl ca-certificates \
-      && pip3 install --break-system-packages semgrep locust \
-      && curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz | tar -xz -C /usr/local/bin gitleaks \
-      && rm -rf /var/lib/apt/lists/*; \
-    fi
 
 # live-view + frontend ports (see .env.example for what each does), plus a small range
 # for web recordings: each browser the web recorder opens mirrors itself over its own

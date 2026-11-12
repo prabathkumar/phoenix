@@ -79,14 +79,20 @@ async function runEnglish({ steps: stepsText, testData = {}, runner, onEvent = (
 /** Screenshots go to the model only when it can read images (a text-only model such as llama3 answers 400 to them). Opt in: TESTOPS_MOBILE_VISION=1 with TESTOPS_MOBILE_OLLAMA_MODEL=llava (or another vision model). */
 function visionEnabled(env = process.env) { return /^(1|true|yes)$/i.test(String(env.TESTOPS_MOBILE_VISION || "")) || !!env.TESTOPS_MOBILE_VISION_MODEL; }
 
+function pageMemoryOn(env = process.env) { return !/^(0|false|no|off)$/i.test(String(env.TESTOPS_MOBILE_PAGE_MEMORY || "")); }
+function pageMemoryObserve(url, elements) { const pm = require("./core/page-memory"); return pm.describe(pm.observe(url, elements)); }
+
 /** Web: the shared goal loop over a Playwright page. */
 function webRunner(page, { runGoalLoop, createPlaywrightSurface, callModel, maxSteps = 8, vision = visionEnabled() } = {}) {
   const loop = runGoalLoop || require("./core/goal-loop").runGoalLoop;
   const mk = createPlaywrightSurface || require("../web/surface/playwright-surface").createPlaywrightSurface;
   return {
     async goal(text, { onProgress } = {}) {
-      const r = await loop(mk(page), text, { vision, maxSteps, callModel, onProgress });
-      return { success: r.success, reason: r.reason, actions: r.actions };
+      const pageNotes = [];
+      const r = await loop(mk(page), text, { vision, maxSteps, callModel, onProgress, pageNotes, pageMemory: pageMemoryOn() ? pageMemoryObserve : undefined });
+      // a failure on a page that is not what it was last run: say what changed
+      const why = !r.success && pageNotes.length ? `${r.reason} (${pageNotes[0]})` : r.reason;
+      return { success: r.success, reason: why, actions: r.actions };
     },
     async screenshot() {
       return { base64: (await page.screenshot({ type: "jpeg", quality: 50 })).toString("base64"), mime: "image/jpeg" };

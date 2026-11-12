@@ -75,6 +75,7 @@ async function runGoalLoop(surface, goal, opts = {}) {
   const tapped = new Map(); // what was already tapped for this goal: going back to it is going in circles
   let stuck = 0;
   let note = "";
+  let pageNote = ""; // set when the page differs from the remembered one
 
   for (let n = 0; n < maxSteps; n += 1) {
     const all = await surface.snapshot();
@@ -91,6 +92,9 @@ async function runGoalLoop(surface, goal, opts = {}) {
       await new Promise((r) => setTimeout(r, opts.blockedWaitMs ?? 700));
       elements = (await surface.snapshot()).filter((e) => !excluded.has(e.ref));
       dom = domMatch(goal, elements) || plainName(goal, elements);
+    }
+    if (n === 0 && opts.pageMemory) { // remember this page state; say so if the page is not what it was last time
+      try { const said = opts.pageMemory(surface.url(), elements); if (said) { pageNote = said; if (opts.pageNotes) opts.pageNotes.push(said); progress({ message: `note: ${said}` }); } } catch { /* memory never fails a step */ }
     }
     // A button is often enabled a moment after the choice that unlocks it: look again for a few seconds before calling it disabled.
     for (let wait = 0; dom && dom.blocked && wait < 6; wait += 1) {

@@ -103,6 +103,15 @@ function page() {
   r = await runGoalLoop(p.surface, "Enter 010246789 in the mobile number field", { callModel: async () => { throw new Error("model must not be called"); } });
   assert.ok(r.success && typedN === 1, `one type, then stop: ${typedN} ${r.reason}`);
 
+  // reported: "Click Next" tapped the 'Personal' tab (and passed): 'next' was a filler word, and the real NEXT was disabled
+  assert.ok(mismatch("Click Next", { name: "Personal", role: "tab", id: "tabNav-personal" }), "Personal is not Next");
+  assert.strictEqual(mismatch("Click Next", { name: "NEXT", role: "button" }), null);
+  const bar = [{ ref: 0, role: "tab", name: "Personal" }, { ref: 1, role: "button", name: "NEXT", disabled: true }];
+  assert.ok(plainName("Click Next", bar).blocked, "the disabled NEXT is reported, not skipped");
+  p = page(); p.surface.snapshot = async () => bar.map((e) => ({ ...e, editable: false, disabled: !!e.disabled }));
+  r = await runGoalLoop(p.surface, "Click Next", { callModel: async () => ({ action: "tap", ref: 0 }) });
+  assert.ok(!r.success && /disabled/.test(r.reason) && !p.clicks.length, `fails, names the reason, clicks nothing: ${r.reason} ${p.clicks}`);
+
   // semantic layer: same guard
   p = page();
   let res = await resolveByInstruction(p.surface, "click the logo", { callModel: async () => ({ ref: 1 }) });

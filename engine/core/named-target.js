@@ -55,7 +55,7 @@ function mismatch(instruction, el) {
 
 const squash = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, "").replace(/gray/g, "grey").replace(/color/g, "colour"); // US and UK spellings are the same word
 const GENERIC = new Set(["colour", "color", "size", "option", "variant", "storage", "capacity"]); // words that describe the kind of thing, not which one
-const STOP = new Set(["the", "a", "an", "button", "link", "icon", "on", "against", "for", "of", "in", "under", "next", "to"]);
+const STOP = new Set(["the", "a", "an", "button", "link", "icon", "on", "against", "for", "of", "in", "under", "to"]); // "next" is NOT here: "Click Next" names the Next button
 
 /**
  * Reading the page, no model: "click Buy now on the vivo X500" = the control called "Buy now" that sits in the card
@@ -67,8 +67,11 @@ function plainName(instruction, elements) {
   if (!words) return null;
   const core = words.filter((w) => !GENERIC.has(w));
   const want = squash((core.length ? core : words).join(""));
-  const live = elements.filter((e) => !e.disabled && e.name);
+  const all = elements.filter((e) => e.name);
+  const blockedBy = all.filter((e) => e.disabled && squash(e.name) === want);
+  const live = all.filter((e) => !e.disabled);
   const exact = live.filter((e) => squash(e.name) === want);
+  if (!exact.length && blockedBy.length) return { element: null, blocked: true, why: `"${blockedBy[0].name}" is disabled: something it needs is not filled in or chosen yet` };
   if (exact.length === 1) return { element: exact[0], why: `the control labelled "${exact[0].name}"` };
   if (exact.length > 1) return null; // several with that exact label: the model or a person decides
   const part = live.filter((e) => squash(e.name).includes(want));

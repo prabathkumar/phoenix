@@ -86,6 +86,7 @@ async function runGoalLoop(surface, goal, opts = {}) {
     let decision;
     const typed = n === 0 ? enterTarget(goal, elements) : null; // "Enter 0102... in the mobile number field": read the page
     const dom = n === 0 ? (domMatch(goal, elements) || plainName(goal, elements)) : null; // "click Buy now on the vivo X500": read the card, no model needed
+    if (dom && dom.blocked) return { success: false, reason: dom.why, steps, actions }; // the named control is there but disabled: say so, do not click something else
     if (typed) { decision = { action: "type", ref: typed.element.ref, text: typed.text }; history.push(`page read: ${typed.why}`); }
     else if (dom && dom.element) { decision = { action: "tap", ref: dom.element.ref }; history.push(`page read: ${dom.why}`); }
     else try {

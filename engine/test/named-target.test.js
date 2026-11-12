@@ -112,6 +112,10 @@ function page() {
   r = await runGoalLoop(p.surface, "Click Next", { callModel: async () => ({ action: "tap", ref: 0 }) });
   assert.ok(!r.success && /disabled/.test(r.reason) && !p.clicks.length, `fails, names the reason, clicks nothing: ${r.reason} ${p.clicks}`);
 
+  // reported: "Select the Infinite+ payment plan" tapped the 'Mobile Plans' nav item because 'plan' matched
+  assert.ok(mismatch("Select the Infinite+ payment plan", { name: "Mobile Plans", role: "link" }), "Mobile Plans is not Infinite+");
+  assert.strictEqual(mismatch("Select the Infinite+ payment plan", { name: "Infinite+", role: "h2" }), null);
+
   // semantic layer: same guard
   p = page();
   let res = await resolveByInstruction(p.surface, "click the logo", { callModel: async () => ({ ref: 1 }) });

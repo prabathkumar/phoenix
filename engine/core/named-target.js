@@ -54,7 +54,7 @@ function mismatch(instruction, el) {
 }
 
 const squash = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, "").replace(/gray/g, "grey").replace(/color/g, "colour"); // US and UK spellings are the same word
-const GENERIC = new Set(["colour", "color", "size", "option", "variant", "storage", "capacity"]); // words that describe the kind of thing, not which one
+const GENERIC = new Set(["colour", "color", "size", "option", "variant", "storage", "capacity", "plan", "plans", "payment", "menu", "tab", "section", "card"]); // words that describe the kind of thing, not which one
 const STOP = new Set(["the", "a", "an", "button", "link", "icon", "on", "against", "for", "of", "in", "under", "to"]); // "next" is NOT here: "Click Next" names the Next button
 
 /**

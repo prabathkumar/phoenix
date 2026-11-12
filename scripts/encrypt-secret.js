@@ -13,10 +13,10 @@ const name = String(process.argv[2] || "").toUpperCase();
 if (!/^[A-Z][A-Z0-9_]*$/.test(name)) { console.error("Usage: node scripts/encrypt-secret.js NAME   (e.g. LOGIN_PASSWORD)"); process.exit(1); }
 if (!process.env.TESTOPS_SECRETS_KEY || process.env.TESTOPS_SECRETS_KEY.length < 8) { console.error("Set TESTOPS_SECRETS_KEY (8+ characters) first."); process.exit(1); }
 
-const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: true });
-rl._writeToOutput = (s) => { if (s.includes("Value")) process.stdout.write(s); }; // hide what is typed
+const rl = readline.createInterface({ input: process.stdin, output: process.stderr, terminal: true });
+rl._writeToOutput = (s) => { if (s.includes("Value")) process.stderr.write(s); }; // hide what is typed
 rl.question(`Value for ${name} (hidden): `, (v) => {
-  rl.close(); process.stdout.write("\n");
+  rl.close(); process.stderr.write("\n");
   if (!v) { console.error("Nothing entered."); process.exit(1); }
   console.log(`PHOENIX_TEST_${name}=enc:${Buffer.from(JSON.stringify(encrypt({ v }))).toString("base64")}`);
 });

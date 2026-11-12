@@ -44,7 +44,7 @@ function page() {
   // a single plain click is finished after one click (reported: "Click the Devices menu" tapped Devices 8 times)
   p = page(); let calls = 0;
   r = await runGoalLoop(p.surface, "Click the Login button", { callModel: async () => { calls++; return { action: "tap", ref: 1 }; } });
-  assert.ok(r.success && p.clicks.length === 1 && calls === 1, `one click, got ${p.clicks}`);
+  assert.ok(r.success && p.clicks.length === 1 && calls <= 1, `one click, got ${p.clicks}`);
   p = page(); calls = 0;
   r = await runGoalLoop(p.surface, "go to the page and click Login", { maxSteps: 3, callModel: async () => { calls++; return { action: "tap", ref: 1 }; } });
   assert.ok(calls > 1, "multi-part goals keep going");
@@ -55,7 +55,7 @@ function page() {
   assert.ok(/\[1\] link "BUY NOW" \(in: "vivo X500/.test(pr) && /whose in: text/.test(pr), "card context reaches the model");
 
   // reading the page: the Buy now inside the vivo X500 card, chosen with no model at all
-  const { domMatch } = require("../core/named-target");
+  const { domMatch, plainName } = require("../core/named-target");
   let dm = domMatch("Click Buy now on the vivo X500", cards);
   assert.ok(dm.element && dm.element.ref === 1, dm.why);
   assert.strictEqual(domMatch("click buy now against the vivoX500.", cards).element.ref, 1, "spacing and case do not matter");
@@ -75,6 +75,12 @@ function page() {
   assert.strictEqual(mismatch("Click the Devices menu", { name: "Devices", role: "link" }), null);
   assert.ok(mismatch("Click Buy now on the vivo X500", { name: "iPhone", role: "link" }));
   assert.strictEqual(mismatch("click the logo", { name: "Acme", role: "link", hint: "logo" }), null);
+
+  // plain label: "Click Explore Devices" finds that link even though "Devices" and others are on the page
+  const menu = [{ ref: 0, role: "link", name: "Devices" }, { ref: 1, role: "link", name: "Explore Devices" }, { ref: 2, role: "link", name: "Postpaid Plans" }, { ref: 3, role: "link", name: "Yes Trade-in" }];
+  assert.strictEqual(plainName("Click Explore Devices", menu).element.ref, 1);
+  assert.strictEqual(plainName("Click the Devices menu", menu).element.ref, 0, "exact label beats one that only contains it");
+  assert.strictEqual(plainName("Click Pakej NUTP", menu), null);
 
   // semantic layer: same guard
   p = page();

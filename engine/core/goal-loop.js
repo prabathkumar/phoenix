@@ -12,7 +12,7 @@
  */
 const { assertSurface, diffLines } = require("./surface");
 const { snapshotToText } = require("./semantic-resolve");
-const { parseRepeat, mismatch, domMatch, MATCH_RULES } = require("./named-target");
+const { parseRepeat, mismatch, domMatch, plainName, MATCH_RULES } = require("./named-target");
 
 /** One plain click, not a multi-part goal such as "go to X and click Y". */
 const isSingleClick = (g) => /^\s*(click|tap|press)\b/i.test(g) && !/\b(and|then|after|before)\b|[,;]/i.test(String(g).replace(/^\s*(click|tap|press)\s+(on\s+)?/i, ""));
@@ -81,7 +81,7 @@ async function runGoalLoop(surface, goal, opts = {}) {
     if (opts.vision) { try { image = await surface.screenshot(); } catch { /* no screenshot */ } }
 
     let decision;
-    const dom = n === 0 ? domMatch(goal, elements) : null; // "click Buy now on the vivo X500": read the card, no model needed
+    const dom = n === 0 ? (domMatch(goal, elements) || plainName(goal, elements)) : null; // "click Buy now on the vivo X500": read the card, no model needed
     if (dom && dom.element) { decision = { action: "tap", ref: dom.element.ref }; history.push(`page read: ${dom.why}`); }
     else try {
       if (dom) note = dom.why;

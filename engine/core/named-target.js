@@ -59,6 +59,20 @@ const STOP = new Set(["the", "a", "an", "button", "link", "icon", "on", "against
  * Reading the page, no model: "click Buy now on the vivo X500" = the control called "Buy now" that sits in the card
  * whose text names "vivo X500". Exactly one match -> that element; none or several -> says why and the model/person decides.
  */
+/** "Click Explore Devices": the one control whose label is that name (an exact label wins over one that merely contains it). */
+function plainName(instruction, elements) {
+  const words = namedWords(instruction);
+  if (!words) return null;
+  const want = squash(words.join(""));
+  const live = elements.filter((e) => !e.disabled && e.name);
+  const exact = live.filter((e) => squash(e.name) === want);
+  if (exact.length === 1) return { element: exact[0], why: `the control labelled "${exact[0].name}"` };
+  if (exact.length > 1) return null; // several with that exact label: the model or a person decides
+  const part = live.filter((e) => squash(e.name).includes(want));
+  if (part.length === 1) return { element: part[0], why: `the only control whose label contains "${words.join(" ")}"` };
+  return null;
+}
+
 function domMatch(instruction, elements) {
   const m = String(instruction || "").trim().match(/^(?:click|tap|press)\s+(?:on\s+)?(?:the\s+)?(.+?)\s+(?:on|against|for|of|in|under|next to|beside)\s+(?:the\s+)?(.+)$/i);
   if (!m) return null;
@@ -81,4 +95,4 @@ const MATCH_RULES = [
   "- Counts such as \"10 times\" are handled by the test runner, not by you: resolve the element once.",
 ].join("\n");
 
-module.exports = { parseRepeat, mismatch, domMatch, MATCH_RULES, MAX_REPEAT };
+module.exports = { parseRepeat, mismatch, domMatch, plainName, MATCH_RULES, MAX_REPEAT };

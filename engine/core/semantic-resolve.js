@@ -8,6 +8,7 @@
  * guesses - an unconfident or invalid answer is `{resolved:false, reason}`.
  */
 const { assertSurface } = require("./surface");
+const { mismatch, MATCH_RULES } = require("./named-target");
 
 function snapshotToText(elements) {
   return elements.map((el) => {
@@ -16,6 +17,7 @@ function snapshotToText(elements) {
     if (el.id) bits.push(`id: ${el.id}`);
     if (el.testid) bits.push(`testid: ${el.testid}`);
     if (el.placeholder) bits.push(`placeholder: ${el.placeholder}`);
+    if (el.hint) bits.push(el.hint);
     if (el.disabled) bits.push("disabled");
     if (el.inViewport === false) bits.push("off-screen");
     return `[${el.ref}] ${el.role}${el.name ? ` "${el.name}"` : ""}${bits.length ? ` (${bits.join(", ")})` : ""}`;
@@ -46,6 +48,8 @@ function buildPrompt({ instruction, kind, elements, context, withImage }) {
     'Each candidate is: [ref] role "name" (details).',
     kind === "type" ? "This is a TEXT-ENTRY action: only choose an editable text field, never a link, button or label." : undefined,
     kind === "select" ? "This is a DROPDOWN action: only choose a select/combobox." : undefined,
+    "",
+    MATCH_RULES,
     "",
     `Instruction: "${instruction}"`,
     ...contextLines(context),
@@ -94,6 +98,8 @@ async function resolveByInstruction(surface, instruction, opts = {}) {
     }
     const element = elements.find((e) => e.ref === result.ref);
     if (!element) return { resolved: false, reason: `model chose ref ${result.ref}, which is not an offered element`, usedVision, elements: all };
+    const wrong = mismatch(instruction, element);
+    if (wrong) return { resolved: false, reason: wrong, usedVision, elements: all };
     if (element.disabled) return { resolved: false, reason: `"${element.name}" is disabled`, usedVision, elements: all };
     if (kind === "type" && !element.editable) return { resolved: false, reason: `"${element.name}" is not an editable field`, usedVision, elements: all };
     if (kind === "select" && element.tag !== "select") return { resolved: false, reason: `"${element.name}" is not a dropdown`, usedVision, elements: all };

@@ -4,7 +4,13 @@
  * data-tm-ref so a later action can address exactly that element.
  */
 function SNAPSHOT_SCRIPT() {
-  var SEL = "a,button,input,select,textarea,summary,label,[role=button],[role=link],[role=checkbox],[role=tab],[role=menuitem],[role=switch],[role=option],[role=radio],[onclick],[tabindex]";
+  var SEL = "a,button,input,select,textarea,summary,label,[role=button],[role=link],[role=checkbox],[role=tab],[role=menuitem],[role=switch],[role=option],[role=radio],[onclick],[tabindex],img,svg,[class*=logo i],[id*=logo i]";
+  var logoish = function (el) {
+    var t = [el.getAttribute("class"), el.id, el.getAttribute("alt"), el.getAttribute("aria-label"), el.getAttribute("title"), el.getAttribute("src"), el.getAttribute("href")].join(" ");
+    if (/logo|brand/i.test(t)) return true;
+    var home = el.tagName.toLowerCase() === "a" && /^(\/|\.\/|index\.html?)?$/i.test(el.getAttribute("href") || "x") && el.querySelector && el.querySelector("img,svg") && el.closest && el.closest("header,nav,[role=banner]");
+    return !!home;
+  };
   Array.prototype.forEach.call(document.querySelectorAll("[data-tm-ref]"), function (n) { n.removeAttribute("data-tm-ref"); });
   var firstLine = function (s, n) {
     var line = String(s || "").split("\n").map(function (l) { return l.replace(/\s+/g, " ").trim(); }).filter(Boolean)[0] || "";
@@ -15,6 +21,7 @@ function SNAPSHOT_SCRIPT() {
   for (var i = 0; i < nodes.length && out.length < 250; i++) {
     var el = nodes[i];
     var tag = el.tagName.toLowerCase();
+    if ((tag === "img" || tag === "svg") && !logoish(el)) continue; // plain pictures are not actions; only logo-like ones are listed
     if (tag === "label" && (el.control || el.querySelector("input,select,textarea"))) continue; // the control is listed itself
     var rect = el.getBoundingClientRect();
     if (!(rect.width > 1 && rect.height > 1)) continue;
@@ -31,7 +38,9 @@ function SNAPSHOT_SCRIPT() {
        tag === "textarea" || tag === "input" ? "textbox" : tag);
     var labelEl = el.labels && el.labels[0];
     var img = el.querySelector && el.querySelector("img[alt]");
-    var name = firstLine(el.getAttribute("aria-label") || (labelEl && labelEl.innerText) || el.innerText || el.getAttribute("placeholder") || (img && img.getAttribute("alt")) || el.getAttribute("title") || el.value, 80);
+    var name = firstLine(el.getAttribute("aria-label") || (labelEl && labelEl.innerText) || el.innerText || el.getAttribute("placeholder") || el.getAttribute("alt") || (img && img.getAttribute("alt")) || el.getAttribute("title") || el.value, 80);
+    var isLogo = logoish(el) || !!(el.querySelector && [].slice.call(el.querySelectorAll("img,svg")).some(logoish));
+    if (!name && isLogo) name = "logo";
     var editable = tag === "textarea" || el.isContentEditable ||
       (tag === "input" && ["text", "email", "password", "search", "tel", "url", "number", ""].indexOf(type) >= 0);
     var id = el.id && /^[A-Za-z][\w-]{0,40}$/.test(el.id) && !/\d{3,}/.test(el.id) ? el.id : undefined;
@@ -40,6 +49,7 @@ function SNAPSHOT_SCRIPT() {
     out.push({
       ref: ref, tag: tag, role: role, name: name, type: type || undefined,
       editable: !!editable, disabled: !!el.disabled || el.getAttribute("aria-disabled") === "true",
+      hint: isLogo ? "logo" : undefined,
       id: id, testid: el.getAttribute("data-testid") || el.getAttribute("data-test") || el.getAttribute("data-qa") || undefined,
       placeholder: el.getAttribute("placeholder") || undefined,
       inViewport: rect.bottom > 0 && rect.right > 0 && rect.top < window.innerHeight && rect.left < window.innerWidth,

@@ -12,6 +12,7 @@
  */
 const { assertSurface, diffLines } = require("./surface");
 const { snapshotToText } = require("./semantic-resolve");
+const { parseRepeat, mismatch, MATCH_RULES } = require("./named-target");
 
 const RISKY_RE = /\b(delete|remove account|pay now|place order|confirm payment|purchase|cancel subscription|deactivate|terminate)\b/i;
 
@@ -29,6 +30,8 @@ function buildPrompt({ goal, elements, lines, history, note, hasImage }) {
     "Elements you can act on:",
     snapshotToText(elements),
     hasImage ? "\nA screenshot is attached; use it to understand the layout. Act only on refs from the list." : "",
+    "",
+    MATCH_RULES,
     "",
     "Choose the single next action. Respond with ONLY JSON, one of:",
     '{"action":"tap","ref":<n>}  {"action":"type","ref":<n>,"text":"..."}  {"action":"select","ref":<n>,"option":"<visible label>"}',
@@ -51,6 +54,9 @@ async function runGoalLoop(surface, goal, opts = {}) {
   assertSurface(surface);
   const callModel = opts.callModel || require("../../generation/llm").callOllamaJson;
   const maxSteps = opts.maxSteps || 12;
+  const rep = parseRepeat(goal); // "click the logo 10 times": the runner repeats, the model resolves once
+  const namedGoal = goal;
+  goal = rep.text;
   const progress = opts.onProgress || (() => {});
   const startOrigin = (() => { try { return new URL(surface.url()).origin; } catch { return ""; } })();
   const allowed = new Set([startOrigin, ...(opts.allowedOrigins || [])].filter(Boolean));
@@ -88,6 +94,8 @@ async function runGoalLoop(surface, goal, opts = {}) {
     const needsRef = ["tap", "type", "select"].includes(kind);
     const element = needsRef ? elements.find((e) => e.ref === decision.ref) : null;
     if (needsRef && !element) { note = `ref ${decision.ref} is not in the list; choose from the list.`; stuck += 1; if (stuck >= 3) break; continue; }
+    const wrong = needsRef ? mismatch(namedGoal, element) : null;
+    if (wrong) { note = `${wrong}. Choose the element that is actually named, or fail if it is not on the page.`; excluded.add(element.ref); stuck += 1; if (stuck >= 3) return { success: false, reason: wrong, steps, actions }; continue; }
     if (needsRef && element.disabled) { note = `"${element.name}" is disabled.`; excluded.add(element.ref); continue; }
     if (kind === "type" && !element.editable) { note = `"${element.name}" is not an editable field.`; excluded.add(element.ref); continue; }
     if (kind === "navigate") {
@@ -124,6 +132,15 @@ async function runGoalLoop(surface, goal, opts = {}) {
       steps.push({ step, evidence: { changed, appeared: diff.appeared.slice(0, 3), fragile: located.fragile } });
     }
 
+    if (rep.times > 1 && kind === "tap") {
+      // same element, again: no re-guessing, no "stuck" exclusion (a logo click may change nothing)
+      let done = 1, why = "";
+      for (; done < rep.times; done += 1) { const again = await surface.perform(perform); if (!again.ok) { why = again.reason; break; } }
+      progress({ message: `${label} x${done}`, step: n + 1 });
+      return why
+        ? { success: false, reason: `clicked "${element.name || element.role}" ${done} of ${rep.times} times, then: ${why}`, steps, actions }
+        : { success: true, reason: `clicked "${element.name || element.role}" ${rep.times} times`, steps, actions };
+    }
     if (key === lastKey && !changed) {
       stuck += 1;
       if (element) excluded.add(element.ref);

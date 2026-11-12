@@ -16,8 +16,14 @@ const { parseSteps, applyTestData, redact } = require("./core/english");
 /**
  * @param {{steps:string, testData?:Object, runner:Object, onEvent?:Function, now?:Function}} opts
  */
-async function runEnglish({ steps: stepsText, testData = {}, runner, onEvent = () => {}, now = Date.now }) {
+async function runEnglish({ steps: stepsText, testData: given = {}, runner, onEvent = () => {}, now = Date.now, env = process.env }) {
   const lines = parseSteps(stepsText);
+  // ${NAME} not given in the table falls back to PHOENIX_TEST_<NAME> in the server's environment (.env). Only that prefix: a step can never read an unrelated secret such as a cloud key.
+  const testData = { ...given };
+  for (const line of lines) for (const m of String(line).matchAll(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g)) {
+    const v = env[`PHOENIX_TEST_${m[1]}`];
+    if ((testData[m[1]] === undefined || testData[m[1]] === "") && typeof v === "string" && v) testData[m[1]] = v;
+  }
   const started = now();
   const emit = (e) => { try { onEvent(e); } catch { /* a bad listener must not break the run */ } };
   const results = [];

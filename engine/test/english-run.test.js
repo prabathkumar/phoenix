@@ -85,3 +85,15 @@ async function test(name, fn) { try { await fn(); console.log(`  ok - ${name}`);
   if (failed) process.exit(1);
   console.log("engine/english-run tests passed");
 })();
+
+test("a ${NAME} missing from the table is read from PHOENIX_TEST_<NAME> in the environment, masked in results; other env vars are never readable", async () => {
+  const typed = [];
+  const runner = { goal: async (t) => { typed.push(t); return { success: true, actions: [{ label: `typed ${t}` }] }; }, screenshot: async () => null };
+  const out = await runEnglish({ steps: "Enter ${LOGIN_PASSWORD} in the password field", runner, env: { PHOENIX_TEST_LOGIN_PASSWORD: "s3cret-pw", BROWSERSTACK_KEY: "nope" } });
+  assert.strictEqual(out.status, "passed");
+  assert.match(typed[0], /s3cret-pw/);
+  assert.ok(!JSON.stringify(out).includes("s3cret-pw"), "the secret is masked in the results");
+  const out2 = await runEnglish({ steps: "Enter ${BROWSERSTACK_KEY} in the field", runner, env: { BROWSERSTACK_KEY: "nope" } });
+  assert.strictEqual(out2.status, "failed");
+  assert.match(out2.reason, /missing a value/);
+});

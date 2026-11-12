@@ -41,7 +41,7 @@ function mismatch(instruction, el) {
   const words = namedWords(instruction);
   if (words && !/\b(logo|brand mark|company icon|site icon)\b/i.test(String(instruction))) {
     const ev = squash([el.name, el.id, el.testid, el.placeholder, el.alt, el.hint].filter(Boolean).join(" "));
-    if (!words.some((w) => ev.includes(w))) return `the instruction names "${words.join(" ")}", but "${el.name || el.role}" does not match it`;
+    if (!words.some((w) => ev.includes(squash(w)))) return `the instruction names "${words.join(" ")}", but "${el.name || el.role}" does not match it`;
   }
   for (const n of NAMED) {
     if (!n.asked.test(String(instruction))) continue;

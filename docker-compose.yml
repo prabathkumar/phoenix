@@ -81,6 +81,8 @@ services:
       PHOENIX_DATA_DIR: /data
       TESTOPS_MOBILE_LOCATOR_DB_PATH: /data/locator-store.db
     volumes: [platform-data:/data]
+    # the "run from English" page and its API; this machine only (the engine has no login of its own)
+    ports: ["127.0.0.1:8091:8091"]
     shm_size: "1gb"
     profiles: ["platform"]
     restart: unless-stopped

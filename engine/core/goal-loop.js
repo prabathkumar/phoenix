@@ -56,7 +56,7 @@ const actionKey = (a) => `${a.action}|${a.ref ?? ""}|${a.text ?? a.option ?? a.k
  *          allowRisky?:boolean, allowedOrigins?:string[], testData?:Object}} [opts]
  * @returns {Promise<{success:boolean, reason:string, steps:Object[], actions:Object[]}>}
  */
-async function runGoalLoop(surface, goal, opts = {}) {
+async function runGoalLoopInner(surface, goal, opts = {}) {
   assertSurface(surface);
   const callModel = opts.callModel || require("../../generation/llm").callOllamaJson;
   const maxSteps = opts.maxSteps || 12;
@@ -192,6 +192,20 @@ async function runGoalLoop(surface, goal, opts = {}) {
     lastKey = key;
   }
   return { success: false, reason: `did not reach the goal within ${maxSteps} actions`, steps, actions };
+}
+
+
+/** Messages a site shows when it will not let the journey continue (a pop-up, a banner): the tester needs the site's own words, not a locator mismatch. */
+const BLOCKER = /(temporarily reserved|out of stock|sold out|unavailable|not available|something went wrong|try again|please check again|error|failed|session (has )?expired|access denied|too many requests|maintenance)/i;
+
+async function runGoalLoop(surface, goal, opts = {}) {
+  const r = await runGoalLoopInner(surface, goal, opts);
+  if (r.success) return r;
+  try {
+    const seen = (await surface.lines()).map((l) => String(l).trim()).filter((l) => l && l.length <= 160 && BLOCKER.test(l));
+    if (seen.length) return { ...r, reason: `${r.reason} - the page is showing: "${[...new Set(seen)].slice(0, 2).join(" / ")}"` };
+  } catch { /* the page text is a bonus, never a reason to fail differently */ }
+  return r;
 }
 
 module.exports = { runGoalLoop, RISKY_RE };

@@ -122,6 +122,12 @@ function page() {
   r = await runGoalLoop(p.surface, "Click Next", { blockedWaitMs: 1, callModel: async () => ({ action: "tap", ref: 9 }) });
   assert.ok(r.success && p.clicks.length === 1, `waits for NEXT to enable, then taps it: ${r.reason}`);
 
+  // reported: iPhone 17 shows 'Stock Temporarily Reserved' over the options; the step failure must say so
+  p = page(); p.surface.snapshot = async () => [{ ref: 0, role: "button", name: "CHOOSE AGAIN", editable: false }];
+  p.surface.lines = async () => ["APPLE - iPhone 17", "Stock Temporarily Reserved", "Other customers are currently completing their purchases", "Please check again shortly."];
+  r = await runGoalLoop(p.surface, "Select 256GB", { blockedWaitMs: 1, callModel: async () => ({ action: "none" }) });
+  assert.ok(!r.success && /Stock Temporarily Reserved/.test(r.reason), `reason quotes the page: ${r.reason}`);
+
   // semantic layer: same guard
   p = page();
   let res = await resolveByInstruction(p.surface, "click the logo", { callModel: async () => ({ ref: 1 }) });

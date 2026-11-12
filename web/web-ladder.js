@@ -36,6 +36,7 @@ function evidenceOf(step, diff, verification) {
     typed: step.kind === "type",
   };
 }
+const visionOn = (v) => (v === undefined ? /^(1|true|yes)$/i.test(String(process.env.TESTOPS_MOBILE_VISION || "")) : !!v); // off unless asked: a text-only model rejects images
 const hasEvidence = (e) => e.expectPassed || e.pageChanged || e.typed;
 
 async function trySemantic(surface, step, ctx, options) {
@@ -44,7 +45,7 @@ async function trySemantic(surface, step, ctx, options) {
   let lastReason = "";
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const res = await resolveByInstruction(surface, step.instruction, {
-      kind, exclude, vision: options.vision !== false, callModel: options.callModel,
+      kind, exclude, vision: visionOn(options.vision), callModel: options.callModel,
       context: { failedSelector: ctx.failedSelector, reason: ctx.reason, pageDiff: ctx.pageDiff, pastFailures: ctx.pastFailures },
     });
     if (!res.resolved) return { ok: false, reason: res.reason };
@@ -87,7 +88,7 @@ async function climbLadder({ surface, step, index, ctx = {}, options = {} }) {
 
   if (options.ai) {
     tried.push("ai");
-    const loop = await runGoalLoop(surface, step.instruction, { vision: options.vision !== false, callModel: options.callModel, onProgress: options.onProgress });
+    const loop = await runGoalLoop(surface, step.instruction, { vision: visionOn(options.vision), callModel: options.callModel, onProgress: options.onProgress });
     if (loop.success) {
       return {
         ok: true, layer: "ai", tried,

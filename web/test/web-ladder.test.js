@@ -43,7 +43,7 @@ async function test(name, fn) { try { await fn(); console.log(`  ok - ${name}`);
       seen.push({ prompt, images: opts.images });
       return { ref: refOf(prompt, "button", "Sign in") };
     };
-    const r = await runWebSteps(await fresh(), steps, { callModel });
+    const r = await runWebSteps(await fresh(), steps, { callModel, vision: true });
     assert.strictEqual(r.success, true, JSON.stringify(r.steps));
     assert.strictEqual(r.steps[0].resolvedBy, "semantic");
     assert.deepStrictEqual(r.resolvedBy, { semantic: 1 });

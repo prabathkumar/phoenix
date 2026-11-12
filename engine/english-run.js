@@ -76,8 +76,11 @@ async function runEnglish({ steps: stepsText, testData = {}, runner, onEvent = (
   return out;
 }
 
+/** Screenshots go to the model only when it can read images (a text-only model such as llama3 answers 400 to them). Opt in: TESTOPS_MOBILE_VISION=1 with TESTOPS_MOBILE_OLLAMA_MODEL=llava (or another vision model). */
+function visionEnabled(env = process.env) { return /^(1|true|yes)$/i.test(String(env.TESTOPS_MOBILE_VISION || "")); }
+
 /** Web: the shared goal loop over a Playwright page. */
-function webRunner(page, { runGoalLoop, createPlaywrightSurface, callModel, maxSteps = 8, vision = true } = {}) {
+function webRunner(page, { runGoalLoop, createPlaywrightSurface, callModel, maxSteps = 8, vision = visionEnabled() } = {}) {
   const loop = runGoalLoop || require("./core/goal-loop").runGoalLoop;
   const mk = createPlaywrightSurface || require("../web/surface/playwright-surface").createPlaywrightSurface;
   return {

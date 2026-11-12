@@ -147,7 +147,8 @@ Check that the home screen is showing</textarea></div>
   }
 
   function hintFor(reason) {
-    if (/model call failed/i.test(reason)) return "The AI model could not be reached. Start it with: ollama serve";
+    if (/model call failed.*status 4\d\d/i.test(reason)) return "The model was reached but rejected the request (" + (reason.match(/status \d+/i) || ["error"])[0] + "). Usually the model cannot read images: use a text-only run, or set TESTOPS_MOBILE_OLLAMA_MODEL to a vision model such as llava. Check: docker compose logs engine";
+    if (/model call failed/i.test(reason)) return "The AI model could not be reached. Check it is running (ollama list) and listening for containers: OLLAMA_HOST=0.0.0.0:11434 ollama serve";
     return "";
   }
 

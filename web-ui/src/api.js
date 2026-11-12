@@ -11,6 +11,7 @@ async function call(method, path, body) {
 }
 export const get = (p) => call("GET", p);
 export const post = (p, b = {}) => call("POST", p, b);
+export const put = (p, b = {}) => call("PUT", p, b);
 export const q = (o) => { const s = new URLSearchParams(Object.entries(o).filter(([, v]) => v !== undefined && v !== "")).toString(); return s ? `?${s}` : ""; };
 
 export const api = {
@@ -38,4 +39,11 @@ export const api = {
   mcpAction: (a, b) => post(`/api/gateway/mcp/${a}`, b),
   logs: (n = 100) => get(`/api/gateway/logs?n=${n}`),
   testPrompt: (b) => post("/api/gateway/test", b),
+  agents: () => get("/api/agents"),
+  createAgent: (b) => post("/api/agents", b),
+  updateAgent: (name, b) => put(`/api/agents/${encodeURIComponent(name)}`, b),
+  enableAgent: (name, enabled) => post(`/api/agents/${encodeURIComponent(name)}/enabled`, { enabled }),
+  avatar: (owner) => get(`/api/avatars/${encodeURIComponent(owner)}`),
+  saveAvatar: (owner, b) => put(`/api/avatars/${encodeURIComponent(owner)}`, b),
+  callAgent: (owner, agent, input) => post(`/api/avatars/${encodeURIComponent(owner)}/call`, { agent, input }),
 };

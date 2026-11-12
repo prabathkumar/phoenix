@@ -12,6 +12,8 @@ import Signoff from "./pages/Signoff.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import Gateway from "./pages/Gateway.jsx";
 import Runs from "./pages/Runs.jsx";
+import Agents from "./pages/Agents.jsx";
+import Avatar from "./pages/Avatar.jsx";
 
 // Menu from the design, plus the pages the design did not have (sign-off, gateway). `soon` items are not built and say so.
 export const MENU = [
@@ -19,6 +21,8 @@ export const MENU = [
   ["Dashboards", "/dashboard", "M2.5 2.5h4v4h-4zM9.5 2.5h4v4h-4zM2.5 9.5h4v4h-4zM9.5 9.5h4v4h-4z"],
   ["Test Management", "/cases", "M8 2l6 3-6 3-6-3zM2 8l6 3 6-3M2 11l6 3 6-3"],
   ["Test Lab", "/start", "M6 2.5h4M7 2.5v4L3.5 13a1 1 0 0 0 .9 1.5h7.2a1 1 0 0 0 .9-1.5L9 6.5v-4"],
+  ["Agents", "/agents", "M8 2.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM3 13.5c0-2.8 2.2-4.5 5-4.5s5 1.7 5 4.5"],
+  ["My Avatar", "/avatar", "M8 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM2.5 14a5.5 5.5 0 0 1 11 0z"],
   ["Sign-off", "/signoff", "M3 8.5l3 3 7-7"],
   ["AI Evaluation", "/eval", "M8 2l1.3 3.7L13 7l-3.7 1.3L8 12 6.7 8.3 3 7l3.7-1.3z"],
   ["Defect Management", "/defects", "M5.5 6h5v4a2.5 2.5 0 0 1-5 0zM8 6V4M5.5 8H3M10.5 8H13M5.5 11L4 12.5M10.5 11L12 12.5"],
@@ -69,6 +73,8 @@ export default function App() {
           <Route path="/defects" element={<Defects />} />
           <Route path="/code" element={<CodeAnalyzer />} />
           <Route path="/eval" element={<AiEval />} />
+          <Route path="/agents" element={<Agents />} />
+          <Route path="/avatar" element={<Avatar />} />
           <Route path="/signoff" element={<Signoff />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/gateway" element={<Gateway />} />

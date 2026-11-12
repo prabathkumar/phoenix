@@ -128,3 +128,30 @@ describe("scenario runs", () => {
     expect(screen.getByRole("button", { name: /Start run/ })).not.toBeDisabled();
   });
 });
+
+describe("agents and avatar", () => {
+  it("lists agents with their links, and shows an MCP-built agent as off and needing a person", async () => {
+    routes["GET /api/agents"] = () => ({ stages: [{ id: "scenarios", name: "Test scenarios" }, { id: "cases", name: "Test cases" }], agents: [
+      { name: "scenario-agent", description: "", stages: ["scenarios"], platform: "web", then: ["case-agent"], enabled: true, source: "ui", createdBy: "alice", autonomy: "ask-when-matters", version: 1 },
+      { name: "case-agent", description: "", stages: ["cases"], platform: "web", then: [], enabled: false, source: "mcp", createdBy: "mcp:alice", autonomy: "ask-when-matters", version: 1 }] });
+    at("/agents");
+    expect(await screen.findByText("scenario-agent")).toBeInTheDocument();
+    expect(screen.getByText("case-agent", { selector: "td b" })).toBeInTheDocument();
+    expect(screen.getByText(/Off, needs a person/)).toBeInTheDocument();
+    expect(screen.getByText(/built through MCP by mcp:alice/)).toBeInTheDocument();
+    expect(screen.getAllByText(/case-agent/).length).toBeGreaterThan(1); // the link from scenario-agent
+  });
+
+  it("saves my avatar under my own name", async () => {
+    localStorage.setItem("phoenix.user", "alice");
+    routes["GET /api/agents"] = () => ({ stages: [], agents: [] });
+    routes["GET /api/avatars/alice"] = () => ({ avatar: null });
+    routes["PUT /api/avatars/alice"] = (init) => ({ avatar: JSON.parse(init.body) });
+    at("/avatar");
+    await userEvent.type(await screen.findByLabelText("How you like things done"), "Short steps");
+    await userEvent.click(screen.getByRole("button", { name: "Save my avatar" }));
+    expect(await screen.findByText("Saved")).toBeInTheDocument();
+    const put = calls.find((c) => c.key === "PUT /api/avatars/alice");
+    expect(JSON.parse(put.init.body).style).toBe("Short steps");
+  });
+});

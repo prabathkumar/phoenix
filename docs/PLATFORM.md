@@ -42,6 +42,23 @@ Each line is PASS, FAIL, NOT SET UP (a tool, key or service is missing) or NEEDS
 
 Execution (pass rate, per day, by AI vs person, cases that fail most), sign-off (funnel, waiting on a person), the AI (calls, p50/p95 latency, fallbacks, by model, guardrail hits, DeepEval scores) and pipeline stage reliability. Without `CLICKHOUSE_URL` the AI numbers are kept in memory and the page says so.
 
+## Agents and avatars
+
+- **Agent:** a saved AI worker: what it is for (goal), which pipeline steps it may use, how much it may do alone, its platform (web, mobile, API), and which agents it hands over to (`then`). Examples: a test-scenarios agent, a test-cases agent, a mobile-app agent, linked in that order. An agent runs through the same pipeline, so every gate, approval and sign-off still applies. It cannot lower a gate, hold approvals or carry credentials.
+- **Linked agents:** each step hands the next the batch of cases it just wrote, so the next agent runs the whole batch, not other people's older cases. The chain stops at the first step that needs a person and says where.
+- **Avatar:** every tester's own. It holds their defaults (project, app, device) and how they like things written. The agent does the work; the work is recorded as the tester's, sign-off requests go out in their name (so four eyes applies to them), and only they can edit or call their avatar. An avatar can make a run more careful than the agent asks, never less.
+- **Built through the MCP server:** `mcp/server.js` has `list_agents`, `get_agent`, `create_agent`, `update_agent`, `get_my_avatar` and `call_agent`. Agents built there start switched off and only a person can switch them on. `call_agent` needs the operator to start the server with `PHOENIX_MCP_ALLOW_AGENT_RUN=1`, `confirm: true` on each call, and `PHOENIX_MCP_USER` set to the person it acts for. `PHOENIX_API_URL` points at Phoenix.
+- **Limit:** without a real login, "who is calling" is whatever name the request carries, so avatars protect against mistakes, not against someone pretending to be a colleague.
+- **Not built yet:** an agent's own tool allow-list (which MCP servers it may use during a run) and scheduling an agent.
+
+## Models
+
+Phoenix talks to a self-hosted model. `LLM_BASE_URL` (+ `LLM_MODEL`, `LLM_API_KEY`) points at an OpenAI-compatible server such as llama.cpp's `llama-server`; otherwise `OLLAMA_HOST` points at Ollama. DeepEval uses the same server (`DEEPEVAL_BASE_URL`).
+
+## GPU server
+
+`deploy/gpu-server/` runs Phoenix on the g4dn.xlarge next to the Qwen3-8B model: one install script, memory limits sized for 16 GB, bound to localhost, optional HTTPS and password. See its README for the install command, the limits (one browser run at a time) and what has not been verified there.
+
 ## What has been verified, and what has not
 
 Verified here (sandbox): 42 API tests (all pass on SQLite and on a real PostgreSQL 16), 7 UI tests, a live browser run of requirement → cases → sign-off by a second person → run → result → dashboard against the real API and the built UI on PostgreSQL.

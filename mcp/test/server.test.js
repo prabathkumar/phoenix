@@ -177,6 +177,53 @@ function parse(result) {
     }
   });
 
+
+  // ---- Phoenix agents
+  const { _setFetch } = require("../server");
+  const sent = [];
+  const reply = (status, json) => async (url, init) => { sent.push({ url, init }); return { ok: status < 400, status, json: async () => json }; };
+  const env = { ...process.env };
+  const setEnv = (o) => { for (const k of ["PHOENIX_MCP_USER", "PHOENIX_MCP_ALLOW_AGENT_RUN", "PHOENIX_API_URL"]) delete process.env[k]; Object.assign(process.env, o); };
+
+  await run("create_agent is recorded against the person, marked as coming from MCP, and never forwards a credential field", async () => {
+    setEnv({ PHOENIX_MCP_USER: "alice", PHOENIX_API_URL: "http://phoenix:8000/" }); sent.length = 0; _setFetch(reply(200, { name: "case-agent", enabled: false }));
+    const r = await handleToolCall("create_agent", { name: "case-agent", goal: "Write cases", stages: ["cases"] });
+    assert.ok(!r.isError);
+    assert.strictEqual(sent[0].url, "http://phoenix:8000/api/agents");
+    assert.strictEqual(sent[0].init.headers["X-User"], "mcp:alice");
+    assert.strictEqual(sent[0].init.headers["X-Source"], "mcp");
+    const schema = JSON.stringify(TOOLS.filter((x) => /agent/.test(x.name)).map((x) => Object.keys(x.inputSchema.properties)));
+    assert.ok(!/password|secret|token|apikey/i.test(schema));
+  });
+
+  await run("create_agent refuses when nobody is named, so an agent is never anonymous", async () => {
+    setEnv({}); sent.length = 0;
+    const r = await handleToolCall("create_agent", { name: "x", goal: "g", stages: ["cases"] });
+    assert.ok(r.isError && /PHOENIX_MCP_USER/.test(r.content[0].text) && !sent.length);
+  });
+
+  await run("call_agent needs the operator opt-in AND confirm:true, and goes through the caller's own avatar", async () => {
+    setEnv({ PHOENIX_MCP_USER: "alice" }); sent.length = 0; _setFetch(reply(200, { ok: true, chain: [] }));
+    assert.ok((await handleToolCall("call_agent", { agent: "a" })).isError);
+    assert.ok((await handleToolCall("call_agent", { agent: "a", confirm: true })).content[0].text.includes("PHOENIX_MCP_ALLOW_AGENT_RUN"));
+    assert.strictEqual(sent.length, 0);
+    setEnv({ PHOENIX_MCP_USER: "alice", PHOENIX_MCP_ALLOW_AGENT_RUN: "1" });
+    const r = await handleToolCall("call_agent", { agent: "scenario-agent", input: { requirement: "r" }, confirm: true });
+    assert.ok(!r.isError);
+    assert.ok(sent[0].url.endsWith("/api/avatars/alice/call"));
+    assert.strictEqual(sent[0].init.headers["X-User"], "alice");
+    assert.deepStrictEqual(JSON.parse(sent[0].init.body), { agent: "scenario-agent", input: { requirement: "r" } });
+  });
+
+  await run("Phoenix's refusal is passed on as the reason; an unreachable Phoenix is said plainly", async () => {
+    setEnv({ PHOENIX_MCP_USER: "alice" }); _setFetch(reply(403, { detail: "You can only call your own avatar." }));
+    process.env.PHOENIX_MCP_ALLOW_AGENT_RUN = "1";
+    assert.ok(/own avatar/.test((await handleToolCall("call_agent", { agent: "a", confirm: true })).content[0].text));
+    _setFetch(async () => { throw new Error("ECONNREFUSED"); });
+    assert.ok(/not reachable/.test((await handleToolCall("list_agents", {})).content[0].text));
+    _setFetch((...a) => fetch(...a)); setEnv({}); Object.assign(process.env, env);
+  });
+
   await run("unknown tool name returns a clean error, not a throw", async () => {
     const result = await handleToolCall("not_a_real_tool", {});
     assert.ok(result.isError);

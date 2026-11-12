@@ -190,6 +190,58 @@ const TOOLS = [
       required: ["platform", "testCaseFile", "confirm"],
     },
   },
+  {
+    name: "list_agents",
+    description: "Lists the saved agents in Phoenix (name, what stages it uses, whether it is switched on, which agents it hands over to). Read-only.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "get_agent",
+    description: "One agent in full: goal, stages, autonomy, platform, linked agents and its change history. Read-only.",
+    inputSchema: { type: "object", properties: { name: { type: "string" } }, required: ["name"] },
+  },
+  {
+    name: "create_agent",
+    description:
+      "Builds a saved agent in Phoenix, e.g. a test-scenarios agent, a test-cases agent or a mobile-app agent. `then` links agents so one hands over to the next (scenarios -> cases -> mobile run). An agent built here starts SWITCHED OFF: a person must switch it on in Phoenix, and this server cannot. Never put credentials in the goal; they are test data supplied at run time.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "2-40 characters: lowercase letters, digits and dashes." },
+        description: { type: "string" },
+        goal: { type: "string", description: "What the agent is for and how it should behave." },
+        stages: { type: "array", items: { type: "string" }, description: "Pipeline stages it may use, e.g. scenarios, cases, testdata, execution." },
+        autonomy: { type: "string", enum: ["ask-everything", "ask-when-matters", "run-everything"] },
+        platform: { type: "string", enum: ["web", "mobile", "api"] },
+        then: { type: "array", items: { type: "string" }, description: "Agents that run after this one, in order. They must already exist." },
+      },
+      required: ["name", "goal", "stages"],
+    },
+  },
+  {
+    name: "update_agent",
+    description: "Changes an agent. If the agent was switched on and its goal, stages, autonomy, platform or links change, it is switched OFF again until a person enables it.",
+    inputSchema: { type: "object", properties: { name: { type: "string" }, description: { type: "string" }, goal: { type: "string" }, stages: { type: "array", items: { type: "string" } }, autonomy: { type: "string" }, platform: { type: "string" }, then: { type: "array", items: { type: "string" } } }, required: ["name"] },
+  },
+  {
+    name: "get_my_avatar",
+    description: "The avatar of the person this server acts for (PHOENIX_MCP_USER): their defaults and style notes. Read-only.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "call_agent",
+    description:
+      "Calls an agent through the avatar of the person this server acts for (PHOENIX_MCP_USER). The agent does the work, the work is recorded as theirs, and agents linked after it run in order. Every Phoenix gate still applies (production, DAST, defects and PRs need a person's approval). Disabled unless the server has PHOENIX_MCP_ALLOW_AGENT_RUN=1, and requires confirm:true. Pass inputs such as requirement or task; never credentials.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        agent: { type: "string" },
+        input: { type: "object", description: "e.g. {requirement, task, appUrl, web:{url}, mobile:{platform, appUrl, device}}" },
+        confirm: { type: "boolean", description: "Must be exactly true." },
+      },
+      required: ["agent", "confirm"],
+    },
+  },
 ];
 
 function textResult(value) {
@@ -200,7 +252,51 @@ function errorResult(message) {
   return { content: [{ type: "text", text: message }], isError: true };
 }
 
+
+// ---- Phoenix platform agents. The platform is a separate service (Python API); this server only relays, so every rule lives there.
+let phoenixFetch = (...a) => fetch(...a);
+function _setFetch(f) { phoenixFetch = f; }
+const PHOENIX_API = () => (process.env.PHOENIX_API_URL || "http://localhost:8000").replace(/\/+$/, "");
+const mcpUser = () => String(process.env.PHOENIX_MCP_USER || "").trim();
+
+async function phoenix(method, urlPath, body, headers = {}) {
+  let res;
+  try {
+    res = await phoenixFetch(PHOENIX_API() + urlPath, { method, headers: { "Content-Type": "application/json", ...headers }, ...(body ? { body: JSON.stringify(body) } : {}) });
+  } catch (err) {
+    return errorResult(`Phoenix is not reachable at ${PHOENIX_API()} (${err.message}). Is it running, and is PHOENIX_API_URL right?`);
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return errorResult(String(data.detail || data.error || `Phoenix answered ${res.status}`));
+  return textResult(data);
+}
+
+async function handleAgentTool(name, args) {
+  const user = mcpUser();
+  if (name === "list_agents") return phoenix("GET", "/api/agents");
+  if (name === "get_agent") return args.name ? phoenix("GET", `/api/agents/${encodeURIComponent(args.name)}`) : errorResult("name is required");
+  if (name === "create_agent" || name === "update_agent") {
+    if (!user) return errorResult("Refusing: set PHOENIX_MCP_USER to the name of the person this server acts for, so the agent is recorded against someone.");
+    if (!args.name) return errorResult("name is required");
+    const { name: n, ...rest } = args;
+    const h = { "X-User": `mcp:${user}`, "X-Source": "mcp" };
+    return name === "create_agent" ? phoenix("POST", "/api/agents", { name: n, ...rest }, h) : phoenix("PUT", `/api/agents/${encodeURIComponent(n)}`, rest, h);
+  }
+  if (name === "get_my_avatar") return user ? phoenix("GET", `/api/avatars/${encodeURIComponent(user)}`) : errorResult("Set PHOENIX_MCP_USER first.");
+  if (name === "call_agent") {
+    if (args.confirm !== true) return errorResult("Refusing to run: confirm must be exactly true. This starts real work in Phoenix.");
+    if (process.env.PHOENIX_MCP_ALLOW_AGENT_RUN !== "1") return errorResult("Refusing to run: this MCP server was started without PHOENIX_MCP_ALLOW_AGENT_RUN=1. An operator must opt in before any client can start an agent.");
+    if (!user) return errorResult("Set PHOENIX_MCP_USER: agents are called through a person's own avatar.");
+    if (!args.agent) return errorResult("agent is required");
+    return phoenix("POST", `/api/avatars/${encodeURIComponent(user)}/call`, { agent: args.agent, input: args.input || {} }, { "X-User": user });
+  }
+  return null;
+}
+
 async function handleToolCall(name, args = {}) {
+  const agentResult = await handleAgentTool(name, args);
+  if (agentResult) return agentResult;
+
   if (name === "get_locator_history") {
     const store = openLocatorStore();
     try {
@@ -302,4 +398,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { createServer, handleToolCall, TOOLS, summarizeHealth, listTestCaseFiles };
+module.exports = { _setFetch, createServer, handleToolCall, TOOLS, summarizeHealth, listTestCaseFiles };

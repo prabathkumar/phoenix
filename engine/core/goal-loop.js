@@ -15,7 +15,7 @@ const { snapshotToText } = require("./semantic-resolve");
 const { parseRepeat, mismatch, domMatch, plainName, MATCH_RULES } = require("./named-target");
 
 /** One plain click, not a multi-part goal such as "go to X and click Y". */
-const isSingleClick = (g) => /^\s*(click|tap|press)\b/i.test(g) && !/\b(and|then|after|before)\b|[,;]/i.test(String(g).replace(/^\s*(click|tap|press)\s+(on\s+)?/i, ""));
+const isSingleClick = (g) => /^\s*(click|tap|press|select|choose|pick)\b/i.test(g) && !/\b(and|then|after|before)\b|[,;]/i.test(String(g).replace(/^\s*(click|tap|press|select|choose|pick)\s+(on\s+)?/i, ""));
 
 const RISKY_RE = /\b(delete|remove account|pay now|place order|confirm payment|purchase|cancel subscription|deactivate|terminate)\b/i;
 

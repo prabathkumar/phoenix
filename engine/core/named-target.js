@@ -29,8 +29,8 @@ const evidence = (el) => [el.name, el.id, el.testid, el.placeholder, el.hint, el
 /** The words a plain click instruction names: "Click Explore Devices" -> ["explore","devices"]; "Click Buy now on the vivo X500" -> ["buy","now"]. null when it is not a plain click. */
 function namedWords(instruction) {
   const t = String(instruction || "").trim().replace(/[.!]+$/, "");
-  let m = t.match(/^(?:click|tap|press)\s+(?:on\s+)?(?:the\s+)?(.+?)\s+(?:on|against|for|of|in|under|next to|beside)\s+(?:the\s+)?.+$/i)
-    || t.match(/^(?:click|tap|press)\s+(?:on\s+)?(?:the\s+)?(.+)$/i);
+  let m = t.match(/^(?:click|tap|press|select|choose|pick)\s+(?:on\s+)?(?:the\s+)?(.+?)\s+(?:on|against|for|of|in|under|next to|beside)\s+(?:the\s+)?.+$/i)
+    || t.match(/^(?:click|tap|press|select|choose|pick)\s+(?:on\s+)?(?:the\s+)?(.+)$/i);
   if (!m || /\b(and|then)\b|[,;]/i.test(m[1])) return null;
   const words = m[1].toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 3 && !STOP.has(w) && !["menu", "tab", "option", "item", "icon"].includes(w));
   return words.length ? words : null;
@@ -53,6 +53,7 @@ function mismatch(instruction, el) {
 }
 
 const squash = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, "").replace(/gray/g, "grey").replace(/color/g, "colour"); // US and UK spellings are the same word
+const GENERIC = new Set(["colour", "color", "size", "option", "variant", "storage", "capacity"]); // words that describe the kind of thing, not which one
 const STOP = new Set(["the", "a", "an", "button", "link", "icon", "on", "against", "for", "of", "in", "under", "next", "to"]);
 
 /**
@@ -63,7 +64,8 @@ const STOP = new Set(["the", "a", "an", "button", "link", "icon", "on", "against
 function plainName(instruction, elements) {
   const words = namedWords(instruction);
   if (!words) return null;
-  const want = squash(words.join(""));
+  const core = words.filter((w) => !GENERIC.has(w));
+  const want = squash((core.length ? core : words).join(""));
   const live = elements.filter((e) => !e.disabled && e.name);
   const exact = live.filter((e) => squash(e.name) === want);
   if (exact.length === 1) return { element: exact[0], why: `the control labelled "${exact[0].name}"` };
@@ -74,7 +76,7 @@ function plainName(instruction, elements) {
 }
 
 function domMatch(instruction, elements) {
-  const m = String(instruction || "").trim().match(/^(?:click|tap|press)\s+(?:on\s+)?(?:the\s+)?(.+?)\s+(?:on|against|for|of|in|under|next to|beside)\s+(?:the\s+)?(.+)$/i);
+  const m = String(instruction || "").trim().match(/^(?:click|tap|press|select|choose|pick)\s+(?:on\s+)?(?:the\s+)?(.+?)\s+(?:on|against|for|of|in|under|next to|beside)\s+(?:the\s+)?(.+)$/i);
   if (!m) return null;
   const control = squash(m[1]), target = squash(m[2].replace(/[.!]+$/, ""));
   if (!control || !target) return null;

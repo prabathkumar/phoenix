@@ -82,6 +82,13 @@ function page() {
   assert.strictEqual(plainName("Click the Devices menu", menu).element.ref, 0, "exact label beats one that only contains it");
   assert.strictEqual(plainName("Click Pakej NUTP", menu), null);
 
+  // reported: "Select colour Starry Gray" tapped the swatch, then kept going (iPhone, Devices, BUY NOW) until it landed on another phone
+  const sw = [{ ref: 0, role: "button", name: "Sunny White" }, { ref: 1, role: "button", name: "Starry Gray" }, { ref: 2, role: "link", name: "iPhone" }];
+  assert.strictEqual(plainName("Select colour Starry Gray", sw).element.ref, 1);
+  p = page(); p.surface.snapshot = async () => sw.map((e) => ({ ...e, editable: false, disabled: false }));
+  r = await runGoalLoop(p.surface, "Select colour Starry Gray", { callModel: async () => { throw new Error("model must not be called"); } });
+  assert.ok(r.success && p.clicks.join() === "1", `one tap on the swatch, then stop: ${p.clicks}`);
+
   // semantic layer: same guard
   p = page();
   let res = await resolveByInstruction(p.surface, "click the logo", { callModel: async () => ({ ref: 1 }) });

@@ -116,6 +116,12 @@ function page() {
   assert.ok(mismatch("Select the Infinite+ payment plan", { name: "Mobile Plans", role: "link" }), "Mobile Plans is not Infinite+");
   assert.strictEqual(mismatch("Select the Infinite+ payment plan", { name: "Infinite+", role: "h2" }), null);
 
+  // the button becomes enabled a moment later: wait for it instead of failing
+  p = page(); let polls = 0;
+  p.surface.snapshot = async () => { polls += 1; return [{ ref: 0, role: "button", name: "NEXT", editable: false, disabled: polls < 3 }]; };
+  r = await runGoalLoop(p.surface, "Click Next", { blockedWaitMs: 1, callModel: async () => ({ action: "tap", ref: 9 }) });
+  assert.ok(r.success && p.clicks.length === 1, `waits for NEXT to enable, then taps it: ${r.reason}`);
+
   // semantic layer: same guard
   p = page();
   let res = await resolveByInstruction(p.surface, "click the logo", { callModel: async () => ({ ref: 1 }) });

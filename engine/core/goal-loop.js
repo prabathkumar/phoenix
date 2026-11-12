@@ -78,14 +78,20 @@ async function runGoalLoop(surface, goal, opts = {}) {
 
   for (let n = 0; n < maxSteps; n += 1) {
     const all = await surface.snapshot();
-    const elements = all.filter((e) => !excluded.has(e.ref));
+    let elements = all.filter((e) => !excluded.has(e.ref));
     const before = await surface.lines();
     let image;
     if (opts.vision) { try { image = await surface.screenshot(); } catch { /* no screenshot */ } }
 
     let decision;
     const typed = n === 0 ? enterTarget(goal, elements) : null; // "Enter 0102... in the mobile number field": read the page
-    const dom = n === 0 ? (domMatch(goal, elements) || plainName(goal, elements)) : null; // "click Buy now on the vivo X500": read the card, no model needed
+    let dom = n === 0 ? (domMatch(goal, elements) || plainName(goal, elements)) : null; // "click Buy now on the vivo X500": read the card, no model needed
+    // A button is often enabled a moment after the choice that unlocks it: look again for a few seconds before calling it disabled.
+    for (let wait = 0; dom && dom.blocked && wait < 6; wait += 1) {
+      await new Promise((r) => setTimeout(r, opts.blockedWaitMs ?? 700));
+      elements = (await surface.snapshot()).filter((e) => !excluded.has(e.ref));
+      dom = domMatch(goal, elements) || plainName(goal, elements);
+    }
     if (dom && dom.blocked) return { success: false, reason: dom.why, steps, actions }; // the named control is there but disabled: say so, do not click something else
     if (typed) { decision = { action: "type", ref: typed.element.ref, text: typed.text }; history.push(`page read: ${typed.why}`); }
     else if (dom && dom.element) { decision = { action: "tap", ref: dom.element.ref }; history.push(`page read: ${dom.why}`); }

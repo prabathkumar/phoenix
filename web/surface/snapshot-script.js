@@ -25,6 +25,20 @@ function SNAPSHOT_SCRIPT() {
     }
     return "";
   };
+  // A colour swatch has no text: name it by the colour it shows ("grey colour swatch") so "select the grey colour" can find it.
+  var colourName = function (el) {
+    var cs0 = window.getComputedStyle(el), bg = cs0.backgroundColor;
+    if ((!bg || /rgba\(.*,\s*0\)$|transparent/.test(bg)) && el.firstElementChild) bg = window.getComputedStyle(el.firstElementChild).backgroundColor;
+    var m = String(bg || "").match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?/);
+    if (!m || (m[4] !== undefined && Number(m[4]) === 0)) return "";
+    var r = m[1] / 255, g = m[2] / 255, b = m[3] / 255, mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn;
+    var sat = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+    if (l > 0.88 && d < 0.08) return "white";
+    if (l < 0.12) return "black";
+    if (d < 0.08) return l < 0.3 ? "dark grey" : l > 0.8 ? "light grey" : "grey";
+    var h = d === 0 ? 0 : mx === r ? ((g - b) / d + 6) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h *= 60;
+    return h < 15 || h >= 345 ? "red" : h < 40 ? "orange" : h < 65 ? "yellow" : h < 165 ? "green" : h < 195 ? "teal" : h < 255 ? "blue" : h < 290 ? "purple" : "pink";
+  };
   var firstLine = function (s, n) {
     var line = String(s || "").split("\n").map(function (l) { return l.replace(/\s+/g, " ").trim(); }).filter(Boolean)[0] || "";
     return line.length > n ? line.slice(0, n) : line;
@@ -38,8 +52,9 @@ function SNAPSHOT_SCRIPT() {
     var x = extras[k];
     if (seen.has(x)) continue;
     var xt = String(x.innerText || "").replace(/\s+/g, " ").trim();
-    if (!xt || xt.length > 80) continue;
+    if (xt.length > 80) continue;
     if (window.getComputedStyle(x).cursor !== "pointer") continue;
+    if (!xt) { var xr = x.getBoundingClientRect(); if (!(xr.width >= 12 && xr.width <= 64 && xr.height >= 12 && xr.height <= 64) || !colourName(x)) continue; }
     var px = x.parentElement;
     if (px && window.getComputedStyle(px).cursor === "pointer") continue; // the outermost pointer element is the thing to click
     if (x.closest("a,button,[role=button],[role=link],[onclick],[tabindex]")) continue;
@@ -68,6 +83,8 @@ function SNAPSHOT_SCRIPT() {
     var name = firstLine(el.getAttribute("aria-label") || (labelEl && labelEl.innerText) || el.innerText || el.getAttribute("placeholder") || el.getAttribute("alt") || (img && img.getAttribute("alt")) || el.getAttribute("title") || el.value, 80);
     var isLogo = logoish(el) || !!(el.querySelector && [].slice.call(el.querySelectorAll("img,svg")).some(logoish));
     if (!name && isLogo) name = "logo";
+    var swatch = "";
+    if (!name && rect.width <= 64 && rect.height <= 64) { swatch = colourName(el); if (swatch) name = swatch + " colour swatch"; }
     var editable = tag === "textarea" || el.isContentEditable ||
       (tag === "input" && ["text", "email", "password", "search", "tel", "url", "number", ""].indexOf(type) >= 0);
     var id = el.id && /^[A-Za-z][\w-]{0,40}$/.test(el.id) && !/\d{3,}/.test(el.id) ? el.id : undefined;
@@ -80,6 +97,7 @@ function SNAPSHOT_SCRIPT() {
       within: around(el, name) || undefined,
       id: id, testid: el.getAttribute("data-testid") || el.getAttribute("data-test") || el.getAttribute("data-qa") || undefined,
       placeholder: el.getAttribute("placeholder") || undefined,
+      alt: swatch ? (swatch === "grey" ? "gray color" : swatch.replace("grey", "gray") + " color") : undefined,
       inViewport: rect.bottom > 0 && rect.right > 0 && rect.top < window.innerHeight && rect.left < window.innerWidth,
       x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2)
     });

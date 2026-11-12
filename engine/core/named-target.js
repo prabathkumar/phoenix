@@ -52,7 +52,7 @@ function mismatch(instruction, el) {
   return null;
 }
 
-const squash = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+const squash = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, "").replace(/gray/g, "grey").replace(/color/g, "colour"); // US and UK spellings are the same word
 const STOP = new Set(["the", "a", "an", "button", "link", "icon", "on", "against", "for", "of", "in", "under", "next", "to"]);
 
 /**

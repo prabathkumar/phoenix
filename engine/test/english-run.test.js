@@ -97,3 +97,19 @@ test("a ${NAME} missing from the table is read from PHOENIX_TEST_<NAME> in the e
   assert.strictEqual(out2.status, "failed");
   assert.match(out2.reason, /missing a value/);
 });
+
+test("an enc: value in the environment is decrypted for the step and stays masked; wrong key fails clearly", async () => {
+  process.env.TESTOPS_SECRETS_KEY = "unit-test-passphrase";
+  const { encrypt } = require("../core/testdata-store");
+  const enc = "enc:" + Buffer.from(JSON.stringify(encrypt({ v: "pw-12345" }))).toString("base64");
+  const typed = [];
+  const runner = { goal: async (t) => { typed.push(t); return { success: true, actions: [] }; }, screenshot: async () => null };
+  const out = await runEnglish({ steps: "Enter ${LOGIN_PASSWORD} in the password field", runner, env: { PHOENIX_TEST_LOGIN_PASSWORD: enc } });
+  assert.strictEqual(out.status, "passed");
+  assert.match(typed[0], /pw-12345/);
+  assert.ok(!JSON.stringify(out).includes("pw-12345"));
+  process.env.TESTOPS_SECRETS_KEY = "a-different-passphrase";
+  const bad = await runEnglish({ steps: "Enter ${LOGIN_PASSWORD} in the field", runner, env: { PHOENIX_TEST_LOGIN_PASSWORD: enc } });
+  assert.strictEqual(bad.status, "failed");
+  assert.match(bad.reason, /could not be unlocked/);
+});

@@ -13,20 +13,30 @@
  */
 const { parseSteps, applyTestData, redact } = require("./core/english");
 
+/** A value kept in .env as "enc:<base64>" is decrypted here, only in memory and only when a step needs it (key: TESTOPS_SECRETS_KEY). Plain values pass through. */
+function unlockEnvValue(v) {
+  if (!v.startsWith("enc:")) return v;
+  let blob; try { blob = JSON.parse(Buffer.from(v.slice(4), "base64").toString("utf8")); } catch { throw new Error("An encrypted value in .env is damaged: run scripts/encrypt-secret.js again for it."); }
+  return String(require("./core/testdata-store").decrypt(blob).v ?? "");
+}
+
 /**
  * @param {{steps:string, testData?:Object, runner:Object, onEvent?:Function, now?:Function}} opts
  */
 async function runEnglish({ steps: stepsText, testData: given = {}, runner, onEvent = () => {}, now = Date.now, env = process.env }) {
   const lines = parseSteps(stepsText);
+  const started = now();
+  const emit = (e) => { try { onEvent(e); } catch { /* a bad listener must not break the run */ } };
+  const results = [];
+
   // ${NAME} not given in the table falls back to PHOENIX_TEST_<NAME> in the server's environment (.env). Only that prefix: a step can never read an unrelated secret such as a cloud key.
   const testData = { ...given };
   for (const line of lines) for (const m of String(line).matchAll(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g)) {
     const v = env[`PHOENIX_TEST_${m[1]}`];
-    if ((testData[m[1]] === undefined || testData[m[1]] === "") && typeof v === "string" && v) testData[m[1]] = v;
+    if ((testData[m[1]] === undefined || testData[m[1]] === "") && typeof v === "string" && v) {
+      try { testData[m[1]] = unlockEnvValue(v); } catch (err) { const out = { status: "failed", reason: err.message, steps: [], durationMs: 0 }; emit({ type: "run-finished", ...out, passed: 0, failed: 0 }); return out; }
+    }
   }
-  const started = now();
-  const emit = (e) => { try { onEvent(e); } catch { /* a bad listener must not break the run */ } };
-  const results = [];
 
   if (!lines.length) {
     const out = { status: "failed", reason: "Write at least one step in English first.", steps: [], durationMs: 0 };

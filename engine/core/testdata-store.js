@@ -78,4 +78,4 @@ function removeSecret(project, name) {
   writeJson(fileOf(project, "secrets"), encrypt(m), 0o600);
 }
 
-module.exports = { saveFile, loadFile, saveSecrets, getSecrets, secretNames, hasSecretsFile, removeSecret, safeProject, dirOf };
+module.exports = { encrypt, decrypt, saveFile, loadFile, saveSecrets, getSecrets, secretNames, hasSecretsFile, removeSecret, safeProject, dirOf };

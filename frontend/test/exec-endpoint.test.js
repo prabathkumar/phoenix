@@ -18,3 +18,16 @@ const { runExecution } = require("../exec-endpoint");
   assert.strictEqual(r.failedCases[0].id, "TC-2"); assert.strictEqual(r.ok, false);
   console.log("exec-endpoint per-case tests passed");
 })().catch((e) => { console.error(e); process.exit(1); });
+
+// ladder reporting: how each step was resolved, and every rung tried on a failure
+(async () => {
+  const assert = require("assert"), { runExecution } = require("../exec-endpoint");
+  const english = async (a) => a.steps.includes("bad")
+    ? { status: "failed", steps: [{ status: "failed", reason: "no Sign in", tried: ["semantic", "ai", "guided"] }], where: "local" }
+    : { status: "passed", steps: [{ status: "passed", resolvedBy: "synthetic" }, { status: "passed", resolvedBy: "semantic", healed: { promotable: true } }], warnings: ["recorded on Android, ran on iOS"], where: "local" };
+  const r = await runExecution({ web: { url: "http://x" }, cases: [{ id: "A", name: "a", platform: "web", steps: "open" }, { id: "B", name: "b", platform: "web", steps: "bad" }] }, { englishRun: english });
+  const a = r.results.find((x) => x.id === "A"), b = r.results.find((x) => x.id === "B");
+  assert.ok(/synthetic 1, semantic 1/.test(a.detail) && /1 step\(s\) needed a rescue/.test(a.detail) && /recorded on Android/.test(a.detail));
+  assert.ok(/tried: synthetic > semantic > ai > guided/.test(b.detail), b.detail);
+  console.log("exec ladder reporting tests passed");
+})().catch((e) => { console.error(e); process.exit(1); });

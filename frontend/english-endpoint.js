@@ -230,7 +230,7 @@ function createEnglishEndpoint(deps = {}) {
       ...(mobile ? { appCapability: appUrl ? { "appium:app": String(appUrl) } : undefined, appPath, mobileChoice: { provider: t.chooseProvider(runOn), ...(device ? { device: String(device).slice(0, 100) } : {}), ...(osVersion ? { osVersion: String(osVersion).slice(0, 20) } : {}) } } : {}) });
     await finished; // the browser is closed (and the HAR written) before we return
     const fin = await done;
-    return { status: fin.status, passed: fin.passed, failed: fin.failed, steps: (fin.steps || []).map((r) => ({ index: r.index, text: r.text, status: r.status, reason: r.reason || r.error })), where, reason: fin.reason };
+    return { status: fin.status, passed: fin.passed, failed: fin.failed, steps: (fin.steps || []).map((r) => ({ index: r.index, text: r.text, status: r.status, reason: r.reason || r.error, resolvedBy: r.resolvedBy, tried: r.tried, healed: r.healed ? { promotable: !!r.healed.promotable } : undefined })), where, reason: fin.reason, warnings: fin.warnings };
   }
 
   return { handleStart, handleEvents, runAndWait };

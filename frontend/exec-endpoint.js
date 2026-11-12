@@ -46,8 +46,15 @@ async function runExecution(body, deps = {}) {
       const r = await english({ platform: c.platform === "mobile" ? base.platform : "web", steps: c.steps, testData: values, url: base.url, runOn: base.runOn, device: base.device, osVersion: base.osVersion, appUrl: base.appUrl });
       const failedStep = (r.steps || []).find((x) => x.status === "failed");
       const result = r.status === "passed" ? "passed" : "failed";
-      results.push({ id: c.id, result, where: r.where || "", ms: Date.now() - t0, detail: result === "passed" ? "" : String((failedStep && failedStep.reason) || r.reason || r.status).slice(0, 300) });
-      if (result === "failed") failedCases.push({ id: c.id, name: c.name || c.id, error: results[results.length - 1].detail, ranOn: { label: r.where || c.platform } });
+      // honest reporting: which layer of the ladder did each step (resolvedBy), which steps needed a rescue, and for a failure every rung that was tried
+      const tally = {}; (r.steps || []).forEach((x) => { if (x.resolvedBy) tally[x.resolvedBy] = (tally[x.resolvedBy] || 0) + 1; });
+      const rescued = (r.steps || []).filter((x) => x.healed).length;
+      const tried = failedStep && Array.isArray(failedStep.tried) && failedStep.tried.length ? ` (tried: ${["synthetic", ...failedStep.tried].join(" > ")})` : "";
+      const note = result === "passed"
+        ? [Object.keys(tally).length ? `resolved by ${Object.entries(tally).map(([k, v]) => `${k} ${v}`).join(", ")}` : "", rescued ? `${rescued} step(s) needed a rescue (fragile locator)` : "", ...(r.warnings || [])].filter(Boolean).join("; ")
+        : String((failedStep && failedStep.reason) || r.reason || r.status).slice(0, 300) + tried;
+      results.push({ id: c.id, result, where: r.where || "", ms: Date.now() - t0, detail: note.slice(0, 600), resolvedBy: tally });
+      if (result === "failed") failedCases.push({ id: c.id, name: c.name || c.id, error: results[results.length - 1].detail.slice(0, 300), ranOn: { label: r.where || c.platform } });
     } catch (e) { results.push({ id: c.id, result: "blocked", ms: Date.now() - t0, detail: e.message.slice(0, 300) }); failedCases.push({ id: c.id, name: c.name || c.id, error: e.message }); }
   }
   if (results.length) parts.push(`${results.length} case(s): ${results.filter((x) => x.result === "passed").length} passed, ${results.filter((x) => x.result !== "passed").length} not passed`);

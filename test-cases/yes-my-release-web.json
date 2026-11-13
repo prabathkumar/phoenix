@@ -14,11 +14,12 @@
         "Select 256GB",
         "Click New Line",
         "Select the Infinite Cashback payment plan",
-        "Select 36 Months",
+        "Select No Contract",
         "Select Infinite Cashback Premium",
         "Click Next"
       ],
-      "stopsBefore": "identity / payment (needs a person)"
+      "stopsBefore": "identity / payment (needs a person)",
+      "note": "Case title says 36M; live site offers \"No Contract\" for Infinite Cashback"
     },
     {
       "id": "YOS-TC-1493",
@@ -48,11 +49,12 @@
         "Select 256GB",
         "Click New Line",
         "Select the Infinite Cashback payment plan",
-        "Select 36 Months",
+        "Select No Contract",
         "Select Infinite Cashback Basic",
         "Click Next"
       ],
-      "stopsBefore": "identity / payment (needs a person)"
+      "stopsBefore": "identity / payment (needs a person)",
+      "note": "Case title says 36M; live site offers \"No Contract\" for Infinite Cashback"
     },
     {
       "id": "YOS-TC-1491",
@@ -82,11 +84,12 @@
         "Select 256GB",
         "Click New Line",
         "Select the Infinite Cashback payment plan",
-        "Select 36 Months",
+        "Select No Contract",
         "Select Infinite Cashback Ultra",
         "Click Next"
       ],
-      "stopsBefore": "identity / payment (needs a person)"
+      "stopsBefore": "identity / payment (needs a person)",
+      "note": "Case title says 36M; live site offers \"No Contract\" for Infinite Cashback"
     },
     {
       "id": "YOS-TC-1487",
@@ -174,176 +177,6 @@
       "stopsBefore": "identity / payment (needs a person)"
     },
     {
-      "id": "YOS-TC-1460",
-      "title": "Infinite Cashback Standard iPhone Duo 512GB 36M",
-      "device": "iPhone Duo",
-      "steps": [
-        "Click the Devices menu",
-        "Click Explore Devices",
-        "Click Buy now on the iPhone Duo",
-        "Select 512GB",
-        "Click New Line",
-        "Select the Infinite Cashback payment plan",
-        "Select 36 Months",
-        "Select Infinite Cashback Standard",
-        "Click Next"
-      ],
-      "stopsBefore": "identity / payment (needs a person)"
-    },
-    {
-      "id": "YOS-TC-1459",
-      "title": "Verify Infinite Cashback Basic iPhone Duo 256GB 36M",
-      "device": "iPhone Duo",
-      "steps": [
-        "Click the Devices menu",
-        "Click Explore Devices",
-        "Click Buy now on the iPhone Duo",
-        "Select 256GB",
-        "Click New Line",
-        "Select the Infinite Cashback payment plan",
-        "Select 36 Months",
-        "Select Infinite Cashback Basic",
-        "Click Next"
-      ],
-      "stopsBefore": "identity / payment (needs a person)"
-    },
-    {
-      "id": "YOS-TC-1458",
-      "title": "Verify InfinitePlus Basic Upfront iPhone Duo 1TB 36M",
-      "device": "iPhone Duo",
-      "steps": [
-        "Click the Devices menu",
-        "Click Explore Devices",
-        "Click Buy now on the iPhone Duo",
-        "Select 1TB",
-        "Click New Line",
-        "Select the Infinite+ payment plan",
-        "Select 36 Months",
-        "Select Infinite+ Basic",
-        "Click Next"
-      ],
-      "stopsBefore": "identity / payment (needs a person)"
-    },
-    {
-      "id": "YOS-TC-1457",
-      "title": "Verify InfinitePlus Ultra iPhone Duo 512GB 24M",
-      "device": "iPhone Duo",
-      "steps": [
-        "Click the Devices menu",
-        "Click Explore Devices",
-        "Click Buy now on the iPhone Duo",
-        "Select 512GB",
-        "Click New Line",
-        "Select the Infinite+ payment plan",
-        "Select 24 Months",
-        "Select Infinite+ Ultra",
-        "Click Next"
-      ],
-      "stopsBefore": "identity / payment (needs a person)"
-    },
-    {
-      "id": "YOS-TC-1456",
-      "title": "Verify InfinitePlus Premium Upfront iPhone Duo 256GB 24M",
-      "device": "iPhone Duo",
-      "steps": [
-        "Click the Devices menu",
-        "Click Explore Devices",
-        "Click Buy now on the iPhone Duo",
-        "Select 256GB",
-        "Click New Line",
-        "Select the Infinite+ payment plan",
-        "Select 24 Months",
-        "Select Infinite+ Premium",
-        "Click Next"
-      ],
-      "stopsBefore": "identity / payment (needs a person)"
-    },
-    {
-      "id": "YOS-TC-1455",
-      "title": "Verify InfinitePlus Ultra upfront iPhone Duo 2TB 36M (E2E)",
-      "device": "iPhone Duo",
-      "steps": [
-        "Click the Devices menu",
-        "Click Explore Devices",
-        "Click Buy now on the iPhone Duo",
-        "Select 2TB",
-        "Click New Line",
-        "Select the Infinite+ payment plan",
-        "Select 36 Months",
-        "Select Infinite+ Ultra",
-        "Click Next"
-      ],
-      "stopsBefore": "identity / payment (needs a person)"
-    },
-    {
-      "id": "YOS-TC-1454",
-      "title": "Verify InfinitePlus Premium iPhone Duo 1TB 36M",
-      "device": "iPhone Duo",
-      "steps": [
-        "Click the Devices menu",
-        "Click Explore Devices",
-        "Click Buy now on the iPhone Duo",
-        "Select 1TB",
-        "Click New Line",
-        "Select the Infinite+ payment plan",
-        "Select 36 Months",
-        "Select Infinite+ Premium",
-        "Click Next"
-      ],
-      "stopsBefore": "identity / payment (needs a person)"
-    },
-    {
-      "id": "YOS-TC-1453",
-      "title": "Verify InfinitePlus Standard Upfront iPhone Duo 512GB 36M",
-      "device": "iPhone Duo",
-      "steps": [
-        "Click the Devices menu",
-        "Click Explore Devices",
-        "Click Buy now on the iPhone Duo",
-        "Select 512GB",
-        "Click New Line",
-        "Select the Infinite+ payment plan",
-        "Select 36 Months",
-        "Select Infinite+ Standard",
-        "Click Next"
-      ],
-      "stopsBefore": "identity / payment (needs a person)"
-    },
-    {
-      "id": "YOS-TC-1407",
-      "title": "Verify InfinitePlus Basic Upfront iPhone Duo 512GB 36M with out Accesories E2E",
-      "device": "iPhone Duo",
-      "steps": [
-        "Click the Devices menu",
-        "Click Explore Devices",
-        "Click Buy now on the iPhone Duo",
-        "Select 512GB",
-        "Click New Line",
-        "Select the Infinite+ payment plan",
-        "Select 36 Months",
-        "Select Infinite+ Basic",
-        "Click Next"
-      ],
-      "stopsBefore": "identity / payment (needs a person)"
-    },
-    {
-      "id": "YOS-TC-1406",
-      "title": "Verify InfinitePlus Basic Upfront iPhone Duo 2TB 36M with out Accessiories until payment",
-      "device": "iPhone Duo",
-      "steps": [
-        "Click the Devices menu",
-        "Click Explore Devices",
-        "Click Buy now on the iPhone Duo",
-        "Select 2TB",
-        "Click New Line",
-        "Select the Infinite+ payment plan",
-        "Select 36 Months",
-        "Select Infinite+ Basic",
-        "Click Next"
-      ],
-      "stopsBefore": "identity / payment (needs a person)"
-    },
-    {
       "id": "YOS-TC-712",
       "title": "Verify InfinitePlus Premium Upfront iPhone 17 512GB 24M",
       "device": "iPhone 17",
@@ -371,11 +204,12 @@
         "Select 512GB",
         "Click New Line",
         "Select the Infinite Cashback payment plan",
-        "Select 36 Months",
+        "Select No Contract",
         "Select Infinite Cashback Ultra",
         "Click Next"
       ],
-      "stopsBefore": "identity / payment (needs a person)"
+      "stopsBefore": "identity / payment (needs a person)",
+      "note": "Case title says 36M; live site offers \"No Contract\" for Infinite Cashback"
     },
     {
       "id": "YOS-TC-710",
@@ -388,11 +222,12 @@
         "Select 256GB",
         "Click New Line",
         "Select the Infinite Cashback payment plan",
-        "Select 36 Months",
+        "Select No Contract",
         "Select Infinite Cashback Standard",
         "Click Next"
       ],
-      "stopsBefore": "identity / payment (needs a person)"
+      "stopsBefore": "identity / payment (needs a person)",
+      "note": "Case title says 36M; live site offers \"No Contract\" for Infinite Cashback"
     },
     {
       "id": "YOS-TC-709",
@@ -405,11 +240,12 @@
         "Select 256GB",
         "Click New Line",
         "Select the Infinite Cashback payment plan",
-        "Select 36 Months",
+        "Select No Contract",
         "Select Infinite Cashback Ultra",
         "Click Next"
       ],
-      "stopsBefore": "identity / payment (needs a person)"
+      "stopsBefore": "identity / payment (needs a person)",
+      "note": "Case title says 36M; live site offers \"No Contract\" for Infinite Cashback"
     },
     {
       "id": "YOS-TC-704",
@@ -439,11 +275,12 @@
         "Select 2TB",
         "Click New Line",
         "Select the Infinite Cashback payment plan",
-        "Select 36 Months",
+        "Select No Contract",
         "Select Infinite Cashback Premium",
         "Click Next"
       ],
-      "stopsBefore": "identity / payment (needs a person)"
+      "stopsBefore": "identity / payment (needs a person)",
+      "note": "Case title says 36M; live site offers \"No Contract\" for Infinite Cashback"
     },
     {
       "id": "YOS-TC-702",
@@ -456,11 +293,12 @@
         "Select 1TB",
         "Click New Line",
         "Select the Infinite Cashback payment plan",
-        "Select 36 Months",
+        "Select No Contract",
         "Select Infinite Cashback Ultra",
         "Click Next"
       ],
-      "stopsBefore": "identity / payment (needs a person)"
+      "stopsBefore": "identity / payment (needs a person)",
+      "note": "Case title says 36M; live site offers \"No Contract\" for Infinite Cashback"
     },
     {
       "id": "YOS-TC-700",
@@ -512,6 +350,58 @@
         "Click Next"
       ],
       "stopsBefore": "identity / payment (needs a person)"
+    }
+  ],
+  "skipped": [
+    {
+      "id": "YOS-TC-1460",
+      "title": "Infinite Cashback Standard iPhone Duo 512GB 36M",
+      "reason": "iPhone Duo shows \"Join waitlist\" (no Buy now) on live yes.my, so the purchase journey cannot start"
+    },
+    {
+      "id": "YOS-TC-1459",
+      "title": "Verify Infinite Cashback Basic iPhone Duo 256GB 36M",
+      "reason": "iPhone Duo shows \"Join waitlist\" (no Buy now) on live yes.my, so the purchase journey cannot start"
+    },
+    {
+      "id": "YOS-TC-1458",
+      "title": "Verify InfinitePlus Basic Upfront iPhone Duo 1TB 36M",
+      "reason": "iPhone Duo shows \"Join waitlist\" (no Buy now) on live yes.my, so the purchase journey cannot start"
+    },
+    {
+      "id": "YOS-TC-1457",
+      "title": "Verify InfinitePlus Ultra iPhone Duo 512GB 24M",
+      "reason": "iPhone Duo shows \"Join waitlist\" (no Buy now) on live yes.my, so the purchase journey cannot start"
+    },
+    {
+      "id": "YOS-TC-1456",
+      "title": "Verify InfinitePlus Premium Upfront iPhone Duo 256GB 24M",
+      "reason": "iPhone Duo shows \"Join waitlist\" (no Buy now) on live yes.my, so the purchase journey cannot start"
+    },
+    {
+      "id": "YOS-TC-1455",
+      "title": "Verify InfinitePlus Ultra upfront iPhone Duo 2TB 36M (E2E)",
+      "reason": "iPhone Duo shows \"Join waitlist\" (no Buy now) on live yes.my, so the purchase journey cannot start"
+    },
+    {
+      "id": "YOS-TC-1454",
+      "title": "Verify InfinitePlus Premium iPhone Duo 1TB 36M",
+      "reason": "iPhone Duo shows \"Join waitlist\" (no Buy now) on live yes.my, so the purchase journey cannot start"
+    },
+    {
+      "id": "YOS-TC-1453",
+      "title": "Verify InfinitePlus Standard Upfront iPhone Duo 512GB 36M",
+      "reason": "iPhone Duo shows \"Join waitlist\" (no Buy now) on live yes.my, so the purchase journey cannot start"
+    },
+    {
+      "id": "YOS-TC-1407",
+      "title": "Verify InfinitePlus Basic Upfront iPhone Duo 512GB 36M with out Accesories E2E",
+      "reason": "iPhone Duo shows \"Join waitlist\" (no Buy now) on live yes.my, so the purchase journey cannot start"
+    },
+    {
+      "id": "YOS-TC-1406",
+      "title": "Verify InfinitePlus Basic Upfront iPhone Duo 2TB 36M with out Accessiories until payment",
+      "reason": "iPhone Duo shows \"Join waitlist\" (no Buy now) on live yes.my, so the purchase journey cannot start"
     }
   ]
 }

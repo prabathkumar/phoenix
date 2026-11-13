@@ -9,6 +9,7 @@ async function test(name, fn) { try { await fn(); console.log(`  ok - ${name}`);
     assert.strictEqual(classify({ status: "failed", steps: [{ status: "failed", reason: 'no match - the page is showing: "Stock Temporarily Reserved"' }] }), "blocked-by-site");
     assert.strictEqual(classify({ status: "failed", steps: [{ status: "failed", reason: '"NEXT" is disabled' }] }), "failed");
     assert.strictEqual(classify({ status: "failed", steps: [{ status: "failed", reason: 'x - the page is showing: "Invalid input"' }] }), "failed");
+    assert.strictEqual(classify({ status: "failed", steps: [{ status: "failed", text: "(start)", reason: "page.goto: net::ERR_NAME_NOT_RESOLVED at https://www.yes.my/" }] }), "not-run-network");
   });
 
   await test("runSuite runs each case in a fresh context, counts verdicts, honours the case filter", async () => {
@@ -20,7 +21,7 @@ async function test(name, fn) { try { await fn(); console.log(`  ok - ${name}`);
     assert.strictEqual(s.total, 2);
     assert.strictEqual(contexts.length, 2);
     assert.ok(contexts.every((c) => c.closed));
-    assert.strictEqual(s.passed + s.failed + s.blockedBySite, 2);
+    assert.strictEqual(s.passed + s.failed + s.blockedBySite + s.notRunNetwork, 2);
   });
 
   if (failed) process.exit(1);

@@ -128,6 +128,19 @@ function page() {
   r = await runGoalLoop(p.surface, "Select 256GB", { blockedWaitMs: 1, callModel: async () => ({ action: "none" }) });
   assert.ok(!r.success && /Stock Temporarily Reserved/.test(r.reason), `reason quotes the page: ${r.reason}`);
 
+  // reported: sold-out products burned 30-45s each trying other controls; stop at once with the site's words
+  p = page(); let askedModel = 0;
+  p.surface.lines = async () => ["APPLE - iPhone 17", "Sold out online. Visit your nearest Yes Store.", "Out of Stock"];
+  r = await runGoalLoop(p.surface, "Select 256GB", { blockedWaitMs: 1, callModel: async () => { askedModel += 1; return { action: "none" }; } });
+  assert.ok(!r.success && /Sold out online/.test(r.reason) && askedModel === 0, `stops without asking the model: ${r.reason}`);
+  r = await runGoalLoop(p.surface, "Check that the page says Sold out", { blockedWaitMs: 1, callModel: async () => ({ action: "none" }) });
+  assert.ok(!/the site stopped the journey/.test(r.reason || ""), "a check step is allowed to look at the sold-out text");
+  // a page that navigates while it is being read is read again
+  p = page(); let snaps = 0; const real = p.surface.snapshot;
+  p.surface.snapshot = async () => { snaps += 1; if (snaps < 3) throw new Error("page.evaluate: Execution context was destroyed, most likely because of a navigation"); return [{ ref: 0, role: "button", name: "NEXT", editable: false }]; };
+  r = await runGoalLoop(p.surface, "Click Next", { blockedWaitMs: 1, callModel: async () => ({ action: "none" }) });
+  assert.ok(r.success, `retries the read: ${r.reason}`);
+
   // semantic layer: same guard
   p = page();
   let res = await resolveByInstruction(p.surface, "click the logo", { callModel: async () => ({ ref: 1 }) });

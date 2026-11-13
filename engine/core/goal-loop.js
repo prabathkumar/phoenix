@@ -56,6 +56,9 @@ const actionKey = (a) => `${a.action}|${a.ref ?? ""}|${a.text ?? a.option ?? a.k
  *          allowRisky?:boolean, allowedOrigins?:string[], testData?:Object}} [opts]
  * @returns {Promise<{success:boolean, reason:string, steps:Object[], actions:Object[]}>}
  */
+/** Messages that mean the site will not let this purchase journey continue (checked before each step, except steps that are themselves checks). */
+const HARD_BLOCKER = /(sold out online|out of stock|stock temporarily reserved|temporarily reserved|currently unavailable|join waitlist|coming soon)/i;
+
 async function runGoalLoopInner(surface, goal, opts = {}) {
   assertSurface(surface);
   const callModel = opts.callModel || require("../../generation/llm").callOllamaJson;
@@ -78,7 +81,11 @@ async function runGoalLoopInner(surface, goal, opts = {}) {
   let pageNote = ""; // set when the page differs from the remembered one
 
   for (let n = 0; n < maxSteps; n += 1) {
-    const all = await surface.snapshot();
+    let all;
+    for (let tryN = 0; ; tryN += 1) { // a page that navigates mid-read ("Execution context was destroyed") is read again, not failed
+      try { all = await surface.snapshot(); break; }
+      catch (err) { if (tryN >= 3 || !/context was destroyed|navigat|Target closed|detached/i.test(String(err && err.message))) throw err; await new Promise((r) => setTimeout(r, opts.blockedWaitMs ?? 700)); }
+    }
     let elements = all.filter((e) => !excluded.has(e.ref));
     const before = await surface.lines();
     let image;
@@ -92,6 +99,12 @@ async function runGoalLoopInner(surface, goal, opts = {}) {
       await new Promise((r) => setTimeout(r, opts.blockedWaitMs ?? 700));
       elements = (await surface.snapshot()).filter((e) => !excluded.has(e.ref));
       dom = domMatch(goal, elements) || plainName(goal, elements);
+    }
+    if (n === 0 && !/^\s*(check|verify|assert|expect|see|confirm|make sure)\b/i.test(goal)) { // the site itself says the product cannot be bought: say so now, do not hunt for other controls
+      try {
+        const hard = (await surface.lines()).map((l) => String(l).trim()).filter((l) => l && l.length <= 160 && HARD_BLOCKER.test(l));
+        if (hard.length) return { success: false, reason: `the site stopped the journey - the page is showing: "${[...new Set(hard)].slice(0, 2).join(" / ")}"`, steps, actions };
+      } catch { /* page text is a bonus */ }
     }
     if (n === 0 && opts.pageMemory) { // remember this page state; say so if the page is not what it was last time
       try { const said = opts.pageMemory(surface.url(), elements); if (said) { pageNote = said; if (opts.pageNotes) opts.pageNotes.push(said); progress({ message: `note: ${said}` }); } } catch { /* memory never fails a step */ }

@@ -1,0 +1,46 @@
+const assert = require("node:assert");
+const { plan, triage, report, createAudit, runRelease } = require("../agents/release");
+let failed = 0; async function test(n, f) { try { await f(); console.log(`  ok - ${n}`); } catch (e) { failed += 1; console.log(`  FAIL - ${n}\n    ${e.stack}`); } }
+(async () => {
+  await test("planner narrows to changed areas, falls back to all and says so", () => {
+    const a = createAudit(); const suite = { cases: [{ id: "1", title: "Postpaid plan" }, { id: "2", title: "Device cart", tags: ["checkout"] }] };
+    assert.deepStrictEqual(plan(suite, { changed: ["checkout"] }, a).cases.map((c) => c.id), ["2"]);
+    assert.strictEqual(plan(suite, { changed: ["zzz"] }, a).cases.length, 2);
+    assert.ok(a.trail.some((e) => e.action === "no-match-run-all"));
+  });
+  await test("triage explains by rule; model only for the unexplained", async () => {
+    const a = createAudit(); let asked = 0;
+    const rs = [{ id: "a", verdict: "blocked-by-site", reason: "" }, { id: "b", verdict: "failed", reason: "'NEXT' is disabled: something it needs is not filled in" }, { id: "c", verdict: "failed", reason: "weird" }, { id: "d", verdict: "passed" }];
+    await triage(rs, { ask: async () => { asked += 1; return "site bug"; } }, a);
+    assert.ok(rs[0].triage && /next button/.test(rs[1].triage) && rs[2].triage === "site bug" && !rs[3].triage && asked === 1);
+  });
+  await test("reporter: FAIL / PASS-WITH-GAPS / PASS", () => {
+    const a = createAudit(); const v = (rs) => report({ results: rs, total: rs.length }, a).verdict;
+    assert.strictEqual(v([{ verdict: "passed" }]), "PASS");
+    assert.strictEqual(v([{ verdict: "passed" }, { verdict: "blocked-by-site" }]), "PASS-WITH-GAPS");
+    assert.strictEqual(v([{ verdict: "failed" }]), "FAIL");
+  });
+  await test("healer: a failure that passes on retry is flaky and stays visible; audit records it", async () => {
+    const { runSuite } = require("../suite-run"); void runSuite;
+    let calls = 0; const mod = require("../suite-run"); const orig = mod.runSuite;
+    // fake the runner through require cache: release.js captured runSuite at load, so test heal() directly
+    const { heal } = require("../agents/release");
+    const summary = { results: [{ id: "x", verdict: "failed", reason: "boom", failedStep: "s" }] };
+    const a = createAudit();
+    const fakeSuite = { name: "t", url: "https://s.my", cases: [{ id: "x", steps: ["Check that the page says Hello"] }] };
+    const page = () => ({ goto: async () => {}, screenshot: async () => Buffer.from("x"), url: () => "https://s.my/", evaluate: async () => [], innerText: async () => "Hello", content: async () => "Hello", locator: () => ({ innerText: async () => "Hello" }), title: async () => "t" });
+    const browser = { newContext: async () => ({ newPage: async () => page(), close: async () => {} }), close: async () => {} };
+    await heal(summary, fakeSuite, { launch: async () => { calls += 1; return browser; }, log: () => {}, runCase: async () => ({ status: "passed", steps: [{ status: "passed", text: "s" }] }) }, a);
+    assert.strictEqual(calls, 1);
+    assert.ok(summary.results[0].flaky && summary.results[0].firstAttempt.reason === "boom");
+    assert.ok(a.trail.some((e) => e.agent === "healer" && e.action === "flaky-passed-on-retry"));
+  });
+  await test("runRelease end to end writes an ordered audit trail", async () => {
+    const page = () => ({ goto: async () => {}, screenshot: async () => Buffer.from("x"), url: () => "https://s.my/", evaluate: async () => [], innerText: async () => "Hello", content: async () => "Hello", locator: () => ({ innerText: async () => "Hello" }), title: async () => "t" });
+    const browser = { newContext: async () => ({ newPage: async () => page(), close: async () => {} }), close: async () => {} };
+    const res = await runRelease({ name: "t", url: "https://s.my", cases: [{ id: "A", steps: ["Check that the page says Hello"] }] }, { runOpts: { launch: async () => browser, log: () => {}, runCase: async () => ({ status: "passed", steps: [] }) } });
+    assert.strictEqual(res.verdict, "PASS");
+    assert.deepStrictEqual(res.audit.map((e) => e.agent), ["planner", "runner", "reporter"]);
+  });
+  if (failed) process.exit(1); console.log("release-agents tests passed");
+})();

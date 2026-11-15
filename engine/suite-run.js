@@ -29,7 +29,7 @@ function loadPlaywright() {
   try { return require(require.resolve("playwright", { paths: [path.join(__dirname, "..", "web")] })); } catch { return require("playwright"); }
 }
 
-async function runSuite(suite, { launch, only, log = console.log, perCaseTimeoutMs = 300000 } = {}) {
+async function runSuite(suite, { launch, only, log = console.log, perCaseTimeoutMs = 300000, runCase } = {}) {
   const results = [];
   const cases = (suite.cases || []).filter((c) => !only || only.includes(c.id));
   let browser;
@@ -51,7 +51,7 @@ async function runSuite(suite, { launch, only, log = console.log, perCaseTimeout
         }
         let timer;
         out = await Promise.race([
-          runEnglish({ steps: c.steps.join("\n"), runner: webRunner(page), testData: {} }),
+          (runCase ? runCase(c, page) : runEnglish({ steps: c.steps.join("\n"), runner: webRunner(page), testData: {} })),
           new Promise((ok) => { timer = setTimeout(() => ok({ status: "failed", steps: [{ status: "failed", text: "(case)", reason: `timed out after ${Math.round(perCaseTimeoutMs / 1000)}s` }] }), perCaseTimeoutMs); }),
         ]);
         clearTimeout(timer);

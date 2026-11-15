@@ -108,6 +108,9 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (req.method === "POST" && req.url === "/api/releases") { require("./release-endpoint").handleStart(req, res); return; }
+  if (req.method === "GET" && /^\/api\/releases\/[0-9a-f-]{36}(\/audit)?(\?|$)/i.test(req.url)) { require("./release-endpoint").handleGet(req, res); return; }
+
   if (req.method === "POST" && req.url === "/api/english-runs") {
     require("./english-endpoint").handleStart(req, res);
     return;

@@ -5,15 +5,23 @@
 [![Test](https://github.com/prabathkumar/phoenix/actions/workflows/test.yml/badge.svg)](https://github.com/prabathkumar/phoenix/actions/workflows/test.yml)
 [![Deploy frontend](https://github.com/prabathkumar/phoenix/actions/workflows/deploy-frontend.yml/badge.svg)](https://github.com/prabathkumar/phoenix/actions/workflows/deploy-frontend.yml)
 
-Proprietary test-recording and generation engine for TestOps - mobile (Android/iOS) and web, from one recorder, with four layers wired as a ladder: **Guided → Synthetic → Semantic (with vision AI) → AI**.
+**TestOps ai-automate (Phoenix)** is the AI test platform for TestOps: record or write tests in plain English, run them on mobile (Android/iOS) and web, and run a whole release with one command. Four layers sit in a ladder: **Guided → Synthetic → Semantic (with vision AI) → AI**. The page is read first and a model is used last, so runs are fast, repeatable, and cheap.
 
-Testers record a flow once, inside TestOps — no Appium Inspector, no local install, no separate device-farm dashboard. TestOps ai-automate captures the session and generates a working automated script. Built on a fork of Appium's core engine (Apache 2.0), extended with an AI-native layer Appium doesn't have.
+What it does today:
+- **Record once, get a script.** Testers record a flow inside TestOps; Phoenix captures the session and generates a working automated script. Built on a fork of Appium's core (Apache 2.0) with an AI-native layer on top.
+- **Run from English.** Steps like "Select 256GB" and "Click Next" run against a live page. The engine matches by visible name, waits for disabled controls, and fails with the site's own message when the site blocks the journey.
+- **Run a release.** [Release-run agents](docs/AGENTS.md): a Planner picks cases, a Runner executes them, Triage explains every non-pass, a Healer retries real failures once (a pass on retry is reported as flaky), and a Reporter gives PASS / PASS-WITH-GAPS / FAIL with a full audit trail.
+- **Remember pages.** Page memory stores each page's controls and reports "page changed" drift between runs.
+- **Keep secrets out of the repo.** Test credentials are encrypted in `.env` and masked in results.
+
+Not built yet: the single API call to start a release, passive performance and security checks inside the release run, a results page for the audit trail, and mobile app agents. [docs/AGENTS.md](docs/AGENTS.md) lists them.
 
 **Live: [prabathkumar.github.io/phoenix](https://prabathkumar.github.io/phoenix/)** — the actual recording UI, connecting to a TestOps ai-automate backend running against a real device.
 
 | Doc | For | What's in it |
 |---|---|---|
 | [`docs/TESTOPS_MOBILE_SPEC.md`](docs/TESTOPS_MOBILE_SPEC.md) | Anyone wanting the full picture | The original spec: why guided-first, the Act 1/2/3 roadmap, what each phase is and isn't |
+| [`docs/AGENTS.md`](docs/AGENTS.md) | Everyone | The release-run agents, verdicts, audit trail, model config, secrets, and what is not built yet |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Engineering, integrators | How the mobile and web recorders, generators and runners fit together: diagrams, protocols, step format, design decisions |
 | [`docs/LAYERS.md`](docs/LAYERS.md) | Everyone | The four layers as a ladder (falling down, promoting up), API steps, test data, the Surface, safety rails, how to use it |
 | [`docs/TEST_DATA.md`](docs/TEST_DATA.md) | Testers, engineering | The test data layer: generate or upload data for web, API and mobile, ask only for what cannot be made up, where it is stored, API bodies and bad-body cases, OpenAPI/Postman import |

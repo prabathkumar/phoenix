@@ -2,6 +2,7 @@
 import os
 
 from fastapi import Body, FastAPI, Header, HTTPException, Query
+from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import agents, ai_eval, avatars, analytics, dashboard, db, gateway, guardrails, handlers as H, mcp_registry, pipeline, prompt_store, run_record, signoff
@@ -14,6 +15,10 @@ def create_app(deps: Deps | None = None) -> FastAPI:
     D = deps or Deps()
     url = D.db
     db.engine_for(url)  # connect and create the tables at start-up, not on the first request
+    try:
+        agents.seed_roster(url)  # the named agent team exists from the first start
+    except Exception as e:  # noqa: BLE001 - a roster problem must not stop the API
+        print(f"[phoenix-api] could not seed the agent roster: {e}")
     bad = lambda e: HTTPException(400, str(e))  # noqa: E731
 
     @app.get("/api/health")
@@ -61,6 +66,13 @@ def create_app(deps: Deps | None = None) -> FastAPI:
     @app.get("/api/agents")
     def agents_list():
         return {"agents": agents.list_agents(url), "stages": [{"id": s["id"], "name": s["name"]} for s in pipeline.STAGES]}
+
+    @app.get("/api/agents/{name}/avatar.svg")
+    def agents_avatar(name: str):
+        f = agents.AVATAR_DIR / f"{name}.svg"
+        if not agents.NAME_RE.match(name) or not f.is_file():
+            raise HTTPException(404, "No logo for that agent.")
+        return Response(f.read_text(encoding="utf-8"), media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=3600"})
 
     @app.get("/api/agents/{name}")
     def agents_get(name: str):

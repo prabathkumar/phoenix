@@ -14,6 +14,12 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
+/** Which named agent (avatar) does each release job: from prompts/agents-roster.json. */
+function rosterByJob() {
+  const out = {};
+  try { for (const r of JSON.parse(fs.readFileSync(path.join(__dirname, "..", "prompts", "agents-roster.json"), "utf8")).agents) for (const j of r.releaseAgents || []) out[j] = { name: r.name, title: r.title, colour: r.colour, avatar: `/agent-avatars/${r.name}.svg` }; } catch { /* names are a bonus */ }
+  return out;
+}
 const ID = /^[a-z0-9][a-z0-9_-]{0,63}$/i;
 const UUID = /^[0-9a-f-]{36}$/i;
 
@@ -24,6 +30,8 @@ function createReleaseEndpoint(deps = {}) {
   const projectsDir = deps.projectsDir || path.join(__dirname, "..", "test-cases", "projects");
   const dataDir = deps.dataDir !== undefined ? deps.dataDir : path.join(process.env.PHOENIX_DATA_DIR || ".", "release-runs");
   const token = deps.token !== undefined ? deps.token : process.env.PHOENIX_RELEASE_TOKEN;
+  const jobs = deps.roster || rosterByJob();
+  const decorate = (agents) => Object.fromEntries(Object.entries(agents || {}).map(([id, a]) => [id, jobs[id] ? { ...a, roster: jobs[id] } : a]));
   const releases = new Map();
   const active = new Map(); // projectId -> releaseId
 
@@ -65,7 +73,7 @@ function createReleaseEndpoint(deps = {}) {
       onStatus: (agent, a) => { rec.agents[agent] = { ...rec.agents[agent], ...a }; },
       runOpts: { log: (line) => { rec.progress.push(String(line)); if (rec.progress.length > 500) rec.progress.shift(); } },
       auditSink: (e) => { rec.audit.push(e); },
-    })).then((result) => { rec.result = result; rec.status = "done"; rec.agents = result.agents || rec.agents; })
+    })).then((result) => { rec.result = result; rec.status = "done"; rec.agents = { ...rec.agents, ...(result.agents || {}) }; })
       .catch((err) => { rec.status = "error"; rec.error = String((err && err.message) || err); })
       .finally(() => {
         rec.finishedAt = new Date().toISOString(); if (active.get(projectId) === id) active.delete(projectId);
@@ -78,7 +86,7 @@ function createReleaseEndpoint(deps = {}) {
     if (!authorised(req)) return json(res, 401, { error: "A valid Bearer token is required." });
     const url = req.url.split("?")[0], q = new URLSearchParams(req.url.split("?")[1] || "");
     let m = /^\/api\/projects\/([^/]+)\/suites$/.exec(url);
-    if (m) { if (!ID.test(m[1])) return json(res, 400, { error: "bad project id" }); const l = listSuites(m[1]); return l ? json(res, 200, { projectId: m[1], suites: l }) : json(res, 404, { error: `No suites for project ${m[1]}.` }); }
+    if (m) { if (!ID.test(m[1])) return json(res, 400, { error: "bad project id" }); const l = listSuites(m[1]); return l ? json(res, 200, { projectId: m[1], suites: l, agents: decorate(initialAgents()) }) : json(res, 404, { error: `No suites for project ${m[1]}.` }); }
     if (url === "/api/releases") { const p = q.get("projectId") || ""; if (!ID.test(p)) return json(res, 400, { error: "projectId is required" }); return json(res, 200, { projectId: p, releases: historyOf(p) }); }
     m = /^\/api\/releases\/([0-9a-f-]{36})(\/audit)?$/i.exec(url);
     if (!m || !UUID.test(m[1])) return json(res, 404, { error: "Not found." });
@@ -87,7 +95,8 @@ function createReleaseEndpoint(deps = {}) {
     if (!rec) return json(res, 404, { error: "No such release. After a restart, add ?projectId=<id> to read an older one." });
     if (m[2]) return json(res, 200, { releaseId: rec.id, projectId: rec.projectId, audit: (rec.result && rec.result.audit) || rec.audit || [] });
     const { audit, ...pub } = rec; void audit;
-    if (pub.result) { const { audit: a, ...r } = pub.result; void a; pub.result = r; }
+    pub.agents = decorate(pub.agents);
+    if (pub.result) { const { audit: a, agents: ag, ...r } = pub.result; void a; void ag; pub.result = r; }
     json(res, 200, pub);
   }
 

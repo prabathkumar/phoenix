@@ -68,7 +68,7 @@ def test_http_flow_run_goes_through_the_pipeline_and_is_tagged():
     out = c.post("/api/agents/smoke-checker/run", json={"input": {"requirement": "Users can log in"}})
     assert out.status_code == 200 and out.json()["agent"] == "smoke-checker"
     assert run_record.get(out.json()["runId"])["agent"] == "smoke-checker"
-    assert [a["name"] for a in c.get("/api/agents").json()["agents"]] == ["smoke-checker"]
+    assert "smoke-checker" in [a["name"] for a in c.get("/api/agents").json()["agents"]]
     assert c.get("/api/agents/nope").status_code == 404
     assert c.delete("/api/agents/smoke-checker", headers=h).json() == {"deleted": "smoke-checker"}
 
@@ -164,3 +164,42 @@ async def test_chain_stops_where_a_person_is_needed(fresh):
     d = Deps(env={"DATABASE_URL": fresh}, call_json=model)
     out = await run_chain(avatars.plan("alice", "scenario-agent", {"requirement": "r", "appUrl": "http://x"}, "alice"), d)
     assert out["ok"] is False and out["stoppedAt"] == "scenario-agent" and "needs you" in out["detail"] and len(out["chain"]) == 1
+
+
+def test_roster_is_seeded_once_and_never_overwrites_an_edit():
+    first = agents.seed_roster()
+    names = {r["name"] for r in agents.roster()}
+    assert {"scout", "scribe", "mint", "runner", "tracer", "pacer", "warden", "prowler", "judge", "forge", "herald", "mentor"} <= names
+    assert set(first) == names or set(first) <= names
+    listed = {a["name"]: a for a in agents.list_agents()}
+    assert listed["runner"]["icon"] and listed["runner"]["colour"].startswith("#") and listed["runner"]["enabled"] is True
+    agents.set_enabled("pacer", False, "alice")
+    agents.update("scout", {"description": "my edit"}, "alice")
+    assert agents.seed_roster() == []
+    assert agents.get("pacer")["enabled"] is False and agents.get("scout")["description"] == "my edit"
+
+
+def test_every_roster_stage_exists_and_each_stage_has_an_agent():
+    from phoenix_api import pipeline
+    known = {s["id"] for s in pipeline.STAGES}
+    used = [s for r in agents.roster() for s in r["stages"]]
+    assert set(used) <= known
+    assert known <= set(used), f"stages without an agent: {known - set(used)}"
+    assert len(used) == len(set(used)), "a stage belongs to one agent"
+
+
+def test_a_roster_agent_can_be_called_by_name():
+    agents.seed_roster()
+    req = agents.request_for("runner", {"task": "run the checkout cases", "appUrl": "https://www.yes.my"})
+    assert req["stages"] == ["execution"] and req["agent"] == "runner" and "checkout" in req["goal"]
+
+
+def test_every_roster_agent_has_a_logo_and_the_api_serves_it():
+    agents.seed_roster()
+    for r in agents.roster():
+        assert (agents.AVATAR_DIR / f"{r['name']}.svg").is_file(), r["name"]
+    c = api()
+    out = c.get("/api/agents/runner/avatar.svg")
+    assert out.status_code == 200 and out.headers["content-type"].startswith("image/svg+xml") and "<svg" in out.text
+    assert c.get("/api/agents/nope/avatar.svg").status_code == 404
+    assert c.get("/api/agents/..%2Fapp/avatar.svg").status_code in (400, 404)

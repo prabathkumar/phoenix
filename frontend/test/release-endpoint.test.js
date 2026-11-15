@@ -42,6 +42,9 @@ const wait = async (srv, id) => { for (let i = 0; i < 50; i += 1) { const r = aw
     assert.strictEqual((await call(srv, "GET", "/api/releases?projectId=p3")).body.releases.length, 0);
     assert.strictEqual((await call(srv, "GET", "/api/projects/p1/suites")).body.suites[0].name, "demo");
     assert.strictEqual((await call(srv, "GET", "/api/projects/nope/suites")).code, 404);
+    const ag = (await call(srv, "GET", "/api/projects/p1/suites")).body.agents;
+    assert.strictEqual(ag.runner.roster.name, "runner"); assert.strictEqual(ag.healer.roster.name, "runner"); assert.strictEqual(ag.performance.roster.name, "pacer"); assert.match(ag.security.roster.avatar, /warden\.svg$/);
+    assert.strictEqual((await call(srv, "GET", `/api/releases/${a.body.releaseId}`)).body.agents.triage.roster.name, "herald");
     const ep2 = createReleaseEndpoint({ projectsDir: dir, dataDir: out, token: "", ask: null }); const srv2 = await serve(ep2); // a restart still lists history
     assert.ok((await call(srv2, "GET", "/api/releases?projectId=p1")).body.releases.some((r) => r.releaseId === a.body.releaseId));
     srv.close(); srv2.close();

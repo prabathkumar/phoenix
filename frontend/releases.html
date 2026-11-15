@@ -17,7 +17,7 @@ h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute
 .card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px}
 .agents{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
 .agent{border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:var(--bg)}
-.agent b{display:flex;justify-content:space-between;align-items:center;gap:8px}.agent .job{color:var(--muted);font-size:12px;margin:2px 0 6px}.agent .msg{font-size:12.5px;min-height:18px;word-break:break-word}
+.agent .who{display:flex;gap:10px;align-items:center;margin-bottom:6px}.agent .who img{width:40px;height:40px;border-radius:10px;flex:none}.agent .who .nm{flex:1;min-width:0}.agent .who .nm small{display:block;color:var(--muted);font-weight:400;font-size:11px}.agent b{display:flex;justify-content:space-between;align-items:center;gap:8px}.agent .job{color:var(--muted);font-size:12px;margin:2px 0 6px}.agent .msg{font-size:12.5px;min-height:18px;word-break:break-word}
 .chip{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);color:var(--muted)}
 .chip.working{color:var(--accent);border-color:var(--accent)}.chip.done{color:var(--ok);border-color:var(--ok)}.chip.failed{color:var(--bad);border-color:var(--bad)}.chip.skipped{color:var(--warn);border-color:var(--warn)}
 .verdict{font-size:22px;font-weight:700}.verdict.PASS{color:var(--ok)}.verdict.FAIL{color:var(--bad)}.verdict.PASS-WITH-GAPS{color:var(--warn)}
@@ -78,7 +78,7 @@ pre{margin:0;max-height:220px;overflow:auto;font:12px/1.5 var(--mono);color:var(
       const sel = $("suite"); sel.innerHTML = "";
       s.suites.forEach((x) => { const o = el("option", "", x.title + " (" + x.cases + " cases" + (x.skipped ? ", " + x.skipped + " known skips" : "") + ")"); o.value = x.name; sel.appendChild(o); });
       $("run").disabled = !s.suites.length; say("Project " + p + ": " + s.suites.length + " suite(s).");
-      renderAgents({}); await loadHistory();
+      renderAgents(s.agents || {}); await loadHistory();
     } catch (e) { $("run").disabled = true; say(e.message, true); }
   }
 
@@ -87,8 +87,11 @@ pre{margin:0;max-height:220px;overflow:auto;font:12px/1.5 var(--mono);color:var(
     const names = { planner: ["Planner", "chooses the cases for this release"], runner: ["Runner", "runs each case in a fresh browser"], performance: ["Performance", "times one load of the start page"], security: ["Security", "checks response headers and cookies (passive)"], triage: ["Triage", "explains every case that did not pass"], healer: ["Healer", "re-runs real failures once"], reporter: ["Reporter", "gives the release verdict"] };
     AGENT_ORDER.forEach((id) => {
       const a = agents[id] || { status: "waiting", message: "" }, n = names[id];
-      const c = el("div", "agent"), b = el("b"); b.appendChild(el("span", "", a.name || n[0])); b.appendChild(el("span", "chip " + a.status, a.status));
-      c.appendChild(b); c.appendChild(el("div", "job", a.job || n[1])); c.appendChild(el("div", "msg", a.message || "")); box.appendChild(c);
+      const c = el("div", "agent"), who = el("div", "who"), nm = el("div", "nm"), b = el("b");
+      if (a.roster) { const im = el("img"); im.src = a.roster.avatar; im.alt = a.roster.name; who.appendChild(im); }
+      b.appendChild(el("span", "", a.roster ? a.roster.name.charAt(0).toUpperCase() + a.roster.name.slice(1) : (a.name || n[0]))); b.appendChild(el("span", "chip " + a.status, a.status));
+      nm.appendChild(b); nm.appendChild(el("small", "", (a.name || n[0]) + (a.roster ? " · " + a.roster.title : ""))); who.appendChild(nm); c.appendChild(who);
+      c.appendChild(el("div", "job", a.job || n[1])); c.appendChild(el("div", "msg", a.message || "")); box.appendChild(c);
     });
   }
 

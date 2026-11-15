@@ -31,6 +31,27 @@ flowchart TB
     GL -. only if page read cannot decide .-> LLM
 ```
 
+## The named agent team (wired into the framework)
+
+The agents are not a separate system. They are saved agents in the Phoenix backend (`backend/phoenix_api/agents.py`), one per pipeline stage group, defined in `prompts/agents-roster.json` and seeded on every API start (never overwriting an agent a person has edited or switched off). A tester calls one by name (`POST /api/agents/{name}/run`) and it runs through the same pipeline, gates, approvals and sign-off as everything else, under the tester's avatar. Each has an original logo in `prompts/agent-avatars/`, served at `/api/agents/{name}/avatar.svg` and shown on the Agents screen and on `/releases`.
+
+| Agent | Stage(s) | Does |
+|---|---|---|
+| **Scout** | scenarios | proposes test scenarios from requirements |
+| **Scribe** | cases | turns scenarios into English test cases |
+| **Mint** | testdata | makes test data, asks only for what cannot be made up |
+| **Runner** | execution | runs the cases on the target and retries real failures once |
+| **Tracer** | har | captures network traffic of a run |
+| **Pacer** | performance | times pages and runs load tests |
+| **Warden** | secrets, sast, traceability | secrets, code flaws, requirements vs what is built |
+| **Prowler** | dast | scans the running app with ZAP |
+| **Judge** | aieval | scores AI answer quality |
+| **Forge** | unittests, testspr | writes unit tests and opens the pull request |
+| **Herald** | defects, signoff | explains failures, files Jira defects, asks for sign-off |
+| **Mentor** | feedback | sends logs and results back to the AI |
+
+On the release page the jobs map onto the team: Planner shows as Scribe, Runner and Healer as Runner, Performance as Pacer, Security as Warden, Triage and Reporter as Herald. Of these, only the web release path (Runner, Pacer, Warden, Herald's triage and report) is proven on live yes.my; the others run through the existing pipeline and are not re-verified here.
+
 ## Agents and status
 
 Every activity has its own agent, and each reports `waiting`, `working`, `done`, `skipped` or `failed` with a one-line message (shown live on `/releases`): Planner, Runner, Performance (one page load, timing warnings), Security (passive header and cookie check of the start page), Triage, Healer, Reporter. A Performance or Security check that cannot run is shown as `failed` for that agent and never stops the release. Their warnings appear as gaps and turn a PASS into PASS-WITH-GAPS.

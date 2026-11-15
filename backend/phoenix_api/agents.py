@@ -4,6 +4,8 @@ that runs through the SAME pipeline as everything else, so every gate, guardrail
 An agent can never lower a gate: it picks stages and an autonomy level, nothing more. It cannot turn off the production gate, hold
 approvals, or carry credentials. Anything created through the MCP server (an outside client) starts switched OFF and needs a person
 to switch it on; that person cannot be the one who created it (four eyes, same switch as sign-off)."""
+import json
+import pathlib
 import re
 from datetime import datetime, timezone
 
@@ -53,7 +55,10 @@ def _clean(d):
     if platform not in PLATFORMS:
         raise AgentError(f"Platform is one of {', '.join(PLATFORMS)}.")
     then = [str(t).strip().lower() for t in (d.get("then") if isinstance(d.get("then"), list) else [])]
-    return {"name": name, "description": str(d.get("description") or "")[:300], "goal": goal, "stages": list(dict.fromkeys(stages)), "autonomy": autonomy,
+    look = {k: str(d.get(k) or "")[:40] for k in ("title", "icon", "colour")}
+    if look["colour"] and not re.match(r"^#[0-9a-fA-F]{6}$", look["colour"]):
+        raise AgentError("Colour is a hex colour like #ff5a36.")
+    return {**look, "name": name, "description": str(d.get("description") or "")[:300], "goal": goal, "stages": list(dict.fromkeys(stages)), "autonomy": autonomy,
             "project": str(d.get("project") or "")[:64], "appUrl": str(d.get("appUrl") or "")[:300], "platform": platform, "then": list(dict.fromkeys(then))}
 
 
@@ -75,7 +80,7 @@ def _check_links(name, then, url):
 
 
 def _public(a):
-    return {k: a[k] for k in ("name", "description", "goal", "stages", "autonomy", "project", "appUrl", "platform", "then", "enabled", "source", "createdBy", "version", "history")}
+    return {**{k: a.get(k, "") for k in ("title", "icon", "colour")}, **{k: a[k] for k in ("name", "description", "goal", "stages", "autonomy", "project", "appUrl", "platform", "then", "enabled", "source", "createdBy", "version", "history")}}
 
 
 def get(name, url=None):
@@ -86,7 +91,7 @@ def get(name, url=None):
 
 
 def list_agents(url=None):
-    return [{k: a[k] for k in ("name", "description", "stages", "autonomy", "platform", "then", "enabled", "source", "createdBy", "version")} for a in db.doc_list(KIND, url)]
+    return [{**{k: a.get(k, "") for k in ("title", "icon", "colour")}, **{k: a[k] for k in ("name", "description", "stages", "autonomy", "platform", "then", "enabled", "source", "createdBy", "version")}} for a in db.doc_list(KIND, url)]
 
 
 def create(d, actor, source="ui", url=None):
@@ -154,3 +159,24 @@ def request_for(name, inp, url=None):
     body.update({"goal": (a["goal"] + (f"\n\nThis run: {inp['task']}" if str(inp.get("task") or "").strip() else ""))[:6000], "stages": a["stages"], "autonomy": a["autonomy"],
                  "project": a["project"] or inp.get("project", ""), "appUrl": inp.get("appUrl") or a["appUrl"] or None, "agent": a["name"]})
     return body
+
+
+AVATAR_DIR = pathlib.Path(__file__).resolve().parents[2] / "prompts" / "agent-avatars"
+ROSTER_FILE = pathlib.Path(__file__).resolve().parents[2] / "prompts" / "agents-roster.json"
+
+
+def roster():
+    """The named agent team shipped in prompts/agents-roster.json."""
+    return json.loads(ROSTER_FILE.read_text(encoding="utf-8"))["agents"]
+
+
+def seed_roster(url=None):
+    """Create any roster agent that does not exist yet. Never overwrites one a person has edited or switched off; safe to call on every start.
+    Seeded agents are made by the system with ask-when-matters autonomy; they pick stages only and cannot lower a gate."""
+    made = []
+    for r in roster():
+        if db.doc_get(KIND, r["name"], url):
+            continue
+        create({**r, "autonomy": "ask-when-matters"}, "phoenix", "system", url)
+        made.append(r["name"])
+    return made

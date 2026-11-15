@@ -110,6 +110,14 @@ const server = http.createServer((req, res) => {
 
   if (req.method === "POST" && req.url === "/api/releases") { require("./release-endpoint").handleStart(req, res); return; }
   if (req.method === "GET" && (/^\/api\/releases(\/|\?|$)/i.test(req.url) || /^\/api\/projects\/[^/]+\/suites(\?|$)/i.test(req.url))) { require("./release-endpoint").handleGet(req, res); return; }
+  if (req.method === "GET" && /^\/agent-avatars\/[a-z0-9-]{2,40}\.svg$/.test(req.url)) {
+    fs.readFile(path.join(__dirname, "..", "prompts", "agent-avatars", path.basename(req.url)), (err, content) => {
+      if (err) { res.writeHead(404); res.end("No logo"); return; }
+      res.writeHead(200, { "Content-Type": "image/svg+xml", "Cache-Control": "public, max-age=3600" });
+      res.end(content);
+    });
+    return;
+  }
   if (req.method === "GET" && req.url.split("?")[0] === "/releases") {
     fs.readFile(path.join(__dirname, "releases.html"), "utf8", (err, content) => {
       if (err) { res.writeHead(500); res.end("Failed to read releases.html: " + err.message); return; }

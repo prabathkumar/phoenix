@@ -46,7 +46,7 @@ export default function Agents() {
           <tbody>
             {agents.map((a) => (
               <tr key={a.name}>
-                <td><b>{a.name}</b><div className="sub">{a.description || ""}</div></td>
+                <td><div className="row" style={{ gap: 10, alignItems: "center" }}><img src={`/api/agents/${a.name}/avatar.svg`} alt="" width="36" height="36" style={{ borderRadius: 9 }} onError={(e) => { e.currentTarget.style.display = "none"; }} /><div><b>{a.name}</b>{a.title ? <span className="sub"> · {a.title}</span> : null}<div className="sub">{a.description || ""}</div></div></div></td>
                 <td><Chip>{a.platform}</Chip> <span className="sub">{a.stages.join(", ")}</span></td>
                 <td>{a.then.length ? a.then.join(" → ") : <span className="sub">nobody</span>}</td>
                 <td>{a.enabled ? <Chip kind="ok">On</Chip> : <Chip kind="warn">Off, needs a person</Chip>}{a.source === "mcp" ? <div className="sub">built through MCP by {a.createdBy}</div> : null}</td>

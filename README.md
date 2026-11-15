@@ -14,7 +14,7 @@ What it does today:
 - **Remember pages.** Page memory stores each page's controls and reports "page changed" drift between runs.
 - **Keep secrets out of the repo.** Test credentials are encrypted in `.env` and masked in results.
 
-Not built yet: the single API call to start a release, passive performance and security checks inside the release run, a results page for the audit trail, and mobile app agents. [docs/AGENTS.md](docs/AGENTS.md) lists them.
+A release is one API call keyed by project ID (`POST /api/releases`), with a live page at `/releases`, an agent for every activity (including passive performance and security checks), and a per-project history. Not built yet: login journeys, deeper performance and security testing inside a release, and mobile app agents. [docs/AGENTS.md](docs/AGENTS.md) lists them.
 
 **Live: [prabathkumar.github.io/phoenix](https://prabathkumar.github.io/phoenix/)** — the actual recording UI, connecting to a TestOps ai-automate backend running against a real device.
 
@@ -66,7 +66,7 @@ Not built yet: the single API call to start a release, passive performance and s
 flowchart LR
     subgraph Users["Users"]
         T["Testers\nReact UI (web-ui/)"]
-        CI["Release trigger\nrelease-run.js (API call planned)"]
+        CI["Release trigger\nPOST /api/releases (project ID) or release-run.js"]
     end
     subgraph Api["phoenix-api (Python FastAPI)"]
         API["Projects, cases, runs,\nAI pipeline, analytics"]
@@ -214,7 +214,7 @@ TestOps ai-automate's semantic/autonomous layer is also compared head-to-head ag
 
 **Current state: TestOps ai-automate records a real flow — on a real Android emulator/device or a real iOS Simulator — and generates a real, runnable script from it, with an optional local-LLM refinement pass. Every capability below is proven on real hardware, not just unit-tested.**
 
-- **Web release path (new, proven on live yes.my from a Mac).** English steps run against the live site with the page read first; a suite runner keeps passed, blocked-by-site, not-run-network and failed apart; release-run agents add Triage, a one-retry Healer (a pass on retry is reported as flaky) and an audit trail; page memory reports drift between runs; test credentials are encrypted in `.env`. Honest limits: a pass means every step reached the right control, not that the page ended in the right state; the single API call, passive performance and security checks inside a release run, a results page for the audit trail, login journeys and mobile app agents are not built; the yes.my suite needs refreshing because the live line-up has moved on. See [`docs/AGENTS.md`](docs/AGENTS.md).
+- **Web release path (new, proven on live yes.my from a Mac).** English steps run against the live site with the page read first; a suite runner keeps passed, blocked-by-site, not-run-network and failed apart; release-run agents add Triage, a one-retry Healer (a pass on retry is reported as flaky) and an audit trail; page memory reports drift between runs; test credentials are encrypted in `.env`. Honest limits: a pass means every step reached the right control, not that the page ended in the right state; the performance and security agents do one page load and one header read, not a load test or a scan; login journeys and mobile app agents are not built; the yes.my suite needs refreshing because the live line-up has moved on. See [`docs/AGENTS.md`](docs/AGENTS.md).
 - **Guided recording (Act 1) — shipped, working today.** Record a flow, get a runnable, asserted, parameterized script. See [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) for the tester-facing walkthrough.
 - **Semantic action layer (Act 2, Phase 2) — fully proven on real hardware, including both real-world entry points.** Resolve a plain-language instruction ("tap the Login button") against a live screen with no recorded selector, returning a real locator or refusing rather than guessing — proven both via the standalone CLI and the experimental REST endpoint, against two different real apps.
 - **Autonomous loop (Phase 3) — Beta, Android closed out, proven end to end on a real login.** Give it a goal, it decides and executes one action at a time until done or stuck. Nine real bugs found and fixed against a real BrowserStack Android account (dead-end tap targets, a model typing a field's hint instead of the real value, prompt-template echoing, an ambiguous shared-resource-id field, a password selector going stale after typing, and a code-level backstop that stops the loop fast when an action is repeated with no visible effect, instead of burning the whole step budget) — a full login (home screen → login form → correct credentials → submit) completes end to end against a real device, with the app's own response (invalid-credentials dialog, then a successful login reaching the post-login screen) confirming the result both times. **Scope today: `loop` is wired in and usable, but still mode-flagged for exploration rather than test authoring** — if the steps can be written down at all (true for virtually any real test, including login), that belongs in `test-case` mode below, since the model has repeatedly needed more than one attempt to reliably finish even a sequence where every individual step resolves correctly on its own. This is expected to harden the same way the other three layers did: through real use — TestOps testers running it against real flows surfaces the failure cases, each one gets diagnosed from evidence and fixed (a prompt fix, a code-level backstop, a new guardrail), same discipline as the 18 bugs closed out in `test-cases/addons.json`. It is not literal model fine-tuning/training — no weights change — it's this same evidence-driven hardening loop, continuously, driven by their testers' runs instead of one person pasting logs.
@@ -285,8 +285,10 @@ To run a whole suite as a release (one fresh browser per case, triage, one retry
 
 ```
 docker compose up -d --build engine phoenix-api
-docker compose exec engine node engine/release-run.js test-cases/yes-my-release-web.json
+docker compose exec engine node engine/release-run.js test-cases/projects/yes-my/release-web.json
 ```
+
+Or from the browser: open `http://localhost:8091/releases?project=yes-my`, pick the suite and press Run release. The same call over HTTP: `POST /api/releases {"projectId":"yes-my","suite":"release-web"}`.
 
 Add `-e PHOENIX_AGENT_LLM_URL=... -e PHOENIX_AGENT_MODEL=...` to `docker compose exec` to let a model explain failures the rules cannot. Use `engine/suite-run.js` for the same run without agents.
 

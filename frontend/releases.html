@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TestOps ai-automate — Releases</title>
+<style>
+:root{--bg:#14161a;--panel:#1d2026;--border:#2e333b;--text:#e8eaed;--muted:#9aa1ad;--accent:#ff5a36;--ok:#3fb950;--warn:#d9a21b;--bad:#f85149;--mono:ui-monospace,Menlo,monospace}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,sans-serif}
+header{padding:14px 20px;border-bottom:1px solid var(--border);display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+header h1{font-size:16px;margin:0}header h1 span{color:var(--accent)}header a{color:var(--muted);font-size:13px}
+main{max-width:1100px;margin:0 auto;padding:16px 20px 40px;display:grid;gap:16px}
+.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:end}
+label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px}
+input[type=text],input[type=password],select{background:var(--panel);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:8px;font-size:13px;min-width:0}
+button{border:0;border-radius:8px;padding:9px 14px;font-weight:600;font-size:13px;cursor:pointer;background:var(--accent);color:#1a1a1a}
+button.sec{background:var(--panel);color:var(--text);border:1px solid var(--border)}button:disabled{opacity:.4;cursor:not-allowed}
+.opts{display:flex;gap:14px;font-size:13px;color:var(--muted);align-items:center}.opts label{display:inline;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text)}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 8px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px}
+.agents{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.agent{border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:var(--bg)}
+.agent b{display:flex;justify-content:space-between;align-items:center;gap:8px}.agent .job{color:var(--muted);font-size:12px;margin:2px 0 6px}.agent .msg{font-size:12.5px;min-height:18px;word-break:break-word}
+.chip{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);color:var(--muted)}
+.chip.working{color:var(--accent);border-color:var(--accent)}.chip.done{color:var(--ok);border-color:var(--ok)}.chip.failed{color:var(--bad);border-color:var(--bad)}.chip.skipped{color:var(--warn);border-color:var(--warn)}
+.verdict{font-size:22px;font-weight:700}.verdict.PASS{color:var(--ok)}.verdict.FAIL{color:var(--bad)}.verdict.PASS-WITH-GAPS{color:var(--warn)}
+.counts{display:flex;gap:18px;flex-wrap:wrap;color:var(--muted);font-size:13px;margin-top:4px}.counts b{color:var(--text)}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);vertical-align:top}th{color:var(--muted);font-weight:600;font-size:12px}
+td.id,.mono{font-family:var(--mono);font-size:12px}tr.hist{cursor:pointer}tr.hist:hover{background:rgba(255,255,255,.03)}
+.v-passed{color:var(--ok)}.v-failed{color:var(--bad)}.v-blocked-by-site,.v-not-run-network,.v-flaky,.v-warning{color:var(--warn)}
+pre{margin:0;max-height:220px;overflow:auto;font:12px/1.5 var(--mono);color:var(--muted);white-space:pre-wrap}
+.err{color:var(--bad)}.hint{color:var(--muted);font-size:12px}details summary{cursor:pointer;color:var(--muted);font-size:13px}
+</style></head><body>
+<header><h1><span>TestOps ai-automate</span> — Releases</h1><a href="/english">Run from English</a><a href="/">Recorder</a></header>
+<main>
+<section class="card">
+  <div class="bar">
+    <div><label for="project">Project ID</label><input type="text" id="project" placeholder="e.g. yes-my" style="width:180px"></div>
+    <div><label for="suite">Suite</label><select id="suite" style="min-width:240px"><option value="">Load a project first</option></select></div>
+    <div><label for="changed">What changed (optional)</label><input type="text" id="changed" placeholder="checkout, postpaid" style="width:200px"></div>
+    <div><label for="token">Access token (if set)</label><input type="password" id="token" autocomplete="off" style="width:150px"></div>
+    <button id="load" class="sec">Load project</button><button id="run" disabled>Run release</button>
+  </div>
+  <div class="opts" style="margin-top:10px"><span>Agents:</span>
+    <label><input type="checkbox" id="o-heal" checked> Healer (retry failures once)</label>
+    <label><input type="checkbox" id="o-perf" checked> Performance</label>
+    <label><input type="checkbox" id="o-sec" checked> Security (passive)</label></div>
+  <div id="note" class="hint" style="margin-top:8px">Everything on this page belongs to the project ID above.</div>
+</section>
+
+<section class="card" id="agents-card"><h2>Agents</h2><div class="agents" id="agents"></div></section>
+
+<section class="card" id="result-card" style="display:none"><h2>Release</h2>
+  <div class="verdict" id="verdict"></div><div class="counts" id="counts"></div>
+  <h2 style="margin-top:14px">Gaps and warnings</h2><div id="gaps"></div>
+  <h2 style="margin-top:14px">Cases</h2><div id="cases"></div>
+  <details style="margin-top:12px"><summary>Audit trail (what each agent did and why)</summary><pre id="audit"></pre></details>
+</section>
+
+<section class="card"><h2>Progress</h2><pre id="progress">Nothing running.</pre></section>
+<section class="card"><h2>History for this project</h2><div id="history" class="hint">Load a project to see its releases.</div></section>
+</main>
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const AGENT_ORDER = ["planner", "runner", "performance", "security", "triage", "healer", "reporter"];
+  let timer = null, currentId = null;
+  const qs = new URLSearchParams(location.search);
+  $("project").value = qs.get("project") || "";
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const headers = () => ({ "Content-Type": "application/json", ...($("token").value ? { Authorization: "Bearer " + $("token").value } : {}) });
+  const api = async (url, opts) => { const r = await fetch(url, { headers: headers(), ...(opts || {}) }); const b = await r.json().catch(() => ({})); if (!r.ok) throw new Error(b.error || ("HTTP " + r.status)); return b; };
+  const project = () => $("project").value.trim();
+  const say = (t, bad) => { $("note").textContent = t; $("note").className = bad ? "err" : "hint"; };
+
+  async function loadProject() {
+    const p = project(); if (!p) return say("Enter a project ID.", true);
+    history.replaceState(null, "", "?project=" + encodeURIComponent(p));
+    try {
+      const s = await api("/api/projects/" + encodeURIComponent(p) + "/suites");
+      const sel = $("suite"); sel.innerHTML = "";
+      s.suites.forEach((x) => { const o = el("option", "", x.title + " (" + x.cases + " cases" + (x.skipped ? ", " + x.skipped + " known skips" : "") + ")"); o.value = x.name; sel.appendChild(o); });
+      $("run").disabled = !s.suites.length; say("Project " + p + ": " + s.suites.length + " suite(s).");
+      renderAgents({}); await loadHistory();
+    } catch (e) { $("run").disabled = true; say(e.message, true); }
+  }
+
+  function renderAgents(agents) {
+    const box = $("agents"); box.innerHTML = "";
+    const names = { planner: ["Planner", "chooses the cases for this release"], runner: ["Runner", "runs each case in a fresh browser"], performance: ["Performance", "times one load of the start page"], security: ["Security", "checks response headers and cookies (passive)"], triage: ["Triage", "explains every case that did not pass"], healer: ["Healer", "re-runs real failures once"], reporter: ["Reporter", "gives the release verdict"] };
+    AGENT_ORDER.forEach((id) => {
+      const a = agents[id] || { status: "waiting", message: "" }, n = names[id];
+      const c = el("div", "agent"), b = el("b"); b.appendChild(el("span", "", a.name || n[0])); b.appendChild(el("span", "chip " + a.status, a.status));
+      c.appendChild(b); c.appendChild(el("div", "job", a.job || n[1])); c.appendChild(el("div", "msg", a.message || "")); box.appendChild(c);
+    });
+  }
+
+  function renderResult(rec) {
+    const r = rec.result; if (!r) { $("result-card").style.display = "none"; return; }
+    $("result-card").style.display = "block";
+    $("verdict").textContent = r.verdict; $("verdict").className = "verdict " + r.verdict;
+    const cn = $("counts"); cn.innerHTML = "";
+    [["passed", r.passed + " / " + r.total], ["blocked by site", r.blockedBySite], ["not run (network)", r.notRunNetwork], ["flaky", r.flaky], ["failed", r.failed]].forEach(([k, v]) => { const s = el("span"); s.appendChild(el("b", "", String(v))); s.appendChild(document.createTextNode(" " + k)); cn.appendChild(s); });
+    const g = $("gaps"); g.innerHTML = "";
+    if (!r.gaps.length) g.appendChild(el("div", "hint", "None."));
+    else { const t = el("table"); t.innerHTML = "<tr><th>Item</th><th>Kind</th><th>Why</th></tr>"; r.gaps.forEach((x) => { const tr = el("tr"); tr.appendChild(el("td", "id", x.id)); tr.appendChild(el("td", "v-" + x.verdict, x.verdict)); tr.appendChild(el("td", "", x.why || "")); t.appendChild(tr); }); g.appendChild(t); }
+    const c = $("cases"); c.innerHTML = ""; const t = el("table"); t.innerHTML = "<tr><th>Case</th><th>Result</th><th>Time</th><th>Failed step / reason</th></tr>";
+    r.results.forEach((x) => { const tr = el("tr"); tr.appendChild(el("td", "id", x.id + (x.title ? " — " + x.title : ""))); tr.appendChild(el("td", "v-" + (x.flaky ? "flaky" : x.verdict), x.flaky ? "flaky (passed on retry)" : x.verdict)); tr.appendChild(el("td", "", x.seconds + "s")); tr.appendChild(el("td", "", x.failedStep ? x.failedStep + ": " + (x.reason || "") : "")); t.appendChild(tr); });
+    c.appendChild(t);
+    if (r.checks && r.checks.length) { const m = r.checks.find((x) => x.agent === "performance"); if (m && m.metrics) c.appendChild(el("p", "hint", "Page timing: first byte " + (m.metrics.ttfbMs ?? "?") + " ms, load " + (m.metrics.loadMs ?? m.metrics.wallMs) + " ms, " + (m.metrics.transferKb ?? "?") + " KB.")); }
+  }
+
+  async function poll() {
+    if (!currentId) return;
+    try {
+      const rec = await api("/api/releases/" + currentId + "?projectId=" + encodeURIComponent(project()));
+      renderAgents(rec.agents || {}); $("progress").textContent = (rec.progress || []).slice(-40).join("\n") || (rec.status === "running" ? "Starting…" : "");
+      renderResult(rec);
+      if (rec.status === "running") timer = setTimeout(poll, 1500);
+      else { say(rec.status === "error" ? "The release stopped: " + rec.error : "Release finished.", rec.status === "error"); $("run").disabled = false; loadHistory();
+        try { const a = await api("/api/releases/" + currentId + "/audit?projectId=" + encodeURIComponent(project())); $("audit").textContent = a.audit.map((e) => e.at.slice(11, 19) + "  " + e.agent.padEnd(11) + e.action + "  " + JSON.stringify(Object.fromEntries(Object.entries(e).filter(([k]) => !["at", "agent", "action"].includes(k))))).join("\n"); } catch { /* audit is a bonus */ } }
+    } catch (e) { say(e.message, true); $("run").disabled = false; }
+  }
+
+  async function run() {
+    clearTimeout(timer); $("run").disabled = true; $("result-card").style.display = "none"; $("audit").textContent = "";
+    const changed = $("changed").value.split(",").map((s) => s.trim()).filter(Boolean);
+    try {
+      const r = await api("/api/releases", { method: "POST", body: JSON.stringify({ projectId: project(), suite: $("suite").value, changed, heal: $("o-heal").checked, perf: $("o-perf").checked, security: $("o-sec").checked }) });
+      currentId = r.releaseId; say("Release started for project " + project() + "."); poll();
+    } catch (e) { say(e.message, true); $("run").disabled = false; }
+  }
+
+  async function loadHistory() {
+    const h = $("history");
+    try {
+      const d = await api("/api/releases?projectId=" + encodeURIComponent(project()));
+      h.innerHTML = ""; if (!d.releases.length) { h.textContent = "No releases yet for this project."; return; }
+      const t = el("table"); t.innerHTML = "<tr><th>Started</th><th>Suite</th><th>Verdict</th><th>Passed</th><th>Status</th></tr>";
+      d.releases.slice(0, 20).forEach((x) => { const tr = el("tr", "hist"); tr.appendChild(el("td", "mono", x.startedAt.replace("T", " ").slice(0, 19))); tr.appendChild(el("td", "", x.suite)); tr.appendChild(el("td", "", x.verdict || "")); tr.appendChild(el("td", "", x.total != null ? x.passed + "/" + x.total : "")); tr.appendChild(el("td", "", x.status)); tr.addEventListener("click", () => { clearTimeout(timer); currentId = x.releaseId; poll(); }); t.appendChild(tr); });
+      h.appendChild(t);
+    } catch (e) { h.textContent = e.message; }
+  }
+
+  $("load").addEventListener("click", loadProject); $("run").addEventListener("click", run);
+  $("project").addEventListener("keydown", (e) => { if (e.key === "Enter") loadProject(); });
+  renderAgents({}); if ($("project").value) loadProject();
+})();
+</script></body></html>

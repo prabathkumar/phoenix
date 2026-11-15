@@ -9,11 +9,26 @@
  * Model use is optional and last: `ask(prompt)` is only used by Triage for failures the rules cannot explain.
  */
 const { runSuite } = require("../suite-run");
+const checks = require("./checks");
 
-function createAudit(sink = () => {}) {
+/** Every activity has its own agent, and every agent can say where it is. */
+const AGENTS = [
+  ["planner", "Planner", "chooses the cases for this release"],
+  ["runner", "Runner", "runs each case in a fresh browser"],
+  ["performance", "Performance", "times one load of the start page"],
+  ["security", "Security", "checks the start page's response headers and cookies (passive)"],
+  ["triage", "Triage", "explains every case that did not pass"],
+  ["healer", "Healer", "re-runs real failures once"],
+  ["reporter", "Reporter", "gives the release verdict"],
+];
+
+function createAudit(sink = () => {}, onStatus = () => {}) {
   const trail = [];
+  const agents = Object.fromEntries(AGENTS.map(([id, name, job]) => [id, { name, job, status: "waiting", message: "", updatedAt: null }]));
+  /** state: waiting | working | done | skipped | failed */
+  const setStatus = (id, state, message = "") => { agents[id] = { ...agents[id], status: state, message, updatedAt: new Date().toISOString() }; try { onStatus(id, agents[id], agents); } catch { /* status sink is a bonus */ } };
   const note = (agent, action, detail = {}) => { const e = { at: new Date().toISOString(), agent, action, ...detail }; trail.push(e); try { sink(e); } catch { /* sink is a bonus */ } };
-  return { trail, note };
+  return { trail, note, agents, setStatus };
 }
 
 /** Planner: choose cases. `changed` = words from the release notes (e.g. ["checkout", "postpaid"]); matches case id, title or tags. */
@@ -73,16 +88,45 @@ function report(summary, audit) {
   return out;
 }
 
-async function runRelease(suite, { changed, only, ask, heal: doHeal = true, runOpts = {}, auditSink } = {}) {
-  const audit = createAudit(auditSink);
+async function runRelease(suite, { changed, only, ask, heal: doHeal = true, perf = true, security = true, runOpts = {}, auditSink, onStatus, checkDeps = {} } = {}) {
+  const audit = createAudit(auditSink, onStatus); const st = audit.setStatus;
+  st("planner", "working", "choosing cases");
   const planned = plan(suite, { changed, only }, audit);
+  st("planner", "done", `${planned.cases.length} case(s) chosen${(suite.skipped || []).length ? `, ${suite.skipped.length} known skips` : ""}`);
   audit.note("runner", "start", { total: planned.cases.length });
-  const summary = await runSuite(planned, runOpts);
+  st("runner", "working", `running ${planned.cases.length} case(s)`);
+  const log = (line) => { st("runner", "working", String(line).trim().slice(0, 140)); if (runOpts.log) runOpts.log(line); };
+  let summary;
+  try { summary = await runSuite(planned, { ...runOpts, log }); } catch (e) { st("runner", "failed", e.message); throw e; }
+  st("runner", "done", `${summary.results.length} case(s) run`);
+
+  const extra = [];
+  const passive = async (id, on, fn, label) => {
+    if (!on) { st(id, "skipped", "turned off for this release"); return; }
+    st(id, "working", label);
+    try { const r = await fn(); extra.push({ agent: id, ...r }); audit.note(id, "checked", { warnings: r.warnings, metrics: r.metrics }); st(id, "done", r.warnings.length ? `${r.warnings.length} warning(s)` : "no warnings"); }
+    catch (e) { audit.note(id, "could-not-run", { why: e.message }); st(id, "failed", `could not run: ${e.message}`.slice(0, 160)); }
+  };
+  await passive("performance", perf && suite.url, () => checks.pageTiming(suite.url, { launch: runOpts.launch, ...checkDeps.perf }), "timing one page load");
+  await passive("security", security && suite.url, () => checks.headerAudit(suite.url, checkDeps.security), "reading response headers");
+
+  st("triage", "working", "explaining non-passes");
   await triage(summary.results, { ask }, audit);
-  if (doHeal) await heal(summary, planned, runOpts, audit);
+  const nonPass = summary.results.filter((r) => r.verdict !== "passed").length;
+  st("triage", "done", nonPass ? `${nonPass} case(s) explained` : "nothing to explain");
+  if (doHeal) {
+    const failedN = summary.results.filter((r) => r.verdict === "failed").length;
+    if (failedN) { st("healer", "working", `retrying ${failedN} failed case(s)`); await heal(summary, planned, { ...runOpts, log }, audit); st("healer", "done", `${summary.results.filter((r) => r.flaky).length} flaky, ${summary.results.filter((r) => r.retried).length} still failing`); }
+    else st("healer", "done", "no failures to retry");
+  } else st("healer", "skipped", "turned off for this release");
   await triage(summary.results.filter((r) => r.verdict !== "passed" && !r.triage), { ask }, audit);
+  st("reporter", "working", "writing the verdict");
   const final = report(summary, audit);
-  return { ...final, audit: audit.trail };
+  for (const x of extra) for (const w of x.warnings) final.gaps.push({ id: x.agent, verdict: "warning", why: w });
+  if (final.verdict === "PASS" && extra.some((x) => x.warnings.length)) final.verdict = "PASS-WITH-GAPS";
+  final.checks = extra.map((x) => ({ agent: x.agent, metrics: x.metrics, status: x.status, cookies: x.cookies, warnings: x.warnings }));
+  st("reporter", "done", `${final.verdict}: ${final.passed}/${final.total} passed`);
+  return { ...final, agents: audit.agents, audit: audit.trail };
 }
 
-module.exports = { runRelease, plan, triage, heal, report, createAudit };
+module.exports = { AGENTS, runRelease, plan, triage, heal, report, createAudit };

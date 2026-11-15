@@ -1,12 +1,12 @@
 # Release-run agents and the web release path
 
-One command (and soon one API call) runs a whole release against a live site, and says honestly what passed, what the site blocked, and what is really broken.
+One command or one API call runs a whole release against a live site, and says honestly what passed, what the site blocked, and what is really broken.
 
 ## The picture
 
 ```mermaid
 flowchart TB
-    REL["Release trigger\nnode engine/release-run.js suite.json --changed checkout\n(API call: planned)"]
+    REL["Release trigger\nPOST /api/releases {projectId, suite}\nor node engine/release-run.js"]
     subgraph Agents["engine/agents/release.js"]
         PL["Planner\nchooses cases from the suite;\nnarrows by changed areas, else runs all"]
         RU["Runner\nsuite-run.js: one fresh browser context per case"]
@@ -30,6 +30,24 @@ flowchart TB
     TR -. only if rules cannot explain .-> LLM
     GL -. only if page read cannot decide .-> LLM
 ```
+
+## Agents and status
+
+Every activity has its own agent, and each reports `waiting`, `working`, `done`, `skipped` or `failed` with a one-line message (shown live on `/releases`): Planner, Runner, Performance (one page load, timing warnings), Security (passive header and cookie check of the start page), Triage, Healer, Reporter. A Performance or Security check that cannot run is shown as `failed` for that agent and never stops the release. Their warnings appear as gaps and turn a PASS into PASS-WITH-GAPS.
+
+## Everything is keyed by project ID
+
+Suites live in `test-cases/projects/<projectId>/`. Releases, agent status, results and history are filed under the project ID; one release runs at a time per project.
+
+| Call | What |
+|---|---|
+| `GET /api/projects/:projectId/suites` | suites of the project |
+| `POST /api/releases` `{projectId, suite, changed?, heal?, perf?, security?}` | start a release, returns `releaseId` |
+| `GET /api/releases?projectId=ID` | the project's releases, newest first (survives restarts) |
+| `GET /api/releases/:id` | live agent status, progress, result |
+| `GET /api/releases/:id/audit` | the audit trail |
+
+The page is `/releases?project=<projectId>`. Set `PHOENIX_RELEASE_TOKEN` to require `Authorization: Bearer <token>` on every call.
 
 ## Verdicts (kept apart so a release verdict is honest)
 
@@ -68,17 +86,16 @@ Test credentials never go in the repo. `scripts/encrypt-secret.js` prompts for a
 ```
 docker compose up -d --build engine phoenix-api
 docker compose exec -e PHOENIX_AGENT_LLM_URL=http://host.docker.internal:11434 -e PHOENIX_AGENT_MODEL=llama3 \
-  engine node engine/release-run.js test-cases/yes-my-release-web.json
+  engine node engine/release-run.js test-cases/projects/yes-my/release-web.json
 ```
 
 Only the sandbox cannot reach yes.my; run it from a machine that can. `engine/suite-run.js` runs the same cases without the agents (no triage, no healing).
 
 ## Not built yet (stated plainly)
 
-- the single Phoenix API call that starts a release
-- passive performance (page timing) and passive security checks in the release run
+- authentication beyond the shared release token (real project login and roles)
+- performance and security checks deeper than one page load and one header read (no load test, no scanner run inside a release)
 - a "check that no error is showing" assertion step
-- a results page in the UI for the audit trail and flaky list
 - login journeys (the login location on yes.my is not yet known)
 - mobile app agents (MyYes on BrowserStack or Appium)
 - the yes.my suite itself needs refreshing: the live line-up has moved to iPhone 18 and Galaxy Fold 8, so the X500 and iPhone 17 cases are stale

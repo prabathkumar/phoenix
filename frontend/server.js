@@ -109,7 +109,15 @@ const server = http.createServer((req, res) => {
   }
 
   if (req.method === "POST" && req.url === "/api/releases") { require("./release-endpoint").handleStart(req, res); return; }
-  if (req.method === "GET" && /^\/api\/releases\/[0-9a-f-]{36}(\/audit)?(\?|$)/i.test(req.url)) { require("./release-endpoint").handleGet(req, res); return; }
+  if (req.method === "GET" && (/^\/api\/releases(\/|\?|$)/i.test(req.url) || /^\/api\/projects\/[^/]+\/suites(\?|$)/i.test(req.url))) { require("./release-endpoint").handleGet(req, res); return; }
+  if (req.method === "GET" && req.url.split("?")[0] === "/releases") {
+    fs.readFile(path.join(__dirname, "releases.html"), "utf8", (err, content) => {
+      if (err) { res.writeHead(500); res.end("Failed to read releases.html: " + err.message); return; }
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      res.end(content);
+    });
+    return;
+  }
 
   if (req.method === "POST" && req.url === "/api/english-runs") {
     require("./english-endpoint").handleStart(req, res);

@@ -1,7 +1,7 @@
 /**
  * suite-run.js -- runs a whole suite of English test cases against a site, one fresh browser
  * context per case, and prints one result table. One command per release:
- *   node engine/suite-run.js test-cases/yes-my-release-web.json
+ *   node engine/suite-run.js test-cases/projects/yes-my/release-web.json
  *   node engine/suite-run.js <suite.json> CASE-ID ...        only these cases
  *   node engine/suite-run.js <suite.json> <earlier-results.json>   re-run what failed or was not run
  * Results are also written to $PHOENIX_DATA_DIR/suite-results/<suite>-<time>.json (default ./suite-results).

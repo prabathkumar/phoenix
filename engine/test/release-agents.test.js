@@ -38,9 +38,28 @@ let failed = 0; async function test(n, f) { try { await f(); console.log(`  ok -
   await test("runRelease end to end writes an ordered audit trail", async () => {
     const page = () => ({ goto: async () => {}, screenshot: async () => Buffer.from("x"), url: () => "https://s.my/", evaluate: async () => [], innerText: async () => "Hello", content: async () => "Hello", locator: () => ({ innerText: async () => "Hello" }), title: async () => "t" });
     const browser = { newContext: async () => ({ newPage: async () => page(), close: async () => {} }), close: async () => {} };
-    const res = await runRelease({ name: "t", url: "https://s.my", cases: [{ id: "A", steps: ["Check that the page says Hello"] }] }, { runOpts: { launch: async () => browser, log: () => {}, runCase: async () => ({ status: "passed", steps: [] }) } });
+    const res = await runRelease({ name: "t", url: "https://s.my", cases: [{ id: "A", steps: ["Check that the page says Hello"] }] }, { perf: false, security: false, runOpts: { launch: async () => browser, log: () => {}, runCase: async () => ({ status: "passed", steps: [] }) } });
     assert.strictEqual(res.verdict, "PASS");
+    assert.strictEqual(res.agents.performance.status, "skipped");
+    assert.ok(Object.values(res.agents).every((a) => a.status !== "working" && a.status !== "waiting"), "every agent ends with a status");
     assert.deepStrictEqual(res.audit.map((e) => e.agent), ["planner", "runner", "reporter"]);
+  });
+  await test("every agent reports status; performance and security warnings make a pass PASS-WITH-GAPS", async () => {
+    const page = () => ({ goto: async () => {}, evaluate: async () => ({ ttfbMs: 200, loadMs: 7000, firstContentfulPaintMs: 900, transferKb: 5 }) });
+    const browser = { newContext: async () => ({ newPage: async () => page(), close: async () => {} }), close: async () => {} };
+    const seen = [];
+    const headers = new Map([["content-type", "text/html"]]);
+    const fetchImpl = async () => ({ status: 200, url: "https://s.my/", headers: { get: (n) => headers.get(n) || null, getSetCookie: () => ["sid=1; Path=/"] } });
+    const res = await runRelease({ name: "t", url: "https://s.my", cases: [{ id: "A", steps: ["x"] }] }, { onStatus: (id, a) => seen.push(`${id}:${a.status}`), checkDeps: { security: { fetchImpl } }, runOpts: { launch: async () => browser, log: () => {}, runCase: async () => ({ status: "passed", steps: [] }) } });
+    assert.strictEqual(res.verdict, "PASS-WITH-GAPS");
+    assert.ok(res.gaps.some((g) => /page load took 7000/.test(g.why)) && res.gaps.some((g) => /Content-Security-Policy/.test(g.why)) && res.gaps.some((g) => /cookie sid is missing Secure/.test(g.why)));
+    for (const id of ["planner", "runner", "performance", "security", "triage", "healer", "reporter"]) assert.ok(seen.includes(`${id}:working`) || seen.includes(`${id}:done`), `${id} reported`);
+    assert.ok(res.agents.reporter.message.startsWith("PASS-WITH-GAPS"));
+  });
+  await test("a check that cannot run is reported as failed for that agent, not hidden, and does not stop the release", async () => {
+    const browser = { newContext: async () => ({ newPage: async () => ({ goto: async () => { throw new Error("net::ERR_NAME_NOT_RESOLVED"); } }), close: async () => {} }), close: async () => {} };
+    const res = await runRelease({ name: "t", url: "https://s.my", cases: [{ id: "A", steps: ["x"] }] }, { security: false, runOpts: { launch: async () => browser, log: () => {}, runCase: async () => ({ status: "passed", steps: [] }) } });
+    assert.strictEqual(res.agents.performance.status, "failed"); assert.match(res.agents.performance.message, /ERR_NAME_NOT_RESOLVED/); assert.strictEqual(res.total, 1); assert.ok(res.agents.reporter.status === "done");
   });
   if (failed) process.exit(1); console.log("release-agents tests passed");
 })();

@@ -59,6 +59,11 @@ const actionKey = (a) => `${a.action}|${a.ref ?? ""}|${a.text ?? a.option ?? a.k
 /** Messages that mean the site will not let this purchase journey continue (checked before each step, except steps that are themselves checks). */
 const HARD_BLOCKER = /(sold out online|out of stock|stock temporarily reserved|temporarily reserved|currently unavailable|join waitlist|coming soon)/i;
 
+/** The sold-out/waitlist stop only applies on a product or cart page. A home or listing page shows these words for other products in banners and cards, and must not stop a journey. */
+function onProductPage(url) {
+  try { const u = new URL(url); return /^store\./i.test(u.hostname) || /(add-to-cart|\/cart\b|\/checkout)/i.test(u.pathname); } catch { return false; }
+}
+
 async function runGoalLoopInner(surface, goal, opts = {}) {
   assertSurface(surface);
   const callModel = opts.callModel || require("../../generation/llm").callOllamaJson;
@@ -100,7 +105,7 @@ async function runGoalLoopInner(surface, goal, opts = {}) {
       elements = (await surface.snapshot()).filter((e) => !excluded.has(e.ref));
       dom = domMatch(goal, elements) || plainName(goal, elements);
     }
-    if (n === 0 && !/^\s*(check|verify|assert|expect|see|confirm|make sure)\b/i.test(goal)) { // the site itself says the product cannot be bought: say so now, do not hunt for other controls
+    if (n === 0 && onProductPage(surface.url()) && !/^\s*(check|verify|assert|expect|see|confirm|make sure)\b/i.test(goal)) { // the site itself says the product cannot be bought: say so now, do not hunt for other controls
       try {
         const hard = (await surface.lines()).map((l) => String(l).trim()).filter((l) => l && l.length <= 160 && HARD_BLOCKER.test(l));
         if (hard.length) return { success: false, reason: `the site stopped the journey - the page is showing: "${[...new Set(hard)].slice(0, 2).join(" / ")}"`, steps, actions };

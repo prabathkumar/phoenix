@@ -22,7 +22,7 @@ function classify(out) {
   const first = (out.steps || []).find((s) => s.status === "failed");
   if (first && /ERR_NAME_NOT_RESOLVED|ERR_INTERNET_DISCONNECTED|ERR_NETWORK_CHANGED|ERR_CONNECTION_(RESET|REFUSED|TIMED_OUT)|ERR_TIMED_OUT|net::ERR_/.test(first.reason || "")) return "not-run-network";
   const failedStep = (out.steps || []).find((s) => s.status === "failed");
-  return failedStep && /the page is showing:/i.test(failedStep.reason || "") && /(reserved|out of stock|sold out|unavailable|maintenance|check again|try again)/i.test(failedStep.reason) ? "blocked-by-site" : "failed";
+  return failedStep && /the page is showing:/i.test(failedStep.reason || "") && /(reserved|out of stock|sold out|unavailable|waitlist|coming soon|maintenance|check again|try again)/i.test(failedStep.reason) ? "blocked-by-site" : "failed";
 }
 
 function loadPlaywright() {

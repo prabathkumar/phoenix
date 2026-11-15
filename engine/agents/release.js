@@ -36,6 +36,7 @@ async function triage(results, { ask } = {}, audit) {
     let why = "";
     if (r.verdict === "blocked-by-site") why = "the live site refused the journey (stock/maintenance message), not a test fault";
     else if (r.verdict === "not-run-network") why = "the machine lost its connection; says nothing about the site or the test";
+    else if (/the site stopped the journey/i.test(r.reason)) why = "the live site itself said this product cannot be bought right now (sold out, reserved or waitlist)";
     else if (/disabled: something it needs/i.test(r.reason)) why = "an earlier choice was not made, so the next button stayed off (test steps incomplete or the site changed its order)";
     else if (/not found|no match|could not find/i.test(r.reason)) why = "the control named in the step is not on the page (site changed or the step is wrong)";
     else if (/timed out/i.test(r.reason)) why = "the case ran out of time";

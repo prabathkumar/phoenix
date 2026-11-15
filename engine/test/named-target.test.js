@@ -130,9 +130,15 @@ function page() {
 
   // reported: sold-out products burned 30-45s each trying other controls; stop at once with the site's words
   p = page(); let askedModel = 0;
+  p.surface.url = () => "https://store.yes.my/add-to-cart/1488";
   p.surface.lines = async () => ["APPLE - iPhone 17", "Sold out online. Visit your nearest Yes Store.", "Out of Stock"];
   r = await runGoalLoop(p.surface, "Select 256GB", { blockedWaitMs: 1, callModel: async () => { askedModel += 1; return { action: "none" }; } });
   assert.ok(!r.success && /Sold out online/.test(r.reason) && askedModel === 0, `stops without asking the model: ${r.reason}`);
+  // reported (20/20 failed): the home page shows JOIN WAITLIST on another product's card; it must not stop "Click the Devices menu"
+  p.surface.url = () => "https://www.yes.my/";
+  r = await runGoalLoop(p.surface, "Select 256GB", { blockedWaitMs: 1, callModel: async () => ({ action: "none" }) });
+  assert.ok(!/the site stopped the journey/.test(r.reason || ""), `home page is not a stop: ${r.reason}`);
+  p.surface.url = () => "https://store.yes.my/add-to-cart/1488";
   r = await runGoalLoop(p.surface, "Check that the page says Sold out", { blockedWaitMs: 1, callModel: async () => ({ action: "none" }) });
   assert.ok(!/the site stopped the journey/.test(r.reason || ""), "a check step is allowed to look at the sold-out text");
   // a page that navigates while it is being read is read again

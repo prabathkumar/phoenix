@@ -1,0 +1,359 @@
+{
+  "name": "yes.my current line-up - web, read-only (production)",
+  "url": "https://www.yes.my",
+  "note": "Written by Phoenix on 16 Nov 2026 from the live Latest Devices row (iPhone 18 Pro / Pro Max, vivo X300 FE, Galaxy Z Flip 8 / Fold 8). Not from the YOS export: use release-web.json for the YOS cases. Each journey stops before any login, ID, TAC or payment step. Verified on the live page: iPhone 18 Pro (In Stock; storage 256GB-2TB; New Line / Existing; Infinite+ and Infinite Cashback; Cashback has No Contract and tiers Ultra/Premium/Standard/Basic) and vivo X300 FE (In Stock; one storage; Infinite+ only). The other devices are assumed to follow the same layout; a failure there is a finding about the suite or the page, not necessarily a defect.",
+  "cases": [
+    {
+      "id": "PHX-YM-001",
+      "title": "Infinite+ Ultra 24M New Line - iPhone 18 Pro",
+      "device": "iPhone 18 Pro",
+      "steps": [
+        "Click the Devices menu",
+        "Click Explore Devices",
+        "Click Buy now on the iPhone 18 Pro",
+        "Select 256GB",
+        "Click New Line",
+        "Select the Infinite+ payment plan",
+        "Select 24 Months",
+        "Select Infinite+ Ultra",
+        "Click Next"
+      ],
+      "stopsBefore": "identity / payment (needs a person)"
+    },
+    {
+      "id": "PHX-YM-002",
+      "title": "Infinite+ Premium 36M Existing - iPhone 18 Pro",
+      "device": "iPhone 18 Pro",
+      "steps": [
+        "Click the Devices menu",
+        "Click Explore Devices",
+        "Click Buy now on the iPhone 18 Pro",
+        "Select 256GB",
+        "Click Existing",
+        "Select the Infinite+ payment plan",
+        "Select 36 Months",
+        "Select Infinite+ Premium",
+        "Click Next"
+      ],
+      "stopsBefore": "identity / payment (needs a person)",
+      "note": "tier name 'Infinite+ Premium' not yet confirmed on the live page"
+    },
+    {
+      "id": "PHX-YM-003",
+      "title": "Infinite Cashback Standard New Line - iPhone 18 Pro",
+      "device": "iPhone 18 Pro",
+      "steps": [
+        "Click the Devices menu",
+        "Click Explore Devices",
+        "Click Buy now on the iPhone 18 Pro",
+        "Select 256GB",
+        "Click New Line",
+        "Select the Infinite Cashback payment plan",
+        "Select No Contract",
+        "Select Infinite Cashback Standard",
+        "Click Next"
+      ],
+      "stopsBefore": "identity / payment (needs a person)"
+    },
+    {
+      "id": "PHX-YM-004",
+      "title": "Infinite Cashback Basic Existing - iPhone 18 Pro",
+      "device": "iPhone 18 Pro",
+      "steps": [
+        "Click the Devices menu",
+        "Click Explore Devices",
+        "Click Buy now on the iPhone 18 Pro",
+        "Select 256GB",
+        "Click Existing",
+        "Select the Infinite Cashback payment plan",
+        "Select No Contract",
+        "Select Infinite Cashback Basic",
+        "Click Next"
+      ],
+      "stopsBefore": "identity / payment (needs a person)"
+    },
+    {
+      "id": "PHX-YM-005",
+      "title": "Infinite+ Ultra 24M New Line - iPhone 18 Pro Max",
+      "device": "iPhone 18 Pro Max",
+      "steps": [
+        "Click the Devices menu",
+        "Click Explore Devices",
+        "Click Buy now on the iPhone 18 Pro Max",
+        "Select 256GB",
+        "Click New Line",
+        "Select the Infinite+ payment plan",
+        "Select 24 Months",
+        "Select Infinite+ Ultra",
+        "Click Next"
+      ],
+      "stopsBefore": "identity / payment (needs a person)"
+    },
+    {
+      "id": "PHX-YM-006",
+      "title": "Infinite+ Premium 36M Existing - iPhone 18 Pro Max",
+      "device": "iPhone 18 Pro Max",
+      "steps": [
+        "Click the Devices menu",
+        "Click Explore Devices",
+        "Click Buy now on the iPhone 18 Pro Max",
+        "Select 256GB",
+        "Click Existing",
+        "Select the Infinite+ payment plan",
+        "Select 36 Months",
+        "Select Infinite+ Premium",
+        "Click Next"
+      ],
+      "stopsBefore": "identity / payment (needs a person)",
+      "note": "tier name 'Infinite+ Premium' not yet confirmed on the live page"
+    },
+    {
+      "id": "PHX-YM-007",
+      "title": "Infinite Cashback Standard New Line - iPhone 18 Pro Max",
+      "device": "iPhone 18 Pro Max",
+      "steps": [
+        "Click the Devices menu",
+        "Click Explore Devices",
+        "Click Buy now on the iPhone 18 Pro Max",
+        "Select 256GB",
+        "Click New Line",
+        "Select the Infinite Cashback payment plan",
+        "Select No Contract",
+        "Select Infinite Cashback Standard",
+        "Click Next"
+      ],
+      "stopsBefore": "identity / payment (needs a person)"
+    },
+    {
+      "id": "PHX-YM-008",
+      "title": "Infinite Cashback Basic Existing - iPhone 18 Pro Max",
+      "device": "iPhone 18 Pro Max",
+      "steps": [
+        "Click the Devices menu",
+        "Click Explore Devices",
+        "Click Buy now on the iPhone 18 Pro Max",
+        "Select 256GB",
+        "Click Existing",
+        "Select the Infinite Cashback payment plan",
+        "Select No Contract",
+        "Select Infinite Cashback Basic",
+        "Click Next"
+      ],
+      "stopsBefore": "identity / payment (needs a person)"
+    },
+    {
+      "id": "PHX-YM-009",
+      "title": "Infinite+ Ultra 24M New Line - vivo X300 FE",
+      "device": "vivo X300 FE",
+      "steps": [
+        "Click the Devices menu",
+        "Click Explore Devices",
+        "Click Buy now on the vivo X300 FE",
+        "Click New Line",
+        "Select the Infinite+ payment plan",
+        "Select 24 Months",
+        "Select Infinite+ Ultra",
+        "Click Next"
+      ],
+      "stopsBefore": "identity / payment (needs a person)"
+    },
+    {
+      "id": "PHX-YM-010",
+      "title": "Infinite+ Ultra 36M Existing - vivo X300 FE",
+      "device": "vivo X300 FE",
+      "steps": [
+        "Click the Devices menu",
+        "Click Explore Devices",
+        "Click Buy now on the vivo X300 FE",
+        "Click Existing",
+        "Select the Infinite+ payment plan",
+        "Select 36 Months",
+        "Select Infinite+ Ultra",
+        "Click Next"
+      ],
+      "stopsBefore": "identity / payment (needs a person)"
+    },
+    {
+      "id": "PHX-YM-011",
+      "title": "Infinite+ Premium 24M New Line - vivo X300 FE",
+      "device": "vivo X300 FE",
+      "steps": [
+        "Click the Devices menu",
+        "Click Explore Devices",
+        "Click Buy now on the vivo X300 FE",
+        "Click New Line",
+        "Select the Infinite+ payment plan",
+        "Select 24 Months",
+        "Select Infinite+ Premium",
+        "Click Next"
+      ],
+      "stopsBefore": "identity / payment (needs a person)",
+      "note": "tier name 'Infinite+ Premium' not yet confirmed on the live page"
+    },
+    {
+      "id": "PHX-YM-012",
+      "title": "Infinite+ Premium 36M Existing - vivo X300 FE",
+      "device": "vivo X300 FE",
+      "steps": [
+        "Click the Devices menu",
+        "Click Explore Devices",
+        "Click Buy now on the vivo X300 FE",
+        "Click Existing",
+        "Select the Infinite+ payment plan",
+        "Select 36 Months",
+        "Select Infinite+ Premium",
+        "Click Next"
+      ],
+      "stopsBefore": "identity / payment (needs a person)",
+      "note": "tier name 'Infinite+ Premium' not yet confirmed on the live page"
+    },
+    {
+      "id": "PHX-YM-013",
+      "title": "Infinite+ Ultra 24M New Line - Samsung Galaxy Z Flip 8",
+      "device": "Samsung Galaxy Z Flip 8",
+      "steps": [
+        "Click the Devices menu",
+        "Click Explore Devices",
+        "Click Buy now on the Samsung Galaxy Z Flip 8",
+        "Click New Line",
+        "Select the Infinite+ payment plan",
+        "Select 24 Months",
+        "Select Infinite+ Ultra",
+        "Click Next"
+      ],
+      "stopsBefore": "identity / payment (needs a person)",
+      "note": "live page confirmed for X300 FE; layout of this device not yet read"
+    },
+    {
+      "id": "PHX-YM-014",
+      "title": "Infinite+ Ultra 36M Existing - Samsung Galaxy Z Flip 8",
+      "device": "Samsung Galaxy Z Flip 8",
+      "steps": [
+        "Click the Devices menu",
+        "Click Explore Devices",
+        "Click Buy now on the Samsung Galaxy Z Flip 8",
+        "Click Existing",
+        "Select the Infinite+ payment plan",
+        "Select 36 Months",
+        "Select Infinite+ Ultra",
+        "Click Next"
+      ],
+      "stopsBefore": "identity / payment (needs a person)",
+      "note": "live page confirmed for X300 FE; layout of this device not yet read"
+    },
+    {
+      "id": "PHX-YM-015",
+      "title": "Infinite+ Premium 24M New Line - Samsung Galaxy Z Flip 8",
+      "device": "Samsung Galaxy Z Flip 8",
+      "steps": [
+        "Click the Devices menu",
+        "Click Explore Devices",
+        "Click Buy now on the Samsung Galaxy Z Flip 8",
+        "Click New Line",
+        "Select the Infinite+ payment plan",
+        "Select 24 Months",
+        "Select Infinite+ Premium",
+        "Click Next"
+      ],
+      "stopsBefore": "identity / payment (needs a person)",
+      "note": "tier name 'Infinite+ Premium' not yet confirmed on the live page"
+    },
+    {
+      "id": "PHX-YM-016",
+      "title": "Infinite+ Premium 36M Existing - Samsung Galaxy Z Flip 8",
+      "device": "Samsung Galaxy Z Flip 8",
+      "steps": [
+        "Click the Devices menu",
+        "Click Explore Devices",
+        "Click Buy now on the Samsung Galaxy Z Flip 8",
+        "Click Existing",
+        "Select the Infinite+ payment plan",
+        "Select 36 Months",
+        "Select Infinite+ Premium",
+        "Click Next"
+      ],
+      "stopsBefore": "identity / payment (needs a person)",
+      "note": "tier name 'Infinite+ Premium' not yet confirmed on the live page"
+    },
+    {
+      "id": "PHX-YM-017",
+      "title": "Infinite+ Ultra 24M New Line - Samsung Galaxy Z Fold 8",
+      "device": "Samsung Galaxy Z Fold 8",
+      "steps": [
+        "Click the Devices menu",
+        "Click Explore Devices",
+        "Click Buy now on the Samsung Galaxy Z Fold 8",
+        "Click New Line",
+        "Select the Infinite+ payment plan",
+        "Select 24 Months",
+        "Select Infinite+ Ultra",
+        "Click Next"
+      ],
+      "stopsBefore": "identity / payment (needs a person)",
+      "note": "live page confirmed for X300 FE; layout of this device not yet read"
+    },
+    {
+      "id": "PHX-YM-018",
+      "title": "Infinite+ Ultra 36M Existing - Samsung Galaxy Z Fold 8",
+      "device": "Samsung Galaxy Z Fold 8",
+      "steps": [
+        "Click the Devices menu",
+        "Click Explore Devices",
+        "Click Buy now on the Samsung Galaxy Z Fold 8",
+        "Click Existing",
+        "Select the Infinite+ payment plan",
+        "Select 36 Months",
+        "Select Infinite+ Ultra",
+        "Click Next"
+      ],
+      "stopsBefore": "identity / payment (needs a person)",
+      "note": "live page confirmed for X300 FE; layout of this device not yet read"
+    },
+    {
+      "id": "PHX-YM-019",
+      "title": "Infinite+ Premium 24M New Line - Samsung Galaxy Z Fold 8",
+      "device": "Samsung Galaxy Z Fold 8",
+      "steps": [
+        "Click the Devices menu",
+        "Click Explore Devices",
+        "Click Buy now on the Samsung Galaxy Z Fold 8",
+        "Click New Line",
+        "Select the Infinite+ payment plan",
+        "Select 24 Months",
+        "Select Infinite+ Premium",
+        "Click Next"
+      ],
+      "stopsBefore": "identity / payment (needs a person)",
+      "note": "tier name 'Infinite+ Premium' not yet confirmed on the live page"
+    },
+    {
+      "id": "PHX-YM-020",
+      "title": "Infinite+ Premium 36M Existing - Samsung Galaxy Z Fold 8",
+      "device": "Samsung Galaxy Z Fold 8",
+      "steps": [
+        "Click the Devices menu",
+        "Click Explore Devices",
+        "Click Buy now on the Samsung Galaxy Z Fold 8",
+        "Click Existing",
+        "Select the Infinite+ payment plan",
+        "Select 36 Months",
+        "Select Infinite+ Premium",
+        "Click Next"
+      ],
+      "stopsBefore": "identity / payment (needs a person)",
+      "note": "tier name 'Infinite+ Premium' not yet confirmed on the live page"
+    }
+  ],
+  "skipped": [
+    {
+      "id": "-",
+      "title": "Apple iPhone Duo",
+      "reason": "shows Join waitlist, no Buy now"
+    },
+    {
+      "id": "-",
+      "title": "Galaxy Z Fold 8 Ultra",
+      "reason": "not read yet; add after its page is checked"
+    }
+  ]
+}

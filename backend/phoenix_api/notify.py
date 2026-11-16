@@ -241,7 +241,7 @@ def twilio_status(params):
 
 
 def twilio_inbound(env, params):
-    """A reply on WhatsApp or SMS. STOP / UNSUBSCRIBE / CANCEL switches that number's WhatsApp off; START / YES switches it on. Anything else is only counted, never acted on."""
+    """A reply on WhatsApp. STOP / UNSUBSCRIBE / CANCEL switches that number's WhatsApp off; START / YES switches it on. Anything else is only counted, never acted on."""
     text = str(params.get("Body", "")).strip().upper()
     num = re.sub(r"^whatsapp:", "", str(params.get("From", ""))).strip()
     who = next((w for w, p in prefs(env).items() if p.get("whatsappNumber") and re.sub(r"\D", "", p["whatsappNumber"]) == re.sub(r"\D", "", num)), None)

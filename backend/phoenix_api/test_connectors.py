@@ -14,7 +14,7 @@ import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
 
-KEY = re.compile(r"\b([A-Z][A-Z0-9]{1,9}-\d+)\b")
+KEY = re.compile(r"(?<![A-Z0-9])([A-Z][A-Z0-9]{1,9})[-_](\d+)(?!\d)")  # PROJ-12, REQ_7 and Go-style TestREQ_7 (Go names cannot hold a dash)
 LANGUAGES = ("javascript", "typescript", "python", "java", "go", "csharp", "php")
 KINDS = ("unit", "integration")
 TOOL = {"javascript": "node", "typescript": "npx", "python": "python3", "java": "mvn", "go": "go", "csharp": "dotnet", "php": "php"}
@@ -80,7 +80,7 @@ def _ms(v):
 
 def _t(name, status, ms=0):
     m = KEY.search(name or "")
-    return {"name": (name or "")[:200], "status": status, "ms": ms, "requirement": m.group(1) if m else ""}
+    return {"name": (name or "")[:200], "status": status, "ms": ms, "requirement": f"{m.group(1)}-{m.group(2)}" if m else ""}
 
 
 def parse_junit(xml_text):

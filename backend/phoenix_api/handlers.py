@@ -227,6 +227,9 @@ def dast_handler(run=_run, directory="logs/security", env=None, fetch=_http.fetc
 
 # ---- unit tests (AI) and the pull request
 def unittests_handler(call_json, get_prompt, connect_repo, max_files=5):
+    """Writes unit tests with the AI for the requirement and for the code that changed (a developer feature: unit tests were never part of TestOps).
+    Request: repoRequest {provider, project, ref?, base?+head? (compare two refs: only changed source files), files?, languages?, max?} and the requirement
+    from ctx (requirementKey, requirement) or repoRequest.requirement {key, text}. Changed files come first; Semgrep-flagged files next."""
     async def h(ctx):
         if not call_json:
             return {"unavailable": True, "detail": "no model configured"}
@@ -237,16 +240,62 @@ def unittests_handler(call_json, get_prompt, connect_repo, max_files=5):
             repo = connect_repo(rq)
         except Exception as e:
             return {"unavailable": True, "detail": str(e)}
-        ref = rq.get("ref") or await repo.default_branch()
+        ref = rq.get("head") or rq.get("ref") or await repo.default_branch()
         allf = await repo.list_files(ref)
         findings = (next((s for s in ctx.get("results", []) if s["id"] == "sast"), {}).get("data") or {}).get("findings") or {}
-        files = unit_tests.pick_files(allf, rq.get("files"), list(findings), rq.get("max") or max_files, rq.get("languages"))
+        changes = {}
+        if rq.get("base") and rq.get("head"):
+            try:
+                changes = {c["path"]: c["patch"] for c in await repo.changed_files(rq["base"], rq["head"]) if c.get("status") != "removed"}
+            except Exception as e:
+                return {"unavailable": True, "detail": f"could not compare {rq['base']}...{rq['head']}: {e}"}
+            if not changes:
+                return {"ok": True, "detail": f"nothing changed between {rq['base']} and {rq['head']}", "data": {"tests": [], "skipped": [], "ref": ref}}
+        req = rq.get("requirement") if isinstance(rq.get("requirement"), dict) else {}
+        requirement = {"key": str(req.get("key") or ctx.get("requirementKey") or "")[:40], "text": str(req.get("text") or ctx.get("requirement") or "")[:3000]}
+        only = rq.get("files") or (list(changes) if changes else None)
+        order = list(changes) + [f for f in findings if f not in changes]
+        files = unit_tests.pick_files(allf, only, order, rq.get("max") or max_files, rq.get("languages"))
         if not files:
             return {"ok": True, "detail": "no source files in a supported language to test", "data": {"tests": [], "skipped": []}}
-        r = await unit_tests.generate_tests(files, lambda f: repo.read_file(f, ref), call_json, get_prompt, findings)
+        r = await unit_tests.generate_tests(files, lambda f: repo.read_file(f, ref), call_json, get_prompt, findings, requirement=requirement, changes=changes)
         langs = sorted({f["language"] for f in r["files"]})
-        return {"ok": bool(r["files"]), "detail": f"{len(r['files'])} test file(s) written{' (' + ', '.join(langs) + ')' if langs else ''}, {len(r['skipped'])} skipped{': ' + r['skipped'][0]['why'] if r['skipped'] else ''}",
-                "data": {"tests": r["files"], "skipped": r["skipped"], "ref": ref}}
+        return {"ok": bool(r["files"]), "detail": f"{len(r['files'])} test file(s) written{' (' + ', '.join(langs) + ')' if langs else ''}{' for ' + requirement['key'] if requirement['key'] else ''}, {len(r['skipped'])} skipped{': ' + r['skipped'][0]['why'] if r['skipped'] else ''}",
+                "data": {"tests": r["files"], "skipped": r["skipped"], "ref": ref, "requirement": requirement["key"], "changedFiles": len(changes)}}
+    return h
+
+
+def unitrun_handler(project="", run_id="", env=None, run=None, which=None):
+    """Runs the repo's unit and integration tests per language with the language's own toolchain, and logs every test against its requirement key.
+    Request: repoRequest {dir | cloneUrl(+ref), languages?, kinds?}. May be run again and again: each run is stored under its own run id."""
+    async def h(ctx):
+        import shutil
+        from . import logstore, test_connectors as tcx
+        rq = ctx.get("repoRequest") or {}
+        root, cleanup = rq.get("dir"), False
+        try:
+            if not root and rq.get("cloneUrl"):
+                root, cleanup = tcx.clone(rq["cloneUrl"], rq.get("ref", "")), True
+            if not root or not os.path.isdir(root):
+                return {"unavailable": True, "detail": "give a checkout to run: repoRequest.dir (a folder on the server) or repoRequest.cloneUrl (https)"}
+            kw = {k: v for k, v in (("run", run), ("which", which)) if v}
+            results = tcx.run_all(root, rq.get("languages"), tuple(rq.get("kinds") or ("unit", "integration")), **kw)
+        except (ValueError, OSError) as e:
+            return {"unavailable": True, "detail": str(e)}
+        finally:
+            if cleanup and root:
+                shutil.rmtree(root, ignore_errors=True)
+        if not results:
+            return {"unavailable": True, "detail": "no supported language found in that checkout (looked for package.json, pom.xml, go.mod, composer.json, pyproject/requirements, a .csproj)"}
+        for r in results:
+            for t in r["tests"]:
+                logstore.record("unit_result", {"project": project, "run": run_id, "requirement": t["requirement"], "language": r["language"], "kind": r["kind"], "test": t["name"], "status": t["status"], "ms": t["ms"]}, env)
+        ran = [r for r in results if r["tests"]]
+        failed = sum(r["summary"]["failed"] for r in ran)
+        passed = sum(r["summary"]["passed"] for r in ran)
+        missing = [f"{r['language']} {r['kind']}: {r['detail']}" for r in results if not r["tests"]]
+        return {"ok": bool(ran) and failed == 0, "detail": f"{passed} passed, {failed} failed across {len(ran)} run(s)" + (f"; no result for {len(missing)}: {missing[0]}" if missing else ""),
+                "data": {"runs": [{k: r[k] for k in ("language", "kind", "ok", "available", "detail", "summary")} for r in results]}}
     return h
 
 

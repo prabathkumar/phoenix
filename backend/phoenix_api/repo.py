@@ -42,6 +42,14 @@ class Repo:
                 break
         return out
 
+    async def changed_files(self, base, head):
+        """Files changed between two refs (branch, tag or commit): [{path, status, patch}]. The patch is the diff text the AI reads to test what changed."""
+        if self.gh:
+            r = await self._call("GET", f"/repos/{self.project}/compare/{quote(base, safe='')}...{quote(head, safe='')}")
+            return [{"path": f["filename"], "status": f.get("status", ""), "patch": f.get("patch", "")} for f in r.get("files", [])]
+        r = await self._call("GET", f"/projects/{self.id}/repository/compare?from={quote(base, safe='')}&to={quote(head, safe='')}")
+        return [{"path": d["new_path"], "status": "removed" if d.get("deleted_file") else "added" if d.get("new_file") else "modified", "patch": d.get("diff", "")} for d in r.get("diffs", [])]
+
     async def read_file(self, path, ref):
         if self.gh:
             r = await self._call("GET", f"/repos/{self.project}/contents/{'/'.join(quote(p, safe='') for p in path.split('/'))}?ref={quote(ref, safe='')}")

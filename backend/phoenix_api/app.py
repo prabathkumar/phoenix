@@ -5,7 +5,7 @@ from fastapi import Body, FastAPI, Header, HTTPException, Query
 from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import agents, ai_eval, avatars, analytics, dashboard, db, gateway, guardrails, handlers as H, kpi, logstore, mcp_registry, pipeline, training, prompt_store, run_record, signoff
+from . import agents, ai_eval, avatars, analytics, dashboard, db, gateway, guardrails, handlers as H, kpi, lifecycle, logstore, mcp_registry, pipeline, training, prompt_store, run_record, signoff
 from .service import Deps, run_chain, run_pipeline_request
 
 
@@ -312,6 +312,45 @@ def create_app(deps: Deps | None = None) -> FastAPI:
         ok = logstore.record("defect", {"project": body.get("project", ""), "run": body.get("run", ""), "dkey": body.get("key", ""), "found_in": body["foundIn"], "severity": body.get("severity", ""),
                                          "unit_testable": 1 if body.get("unitTestable") else 0, "status": body.get("status", "open"), "case_id": body.get("caseId", ""), "source": body.get("source") or (body.get("actor") or x_user or "manual")}, D.env)
         return {"stored": ok}
+
+    # ---- developers: unit and integration tests from the requirement and the changed code, run again and again, followed per requirement
+    @app.get("/api/unit-tests/connectors")
+    def unit_connectors():
+        from . import test_connectors
+        return {"languages": test_connectors.availability(), "kinds": list(test_connectors.KINDS)}
+
+    @app.post("/api/unit-tests/generate")
+    async def unit_generate(body: dict = Body(...), x_user: str = Header(default="")):
+        """Write unit tests with the AI for a requirement and the code that changed. Returns the test files; with openPr it raises a pull request (never merges)."""
+        import asyncio
+        from . import service
+        rq = dict(body.get("repo") or {})
+        if body.get("requirement") and not rq.get("requirement"):
+            rq["requirement"] = {"key": body.get("requirementKey", ""), "text": body["requirement"]} if isinstance(body["requirement"], str) else body["requirement"]
+        elif body.get("requirementKey") and not rq.get("requirement"):
+            rq["requirement"] = {"key": body["requirementKey"], "text": ""}
+        call_json = gateway.wrap(D.call_json, "unit-tests", env=D.env, model_name="model") if D.call_json else None
+        get_prompt = lambda n, p="shared": H.library_prompt(n, p, D.env)  # noqa: E731
+        ctx = {"repoRequest": rq, "requirementKey": (rq.get("requirement") or {}).get("key", ""), "results": []}
+        r = await H.unittests_handler(call_json, get_prompt, D.connect_repo)(ctx)
+        logstore.record("user_action", {"project": body.get("project", ""), "who": x_user or "unknown", "action": "generate-unit-tests", "subject": rq.get("project", ""), "status": "ok" if r.get("ok") else "none"}, D.env)
+        if body.get("openPr") and r.get("ok"):
+            r["pr"] = await H.testspr_handler(D.connect_repo)({"repoRequest": rq, "results": [{"id": "unittests", "data": r["data"]}]})
+        return r
+
+    @app.post("/api/unit-tests/run")
+    async def unit_run(body: dict = Body(...), x_user: str = Header(default="")):
+        """Run the unit and integration tests of a checkout (dir or cloneUrl) per language. Run it as often as you like: each run is stored under its own id."""
+        import asyncio
+        from . import run_record
+        run_id = body.get("run") or run_record.new_id()
+        r = await asyncio.to_thread(lambda: asyncio.run(H.unitrun_handler(body.get("project", ""), run_id, D.env)({"repoRequest": body.get("repo") or {}})))
+        logstore.record("user_action", {"project": body.get("project", ""), "who": x_user or "unknown", "action": "run-unit-tests", "subject": run_id, "status": "ok" if r.get("ok") else "failed"}, D.env)
+        return {**r, "run": run_id}
+
+    @app.get("/api/lifecycle")
+    def lifecycle_report(project: str = ""):
+        return lifecycle.build(project or None, url)
 
     @app.get("/api/kpi")
     def kpi_report(project: str = "", days: int = 30):

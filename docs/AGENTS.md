@@ -116,6 +116,12 @@ Prompts are short (2,000 characters), replies short (160 tokens), thinking off, 
 
 Test credentials never go in the repo. `scripts/encrypt-secret.js` prompts for a value (hidden) and prints `PHOENIX_TEST_<NAME>=enc:...`; paste that line into `.env`. The engine decrypts with `TESTOPS_SECRETS_KEY` only when a step needs `${NAME}`, and results mask secret values.
 
+## The agents for logs, measurement and unit tests
+
+- **mentor** keeps the logs (every pipeline stage is saved to the log store) and offers captured answers to a person for labelling; it never trains or promotes a model.
+- **measure** (new, stage `measure`) computes defect leakage, unit-test leakage, detection percentage, the quality KPIs and the indicative TMMI level.
+- **forge** now writes unit tests (Java, PHP, Python, JavaScript, TypeScript, Go, C#) from a requirement and the changed code, and runs unit and integration tests per language (stage `unitrun`). See docs/MEASUREMENT.md.
+
 ## Testing the agents
 
 `bash scripts/test-agents.sh` runs only the agent tests (release agents, check steps, suite runner, release API, backend agents and avatars, MCP agent tools), kept apart from the rest of the suite. Each package's own `npm test` still runs everything.

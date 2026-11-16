@@ -294,3 +294,7 @@ Add `-e PHOENIX_AGENT_LLM_URL=... -e PHOENIX_AGENT_MODEL=...` to `docker compose
 
 ## Test data
 Before a run, the test data layer fills every `${NAME}` it can (emails, phones, dates, amounts, a new user's password) and asks only for what must already exist in your system (logins, existing IDs, OTPs, tokens), or lets you skip them to test bad logins only. It works on all three cards on `/english` (Web, Mobile, API), saves per project (`test-data/`, with logins encrypted under `TESTOPS_SECRETS_KEY`), and for API tests generates request bodies, runs the bad-body cases, and imports OpenAPI or Postman files. Opt-in; existing tests run as before. See [docs/TEST_DATA.md](docs/TEST_DATA.md).
+
+## Logs, measurement, unit tests and training
+
+See [docs/MEASUREMENT.md](docs/MEASUREMENT.md): one ClickHouse log store (agents, MCP, users, defects, tests), the Measure agent (defect leakage, unit-test leakage, TMMI view), developer unit and integration tests per language linked to requirement keys, a requirement lifecycle view, and people-approved training of the 8B model.

@@ -66,8 +66,11 @@ def _strip_fence(s):
     return re.sub(r"\n?```\s*$", "", re.sub(r"^\s*```[\w+-]*\n?", "", str(s or "")))
 
 
-async def generate_tests(files, read_file, call_json, get_prompt, findings=None, syntax=syntax_check):
+async def generate_tests(files, read_file, call_json, get_prompt, findings=None, syntax=syntax_check, requirement=None, changes=None):
+    """requirement = {key, text}: every test is named with the key so the requirement can be followed to the code that proves it.
+    changes = {path: diff text}: the model is told what changed and asked to cover that behaviour first."""
     out, skipped, findings = [], [], findings or {}
+    requirement, changes = requirement or {}, changes or {}
     for source in files:
         lang = language_of(source)
         L = LANGS[lang]
@@ -78,7 +81,13 @@ async def generate_tests(files, read_file, call_json, get_prompt, findings=None,
                 continue
             text = get_prompt("unit_test_gen", "shared")["text"]
             flagged = findings.get(source, [])
-            r = await call_json(f"{text}\n\nLANGUAGE: {lang}\nFRAMEWORK: {L['framework']}\nSOURCE FILE: {source}\nTEST FILE: {L['test'](source)}\n"
+            req = requirement.get("key", "")
+            extra = ""
+            if requirement.get("text") or req:
+                extra += f"REQUIREMENT {req}: {str(requirement.get('text') or '')[:1500]}\nWrite tests that prove this requirement. Put the key {req or '(none)'} in every test name (use an underscore instead of a dash where the language does not allow one, e.g. {req.replace('-', '_') if req else 'REQ_1'}).\n"
+            if changes.get(source):
+                extra += f"CHANGED LINES IN THIS FILE (a diff; cover the changed behaviour first, including the edge cases the change introduces):\n{str(changes[source])[:6000]}\n"
+            r = await call_json(f"{text}\n\n{extra}LANGUAGE: {lang}\nFRAMEWORK: {L['framework']}\nSOURCE FILE: {source}\nTEST FILE: {L['test'](source)}\n"
                                 + (("SEMGREP FINDINGS IN THIS FILE (include a test that fails while this code is still vulnerable):\n- " + "\n- ".join(flagged) + "\n") if flagged else "") + f"\nSOURCE:\n{code}")
             body = _strip_fence(r if isinstance(r, str) else (r or {}).get("code") or (r or {}).get("test") or (r or {}).get("content"))
             if not body.strip():
@@ -91,7 +100,7 @@ async def generate_tests(files, read_file, call_json, get_prompt, findings=None,
             if not sx["ok"]:
                 skipped.append({"source": source, "why": f"syntax error: {sx.get('why')}"})
                 continue
-            out.append({"path": L["test"](source), "source": source, "language": lang, "content": body if body.endswith("\n") else body + "\n", "flagged": len(flagged),
+            out.append({"path": L["test"](source), "source": source, "language": lang, "content": body if body.endswith("\n") else body + "\n", "flagged": len(flagged), "requirement": requirement.get("key", ""), "changed": bool(changes.get(source)),
                         "checks": {"syntax": "not checked (no toolchain here)" if sx.get("unchecked") else "ok"}})
         except Exception as e:
             skipped.append({"source": source, "why": str(e)})

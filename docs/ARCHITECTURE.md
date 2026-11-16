@@ -266,7 +266,7 @@ flowchart TB
 | Synthesis (script generation) | `generation/pipeline.js`: WebdriverIO script, assertions from the diff, typed values lifted to parameters | `web/recorder/web-codegen.js`: Playwright script + test-case JSON, same assertion rules |
 | Semantic resolution | `generation/semantic-act.js` over the accessibility snapshot; WebView DOM tried first when one exists | `generation/webview-act.js` over the DOM, used by the runner for steps that have an `instruction` but no selector |
 | Vision fusion | Screenshot sent with the element list (opt-in) | Not built |
-| Autonomous loop | `engine/semantic-loop.js` (Beta) | Not built |
+| Autonomous loop | `engine/semantic-loop.js` (Beta) | Built (Beta); see docs/LAYERS.md |
 | Self-heal | Live retry on "No visible change", `engine/auto-heal.js`, confidence-gated locator store | Pins a proven `resolvedSelector` back into the file; no live retry yet |
 | Outcome verification | Yes | Yes |
 
@@ -296,6 +296,23 @@ back up into the Synthetic layer, gated on evidence. Semantic, AI and the ladder
 against `engine/core/surface.js`; `web/surface/` is the Playwright adapter and an Appium adapter is
 the planned second one. `api` steps (`engine/core/api-step.js`) work in any flow. Full description:
 [`LAYERS.md`](LAYERS.md). Engine upgrades: [`UPGRADING.md`](UPGRADING.md).
+
+## 5c. Logs, measurement and the requirement lifecycle (added)
+
+```
+ engine / release agents / MCP / pipeline / users
+        |  masked events (batched, spooled if down)
+        v
+   POST /api/ingest ---> ClickHouse: agent_events, mcp_calls, user_actions, release_results,
+        |                              defects, unit_results, training_examples (+ gateway_calls, ai_eval ...)
+        |
+        +--> Measure agent: KPIs, defect leakage, unit-test leakage, DDP, TMMI view   (GET /api/kpi)
+        +--> Lifecycle: requirement -> scenarios -> cases -> sign-off -> unit -> integration -> executed -> defects (GET /api/lifecycle)
+        +--> Mentor: labels data, exports datasets --> QLoRA job (GPU box) --> eval gate --> second person promotes
+ developers: POST /api/unit-tests/generate (requirement + changed code) and /run (per language, repeatable)
+```
+
+Everything for one requirement is tied together by its key (for example PROJ-123): the test case, the unit and integration tests that carry it in their names, the executions, the defects and the sign-off. See `docs/MEASUREMENT.md`.
 
 ## 6. Key design decisions
 

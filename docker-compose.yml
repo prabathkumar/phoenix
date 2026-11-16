@@ -80,6 +80,7 @@ services:
     environment:
       PHOENIX_DATA_DIR: /data
       TESTOPS_MOBILE_LOCATOR_DB_PATH: /data/locator-store.db
+      PHOENIX_API_URL: http://phoenix-api:8000   # the engine, release agents and MCP server send their logs here (/api/ingest -> ClickHouse)
     volumes: [platform-data:/data]
     # the "run from English" page and its API; this machine only (the engine has no login of its own)
     ports: ["127.0.0.1:8091:8091"]
@@ -106,6 +107,8 @@ services:
       ZAP_API_URL: http://zap:8080
       ZAP_API_KEY: ${ZAP_API_KEY:-change-me}
       PHOENIX_REPORTS_DIR: /data/reports
+      PHOENIX_DATA_DIR: /data                      # training datasets, jobs, the log spool
+      PHOENIX_API_SELF_URL: http://127.0.0.1:8000  # where the training script reports back
     volumes: [platform-data:/data]
     ports: ["${PHOENIX_BIND:-0.0.0.0}:8000:8000"]  # the GPU server sets PHOENIX_BIND=127.0.0.1
     profiles: ["platform"]

@@ -10,6 +10,9 @@ run "engine: check steps (no error showing, page says, URL contains)" node engin
 run "engine: suite runner and verdicts" node engine/test/suite-run.test.js
 run "engine: page read first / named targets / blockers" node engine/test/named-target.test.js
 run "frontend: release API, project keying, mobile apps, agent status" node frontend/test/release-endpoint.test.js
+run "engine: logger (batching, retry, masking-ready capture)" node engine/test/logger.test.js
+run "backend: logs, masking, batching, training gate, KPIs, leakage, TMMI, connectors" bash -c 'cd backend && python3 -m pytest tests/test_logs_training.py -q'
+run "backend integration: real unit and integration runs per language" bash -c 'cd backend && python3 -m pytest tests/integration -q -rs'
 run "backend: saved agents, roster, avatars, run by name" bash -c 'cd backend && python3 -m pytest tests/test_agents.py -q'
 run "mcp: agent and avatar tools" bash -c 'cd mcp && node test/server.test.js'
 if [ "${1:-}" != "--unit-only" ]; then

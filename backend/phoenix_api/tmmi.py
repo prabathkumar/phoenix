@@ -44,7 +44,7 @@ def assess(e, k, q=None):
     put("Peer Reviews", min(1, signoffs_done / max(1, len(cases))) if cases else 0, f"{signoffs_done} sign-off decision(s) by a person over {len(cases)} case(s)", "review of work products other than test cases")
     q = q or {}
     has_def = bool(q.get("defectsLogged"))
-    put("Test Measurement", (0.5 if k["caseRuns"] else 0.2) + (0.4 if has_def and q.get("defectLeakage") is not None else 0), "KPIs and defect leakage/detection computed from logs" if has_def else "KPIs computed from logs; no defect data for leakage yet", "targets per KPI and a recorded review of the trend" + ("" if has_def else "; defect and leakage data")))
+    put("Test Measurement", (0.5 if k["caseRuns"] else 0.2) + (0.4 if has_def and q.get("defectLeakage") is not None else 0), "KPIs and defect leakage/detection computed from logs" if has_def else "KPIs computed from logs; no defect data for leakage yet", "targets per KPI and a recorded review of the trend" + ("" if has_def else "; defect and leakage data"))
     put("Product Quality Evaluation", 0.5 if k["passRate"] is not None else 0, f"pass rate {k['passRate']}, blocked-by-site rate {k['blockedBySiteRate']}", "quality attributes and targets defined per product")
     put("Advanced Reviews", 0.3 if signoffs_done else 0, "four-eyes decisions exist", "early reviews of requirements and designs, with measured review efficiency")
     put("Defect Prevention", (0.2 if triaged else 0) + (0.3 if has_def and q.get("unitTestableDefects") is not None else 0), f"Triage explained non-passes {triaged} time(s)", "root-cause analysis and preventive actions tracked over time")

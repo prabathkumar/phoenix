@@ -116,6 +116,10 @@ Prompts are short (2,000 characters), replies short (160 tokens), thinking off, 
 
 Test credentials never go in the repo. `scripts/encrypt-secret.js` prompts for a value (hidden) and prints `PHOENIX_TEST_<NAME>=enc:...`; paste that line into `.env`. The engine decrypts with `TESTOPS_SECRETS_KEY` only when a step needs `${NAME}`, and results mask secret values.
 
+## Testing the agents
+
+`bash scripts/test-agents.sh` runs only the agent tests (release agents, check steps, suite runner, release API, backend agents and avatars, MCP agent tools), kept apart from the rest of the suite. Each package's own `npm test` still runs everything.
+
 ## Running it
 
 ```

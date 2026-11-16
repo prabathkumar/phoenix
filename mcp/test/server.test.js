@@ -41,15 +41,21 @@ function parse(result) {
   const { openLocatorStore, recordResolution } = require("../../engine/locator-store");
   const { logExecution } = require("../../generation/execution-log");
 
-  await run("TOOLS lists all five read-only tools plus run_test_case", () => {
+  await run("TOOLS lists the read-only tools, run_test_case and the agent and avatar tools", () => {
     const names = TOOLS.map((t) => t.name).sort();
     assert.deepStrictEqual(names, [
+      "call_agent",
+      "create_agent",
+      "get_agent",
       "get_locator_history",
+      "get_my_avatar",
       "get_recent_executions",
       "get_suite_health",
       "get_test_case",
+      "list_agents",
       "list_test_cases",
       "run_test_case",
+      "update_agent",
     ]);
   });
 

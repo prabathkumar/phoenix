@@ -213,17 +213,17 @@ def test_twilio_signature_matches_the_published_example_and_forgeries_change_not
     assert TestClient(create_app(Deps(env={"TWILIO_AUTH_TOKEN": "tk"}))).post("/api/notify/twilio/status", data={"MessageSid": "x"}, headers={"X-Twilio-Signature": "x"}).status_code == 403   # no public URL set: closed
 
 
-def test_status_receipts_update_the_log_and_sms_is_a_channel(tmp_path):
+def test_status_receipts_update_the_log_and_there_is_no_sms(tmp_path):
     sent = []
 
     async def fetch(m, url, h, body):
         sent.append((url, body))
         return 201, json.dumps({"sid": "SM123"})
     env = {"PHOENIX_DATA_DIR": str(tmp_path), "WHATSAPP_PROVIDER": "twilio", "TWILIO_ACCOUNT_SID": "ACx", "TWILIO_AUTH_TOKEN": "tk", "TWILIO_WHATSAPP_FROM": "+14155238886", "WHATSAPP_TO": "+6590000000",
-           "PHOENIX_PUBLIC_URL": "https://phoenix.example.com", "SMS_TO": "+6590000001", "TWILIO_SMS_FROM": "+15005550006"}
-    assert "sms" in notify.channels(env)
+           "PHOENIX_PUBLIC_URL": "https://phoenix.example.com"}
+    assert "sms" not in notify.channels({**env, "SMS_TO": "+6590000001", "TWILIO_SMS_FROM": "+15005550006"}), "SMS is not offered"
     r = asyncio.run(notify.send("test", "R1", "receipts", env, fetch=fetch, force=True))
-    assert r["whatsapp"]["ok"] and r["sms"]["ok"] and "StatusCallback=https%3A%2F%2Fphoenix.example.com%2Fapi%2Fnotify%2Ftwilio%2Fstatus" in sent[0][1] and "Body=R1%3A+receipts" in sent[1][1]
+    assert r["whatsapp"]["ok"] and "sms" not in r and "StatusCallback=https%3A%2F%2Fphoenix.example.com%2Fapi%2Fnotify%2Ftwilio%2Fstatus" in sent[0][1] and len(sent) == 1
     assert notify.twilio_status({"MessageSid": "SM123", "MessageStatus": "delivered"})["known"]
     assert next(e for e in notify.recent() if e["channel"] == "whatsapp")["detail"] == "delivered"
     notify.twilio_status({"MessageSid": "SM123", "MessageStatus": "failed", "ErrorCode": "63016"})

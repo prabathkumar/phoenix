@@ -53,8 +53,6 @@ def channels(env):
         c["google-chat"] = {"ready": True}
     if env.get("SMTP_HOST") and env.get("SMTP_FROM") and env.get("EMAIL_TO"):
         c["email"] = {"ready": True, "to": len([x for x in env["EMAIL_TO"].split(",") if x.strip()])}
-    if env.get("SMS_TO") and all(env.get(k) for k in ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_SMS_FROM")):
-        c["sms"] = {"ready": True, "to": len([x for x in env["SMS_TO"].split(",") if x.strip()])}
     if env.get("NTFY_URL"):
         c["ntfy"] = {"ready": True}
     if env.get("NOTIFY_WEBHOOK_URL"):
@@ -215,20 +213,6 @@ def _sid(t):
         return ""
 
 
-async def _sms(env, title, body, link, fetch):
-    """Plain SMS through the same Twilio account (a fallback for people without WhatsApp). One segment-sized text."""
-    import base64
-    from urllib.parse import quote, urlencode
-    bad = []
-    for to in [x.strip() for x in env["SMS_TO"].split(",") if x.strip()]:
-        auth = base64.b64encode(f"{env['TWILIO_ACCOUNT_SID']}:{env['TWILIO_AUTH_TOKEN']}".encode()).decode()
-        st, t = await fetch("POST", f"https://api.twilio.com/2010-04-01/Accounts/{quote(env['TWILIO_ACCOUNT_SID'], safe='')}/Messages.json", {"Authorization": f"Basic {auth}", "Content-Type": "application/x-www-form-urlencoded"},
-                            urlencode({"From": env["TWILIO_SMS_FROM"], "To": to if to.startswith("+") else "+" + to, "Body": f"{title}: {body}"[:300]}))
-        if st >= 300:
-            bad.append(f"HTTP {st} for ...{to[-4:]}" + (f" (Twilio code {_twilio_code(t)})" if _twilio_code(t) else ""))
-    return not bad, "; ".join(bad) or "sent"
-
-
 # ---- Twilio calls US: the signature proves it was Twilio, then delivery status and STOP / START replies are handled
 def twilio_signature(token, url, params):
     import base64
@@ -303,7 +287,7 @@ async def _email(env, title, body, link, fetch):
     return True, "sent"
 
 
-SENDERS = {"testops-mobile": _mobile, "whatsapp": _whatsapp, "slack": _slack, "teams": _teams, "telegram": _telegram, "discord": _discord, "google-chat": _gchat, "email": _email, "sms": _sms, "ntfy": _ntfy, "webhook": _webhook}
+SENDERS = {"testops-mobile": _mobile, "whatsapp": _whatsapp, "slack": _slack, "teams": _teams, "telegram": _telegram, "discord": _discord, "google-chat": _gchat, "email": _email, "ntfy": _ntfy, "webhook": _webhook}
 ALL = tuple(SENDERS)
 _EXTRA = ("testops-mobile", "webhook")      # these two also get the event name, project and severity as fields
 

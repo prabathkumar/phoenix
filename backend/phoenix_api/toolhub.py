@@ -173,7 +173,7 @@ async def upgrade(tool_id, env, who="", run=subprocess.run, fetch=_http.fetch, r
     except Exception as e:
         write_lock(env, lock)
         return {"tool": tool_id, "from": cur, "outcome": "failed", "detail": str(e)}
-    if new == cur or tool["version"] == "stable":
+    if new == cur or tool["version"] in ("stable", "latest"):
         write_lock(env, lock)
         return {"tool": tool_id, "from": cur, "to": new, "outcome": "current", "detail": f"{tool_id} {cur} is the newest release"}
     try:

@@ -91,6 +91,13 @@ services:
 
   # ---- open source tools, each its OWN container from a pinned image (tools/tools.json). Pre-fetch with: docker compose --profile tools pull
   # The platform runs them as throw-away containers (PHOENIX_TOOL_MODE=container, on a host with Docker). A newer version is only taken after the VA scan: POST /api/tools/<id>/upgrade.
+  # Self-hosted notifications (open source Apprise API, BSD-2): WhatsApp, Slack, Teams, email, Telegram, Discord, ntfy and more behind one call. Set APPRISE_URL=http://apprise:8000 and APPRISE_KEY or APPRISE_URLS.
+  apprise:
+    image: caronc/apprise:latest      # pinned by the first upgrade check (tools/tools.json); the image name is from memory: confirm it on first pull
+    volumes: [apprise-config:/config]
+    profiles: ["notify"]
+    restart: unless-stopped
+
   tool-semgrep:  { image: "semgrep/semgrep:1.97.0",          entrypoint: ["true"], profiles: ["tools"], restart: "no" }
   tool-gitleaks: { image: "zricethezav/gitleaks:v8.21.2",    entrypoint: ["true"], profiles: ["tools"], restart: "no" }
   tool-trivy:    { image: "aquasec/trivy:0.57.0",            entrypoint: ["true"], profiles: ["tools"], restart: "no" }
@@ -127,3 +134,4 @@ volumes:
   locator-data:
   pg-data:
   ch-data:
+  apprise-config:

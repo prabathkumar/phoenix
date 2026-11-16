@@ -1,10 +1,70 @@
 {
   "note": "Every open source tool the platform uses runs as its OWN container, from a pinned image. Upgrades never touch the running version: a new version is pulled aside, its image and its source are scanned (the VA), and it is promoted only if clean.",
   "tools": {
-    "semgrep":  {"purpose": "SAST (source code)",             "image": "semgrep/semgrep",        "version": "1.97.0",  "repo": "semgrep/semgrep",       "tagPrefix": "v", "health": ["semgrep", "--version"]},
-    "gitleaks": {"purpose": "Secrets scan",                    "image": "zricethezav/gitleaks",   "version": "v8.21.2", "repo": "gitleaks/gitleaks",     "tagPrefix": "",  "health": ["version"]},
-    "trivy":    {"purpose": "VA: vulnerabilities in images",   "image": "aquasec/trivy",          "version": "0.57.0",  "repo": "aquasecurity/trivy",    "tagPrefix": "v", "health": ["--version"]},
-    "locust":   {"purpose": "Performance",                     "image": "locustio/locust",        "version": "2.32.0",  "repo": "locustio/locust",       "tagPrefix": "",  "health": ["--version"]},
-    "zap":      {"purpose": "DAST (running app)",              "image": "zaproxy/zap-stable",     "version": "stable",  "repo": "zaproxy/zaproxy",       "tagPrefix": "v", "health": ["zap.sh", "-version"], "service": true}
+    "semgrep": {
+      "purpose": "SAST (source code)",
+      "image": "semgrep/semgrep",
+      "version": "1.97.0",
+      "repo": "semgrep/semgrep",
+      "tagPrefix": "v",
+      "health": [
+        "semgrep",
+        "--version"
+      ]
+    },
+    "gitleaks": {
+      "purpose": "Secrets scan",
+      "image": "zricethezav/gitleaks",
+      "version": "v8.21.2",
+      "repo": "gitleaks/gitleaks",
+      "tagPrefix": "",
+      "health": [
+        "version"
+      ]
+    },
+    "trivy": {
+      "purpose": "VA: vulnerabilities in images",
+      "image": "aquasec/trivy",
+      "version": "0.57.0",
+      "repo": "aquasecurity/trivy",
+      "tagPrefix": "v",
+      "health": [
+        "--version"
+      ]
+    },
+    "locust": {
+      "purpose": "Performance",
+      "image": "locustio/locust",
+      "version": "2.32.0",
+      "repo": "locustio/locust",
+      "tagPrefix": "",
+      "health": [
+        "--version"
+      ]
+    },
+    "zap": {
+      "purpose": "DAST (running app)",
+      "image": "zaproxy/zap-stable",
+      "version": "stable",
+      "repo": "zaproxy/zaproxy",
+      "tagPrefix": "v",
+      "health": [
+        "zap.sh",
+        "-version"
+      ],
+      "service": true
+    },
+    "apprise": {
+      "purpose": "Notifications (self-hosted: WhatsApp, Slack, Teams, email, Telegram...)",
+      "image": "caronc/apprise",
+      "version": "latest",
+      "repo": "caronc/apprise-api",
+      "tagPrefix": "v",
+      "health": [
+        "apprise",
+        "--version"
+      ],
+      "service": true
+    }
   }
 }

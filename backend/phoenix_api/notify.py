@@ -25,6 +25,12 @@ HOSTS = {   # the named platforms only accept their own hosts, so a mistyped or 
 _recent, _log = {}, deque(maxlen=200)
 
 
+def _internal(url):
+    """http is fine to a container on our own network (a single-word host such as http://apprise:8000) or to localhost; everything else needs https."""
+    u = urlparse(str(url or ""))
+    return u.scheme == "http" and bool(u.hostname) and ("." not in u.hostname or u.hostname in ("localhost", "127.0.0.1"))
+
+
 def _https(url, platform=None):
     u = urlparse(str(url or ""))
     host = (u.hostname or "").lower()
@@ -48,6 +54,8 @@ def channels(env):
     c = {}
     if env.get("COURIER_AUTH_TOKEN") and env.get("COURIER_TO"):
         c["courier"] = {"ready": True, "channels": [x for x in env.get("COURIER_CHANNELS", "").split(",") if x.strip() and x.strip().lower() not in NO_PHONE_CHANNELS] or "its own routing"}
+    if env.get("APPRISE_URL") and (env.get("APPRISE_KEY") or env.get("APPRISE_URLS")):
+        c["apprise"] = {"ready": True, "mode": "saved key" if env.get("APPRISE_KEY") else "urls from settings"}
     if env.get("TESTOPS_PUSH_URL"):
         c["testops-mobile"] = {"ready": True}
     tw = env.get("WHATSAPP_PROVIDER") == "twilio" and all(env.get(k) for k in ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_WHATSAPP_FROM"))
@@ -299,6 +307,37 @@ async def _email(env, title, body, link, fetch):
     return True, "sent"
 
 
+# Schemes that send SMS or place calls: refused when Phoenix itself hands them to Apprise. (Anything already saved INSIDE the Apprise container is outside Phoenix's sight: keep those out too.)
+NO_PHONE_SCHEMES = {"twilio", "sns", "nexmo", "vonage", "clicksend", "d7sms", "bulksms", "bulkvs", "kavenegar", "messagebird", "msg91", "plivo", "popcorn", "sinch", "smseagle", "smsmanager", "techuld", "voipms",
+                    "burstsms", "46elks", "httpsms", "africas", "sfr", "seven", "smpp", "textmagic", "signal", "call", "voice", "sms", "mmost-sms"}
+
+
+def _apprise_urls_ok(urls):
+    bad = [u for u in urls if re.match(r"^([\w+-]+)://", u.strip()) and re.match(r"^([\w+-]+)://", u.strip()).group(1).split("+")[0].lower() in NO_PHONE_SCHEMES]
+    return not bad, bad
+
+
+async def _apprise(env, title, body, link, fetch, severity="info", **_):
+    """Self-hosted: the open source Apprise API runs as its own container and reaches 100+ services (WhatsApp, Slack, Teams, email, Telegram, Discord, ntfy...). Phoenix sends one JSON call.
+    APPRISE_URL=http://apprise:8000 plus EITHER APPRISE_KEY (a config saved in the container) OR APPRISE_URLS (comma list of Apprise URLs held in Phoenix's settings; SMS and voice schemes are refused)."""
+    base = env["APPRISE_URL"].rstrip("/")
+    if not (_internal(base) or _https(base)):
+        return False, "APPRISE_URL must be https, or http to a container on this network"
+    payload = {"title": title[:200], "body": body + (f"\n{link}" if link else ""), "type": {"info": "info", "warn": "warning", "error": "failure"}.get(severity, "info"), "format": "text"}
+    if env.get("APPRISE_KEY"):
+        url = f"{base}/notify/{re.sub(r'[^\w.-]', '', env['APPRISE_KEY'])}"
+        if env.get("APPRISE_TAG"):
+            payload["tag"] = env["APPRISE_TAG"]
+    else:
+        urls = [u.strip() for u in env.get("APPRISE_URLS", "").split(",") if u.strip()]
+        ok, bad = _apprise_urls_ok(urls)
+        if not ok:
+            return False, f"SMS and call services are not allowed: {', '.join(b.split('://')[0] for b in bad)}"
+        url, payload["urls"] = f"{base}/notify", ",".join(urls)
+    st, _t = await _post(fetch, url, payload)
+    return st < 300, f"HTTP {st}"
+
+
 def _courier_body(env, title, body, link, to):
     to = dict(to or {})
     msg = {"to": to, "content": {"title": title[:150], "body": body + (f"\n{link}" if link else "")}}
@@ -328,9 +367,9 @@ async def _courier(env, title, body, link, fetch):
     return st < 300, f"HTTP {st}" + (f" request {rid}" if rid else "")
 
 
-SENDERS = {"courier": _courier, "testops-mobile": _mobile, "whatsapp": _whatsapp, "slack": _slack, "teams": _teams, "telegram": _telegram, "discord": _discord, "google-chat": _gchat, "email": _email, "ntfy": _ntfy, "webhook": _webhook}
+SENDERS = {"apprise": _apprise, "courier": _courier, "testops-mobile": _mobile, "whatsapp": _whatsapp, "slack": _slack, "teams": _teams, "telegram": _telegram, "discord": _discord, "google-chat": _gchat, "email": _email, "ntfy": _ntfy, "webhook": _webhook}
 ALL = tuple(SENDERS)
-_EXTRA = ("testops-mobile", "webhook")      # these two also get the event name, project and severity as fields
+_EXTRA = ("testops-mobile", "webhook", "apprise")      # these two also get the event name, project and severity as fields
 
 
 # ---- people: the TestOps login is Microsoft (Entra ID), so a person's name, mail and mobile come from the directory (Graph); they choose what reaches them

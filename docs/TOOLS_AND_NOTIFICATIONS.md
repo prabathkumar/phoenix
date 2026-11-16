@@ -49,3 +49,10 @@ Instead of wiring each channel, Phoenix makes ONE call to [Courier](https://www.
 - Texts are masked before they leave, but they do go to Courier, a third-party service: have it checked as a sub-processor. Courier is fully managed and cannot be self-hosted. It bills per send (check the current price sheet; its free tier has been 10,000 sends a month).
 - WhatsApp still needs a registered sender and approved templates: Courier does not remove Meta's rules.
 - Self-hosted alternative: **Novu** (open core, MIT core, runs in your own containers, covers Slack, Teams, email and push). Its WhatsApp support was not confirmed, so I have not built it in.
+
+## Self-hosted notification platform: Apprise (its own container)
+Open source (BSD-2). One container reaches 100+ services, including WhatsApp, Slack, Microsoft Teams (Workflows), email, Telegram, Discord and ntfy. Start it with `docker compose --profile notify up -d apprise`, then set `APPRISE_URL=http://apprise:8000` and EITHER `APPRISE_KEY` (a config saved in the container; optional `APPRISE_TAG`) OR `APPRISE_URLS` (a comma list of Apprise URLs kept in Phoenix's settings, e.g. `whatsapp://TOKEN@PHONE_ID/+6591234567,slack://...`).
+- Apprise's WhatsApp service uses Meta's Cloud API, so Meta's registration and templates still apply. Twilio-WhatsApp stays with the direct Twilio channel.
+- **No SMS and no calls:** when Phoenix hands Apprise the URLs, any SMS or voice scheme (twilio, sns, vonage, clicksend, ...) is refused and nothing is sent. Configs saved inside the container are outside Phoenix's sight: keep SMS and voice services out of them.
+- It is in `tools/tools.json`, so it upgrades through the same VA gate. The image name `caronc/apprise` is from memory: confirm it on the first pull. Nothing was run against a real Apprise container here.
+- It sits beside the other channels, Courier included.

@@ -258,7 +258,7 @@ def test_courier_is_the_one_sender_for_shared_and_personal_messages(tmp_path):
     assert sent[0][2]["message"]["to"] == {"email": "ann@ytl.com", "phone_number": "+6591234567"}
     bad = asyncio.run(notify.send("test", "C4", "x", {**env, "COURIER_TO": "not json"}, fetch=fetch))
     assert not bad["courier"]["ok"] and "JSON" in bad["courier"]["detail"]
-    assert "courier" not in notify.channels({k: v for k, v in env.items() if k != "NOTIFY_VIA"})
+    assert set(notify.channels({k: v for k, v in env.items() if k != "NOTIFY_VIA"})) == {"courier", "slack"}, "without courier-only, the others are kept"
 
 
 def test_courier_sits_beside_the_other_channels_and_never_sends_sms_or_calls(tmp_path):
@@ -278,3 +278,24 @@ def test_courier_sits_beside_the_other_channels_and_never_sends_sms_or_calls(tmp
     b2 = notify._courier_body({"COURIER_CHANNELS": "whatsapp,email"}, "t", "b", "", {"phone_number": "+65123"})
     assert b2["message"]["to"]["phone_number"] == "+65123" and b2["message"]["routing"]["channels"] == ["whatsapp", "email"]
     assert not any(k in notify.ALL for k in ("sms", "voice", "call"))
+
+
+def test_self_hosted_apprise_container_is_a_channel_and_sms_or_call_urls_are_refused(tmp_path):
+    sent = []
+
+    async def fetch(m, url, h, body):
+        sent.append((url, json.loads(body)))
+        return 200, "{}"
+    base = {"PHOENIX_DATA_DIR": str(tmp_path), "APPRISE_URL": "http://apprise:8000"}
+    assert "apprise" not in notify.channels(base), "needs a key or urls"
+    r = asyncio.run(notify.send("upgrade-blocked", "A1", "saved key", {**base, "APPRISE_KEY": "phoenix", "APPRISE_TAG": "ops"}, fetch=fetch, force=True))
+    assert r["apprise"]["ok"] and sent[0][0] == "http://apprise:8000/notify/phoenix" and sent[0][1]["tag"] == "ops" and sent[0][1]["type"] == "warning"
+    sent.clear()
+    ok = {**base, "APPRISE_URLS": "whatsapp://TOKEN@PHONEID/+6591234567,slack://a/b/c"}
+    assert asyncio.run(notify.send("test", "A2", "urls", ok, fetch=fetch, force=True))["apprise"]["ok"] and sent[0][1]["urls"].startswith("whatsapp://")
+    sent.clear()
+    bad = asyncio.run(notify.send("test", "A3", "sms", {**base, "APPRISE_URLS": "slack://a/b/c,twilio://sid:tok@+1555/+6591234567"}, fetch=fetch, force=True))
+    assert not bad["apprise"]["ok"] and "twilio" in bad["apprise"]["detail"] and not sent, "nothing is sent when one URL would send SMS"
+    far = asyncio.run(notify.send("test", "A4", "x", {**base, "APPRISE_URL": "http://evil.example.com", "APPRISE_KEY": "k"}, fetch=fetch, force=True))
+    assert not far["apprise"]["ok"] and not sent
+    assert notify._apprise_urls_ok(["tgram://x/y", "sms://x"])[0] is False and notify._apprise_urls_ok(["mailto://u:p@host"])[0] is True

@@ -66,7 +66,7 @@ def _py_project(tmp_path, failing=False):
 
 def test_repeated_runs_link_to_the_requirement_and_the_latest_run_decides(tmp_path):
     _py_project(tmp_path, failing=True)
-    h = lambda rid: H.unitrun_handler("p", rid, {})  # noqa: E731
+    h = lambda rid: H.unitrun_handler("p", rid, {"PHOENIX_UNIT_ROOT": str(tmp_path)})  # noqa: E731
     first = run(h("run-1")({"repoRequest": {"dir": str(tmp_path)}}))
     assert not first["ok"] and "1 failed" in first["detail"]
     _py_project(tmp_path, failing=False)
@@ -82,7 +82,7 @@ def test_repeated_runs_link_to_the_requirement_and_the_latest_run_decides(tmp_pa
 
 def test_requirement_reaches_done_only_when_every_stage_is_reached(tmp_path):
     _py_project(tmp_path)
-    run(H.unitrun_handler("p", "r1", {})({"repoRequest": {"dir": str(tmp_path)}}))
+    run(H.unitrun_handler("p", "r1", {"PHOENIX_UNIT_ROOT": str(tmp_path)})({"repoRequest": {"dir": str(tmp_path)}}))
     signoff.upsert_case("C1", "Subtract", ["a"], project="p", requirement="PROJ-7", scenario="S1")
     signoff.request_case("C1", "ann")
     s = next(x for x in signoff.list_signoffs(kind="case") if x["subject"] == "C1")
@@ -105,7 +105,7 @@ def test_api_lifecycle_connectors_generate_and_run(tmp_path):
     repo = FakeRepo()
 
     async def model(p): return "def test_PROJ_5_sub():\n    assert True\n"
-    c = TestClient(create_app(Deps(env={}, call_json=model, connect_repo=lambda rq: repo)))
+    c = TestClient(create_app(Deps(env={"PHOENIX_UNIT_ROOT": str(tmp_path)}, call_json=model, connect_repo=lambda rq: repo)))
     assert c.get("/api/unit-tests/connectors").json()["languages"]["php"]["convention"]
     g = c.post("/api/unit-tests/generate", json={"requirementKey": "PROJ-5", "requirement": "Subtract", "repo": {"provider": "github", "project": "o/r", "base": "a", "head": "b"}}, headers={"X-User": "dev1"}).json()
     assert g["ok"] and g["data"]["tests"][0]["requirement"] == "PROJ-5"

@@ -38,7 +38,10 @@ def parse_semgrep(j):
     except Exception:
         return {}
     out = {}
-    for r in (j or {}).get("results", []):
+    results = j.get("results") if isinstance(j, dict) else None
+    for r in (results if isinstance(results, list) else []):
+        if not isinstance(r, dict):
+            continue
         f = re.sub(r"^\./", "", str(r.get("path", "")))
         out.setdefault(f, []).append(f"{str(r.get('check_id', '')).split('.')[-1]}: {str((r.get('extra') or {}).get('message', ''))[:200]} (line {(r.get('start') or {}).get('line', '?')})")
     return out

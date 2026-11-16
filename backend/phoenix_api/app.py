@@ -290,7 +290,7 @@ def create_app(deps: Deps | None = None) -> FastAPI:
     def ingest(body: dict = Body(...), x_ingest_token: str = Header(default="")):
         _ingest_ok(x_ingest_token)
         events = body.get("events") if isinstance(body.get("events"), list) else [body]
-        stored = sum(1 for e in events[:2000] if isinstance(e, dict) and logstore.record(e.get("kind", ""), e.get("row") or {}, D.env))
+        stored = sum(1 for e in events[:2000] if isinstance(e, dict) and logstore.record(e.get("kind", ""), e.get("row") if e.get("row") is not None else {}, D.env))
         return {"stored": stored, "received": min(len(events), 2000), "backend": analytics.default().backend}
 
     @app.get("/api/logs/{table}")

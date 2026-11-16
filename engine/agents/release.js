@@ -35,8 +35,9 @@ function createAudit(sink = () => {}, onStatus = () => {}) {
 }
 
 /** Planner: choose cases. `changed` = words from the release notes (e.g. ["checkout", "postpaid"]); matches case id, title or tags. */
-function plan(suite, { changed = [], only } = {}, audit) {
-  let cases = suite.cases || [];
+function plan(suite, { changed, only } = {}, audit) {
+  changed = Array.isArray(changed) ? changed.filter((w) => typeof w === "string" && w.trim()) : [];
+  let cases = Array.isArray(suite && suite.cases) ? suite.cases.filter((c) => c && typeof c === "object") : [];
   if (only && only.length) cases = cases.filter((c) => only.includes(c.id));
   else if (changed.length) {
     const hit = cases.filter((c) => changed.some((w) => `${c.id} ${c.title || ""} ${(c.tags || []).join(" ")}`.toLowerCase().includes(String(w).toLowerCase())));
@@ -85,8 +86,11 @@ function report(summary, audit) {
   const c = (v) => summary.results.filter((r) => r.verdict === v).length;
   const flaky = summary.results.filter((r) => r.flaky).length;
   const out = { ...summary, passed: c("passed"), blockedBySite: c("blocked-by-site"), notRunNetwork: c("not-run-network"), failed: c("failed"), flaky };
-  out.verdict = out.failed ? "FAIL" : (out.blockedBySite || out.notRunNetwork || flaky) ? "PASS-WITH-GAPS" : "PASS";
+  // nothing tested is not a pass: an empty plan (no cases, or none that could run) must never read as a green release
+  out.verdict = !summary.results.length ? "FAIL" : out.failed ? "FAIL" : (out.blockedBySite || out.notRunNetwork || flaky) ? "PASS-WITH-GAPS" : "PASS";
+  if (!summary.results.length) audit.note("reporter", "nothing-tested", {});
   out.gaps = summary.results.filter((r) => r.verdict !== "passed" || r.flaky).map((r) => ({ id: r.id, verdict: r.flaky ? "flaky" : r.verdict, why: r.triage || (r.flaky ? "failed once, passed on retry" : "") }));
+  if (!summary.results.length) out.gaps.push({ id: "(none)", verdict: "not-run", why: "no test case ran, so nothing is proven" });
   audit.note("reporter", "verdict", { verdict: out.verdict, passed: out.passed, total: out.total });
   return out;
 }

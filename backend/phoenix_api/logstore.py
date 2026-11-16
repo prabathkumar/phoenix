@@ -25,8 +25,8 @@ def capture_enabled(env=None):
 
 def record(kind, row, env=None, a=None):
     """Store one event. Returns True if stored, False if the kind is switched off (training capture) or unknown. Never raises."""
-    spec = KINDS.get(kind)
-    if not spec:
+    spec = KINDS.get(kind) if isinstance(kind, str) else None
+    if not spec or not isinstance(row, dict):
         return False
     table, fields, texts = spec
     if kind == "training_example" and not capture_enabled(env):

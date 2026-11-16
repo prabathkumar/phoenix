@@ -35,6 +35,20 @@ const suiteFor = (url, cases) => ({ name: "fake store", url, cases });
       } finally { await b.close(); }
     });
 
+    await test("negative, real browser: a missing control, a wrong expected text, a hostile page and an unreachable site each end failed or not-run, quickly, never passed", async () => {
+      const t0 = Date.now();
+      const suite = suiteFor(store.url, [
+        { id: "NOCTRL", steps: ["Click the Devices menu", "Click the Teleport button"] },
+        { id: "WRONGTEXT", steps: ["Click the Devices menu", 'Check that the page says "This text is nowhere on the page"'] },
+        { id: "WRONGURL", steps: ["Click the Devices menu", "Check that the URL contains /checkout-complete-9999"] },
+      ]);
+      const r = await runSuite(suite, { log: () => {} });
+      for (const x of r.results) assert.notStrictEqual(x.verdict, "passed", `${x.id} must not pass: ${JSON.stringify(x.steps.map((s) => s.status))}`);
+      assert.ok(Date.now() - t0 < 120000, "failures are quick, not a hang");
+      const dead = await runSuite({ name: "dead", url: "http://127.0.0.1:9/", platform: "web", cases: [{ id: "D", title: "d", steps: ["Click the Devices menu"] }] }, { log: () => {} });
+      assert.notStrictEqual(dead.results[0].verdict, "passed"); assert.ok(["failed", "not-run-network"].includes(dead.results[0].verdict), dead.results[0].verdict);
+    });
+
     await test("runSuite on a real browser: pass, blocked-by-site, failed, and a banner on the home page does not stop the journey", async () => {
       const suite = suiteFor(store.url, [
         { id: "OK", steps: journey("Aurora X1", ["Check that the page says Order summary", "Check that no error is showing"]) },

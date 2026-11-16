@@ -293,7 +293,14 @@ async function handleAgentTool(name, args) {
   return null;
 }
 
-async function handleToolCall(name, args = {}) {
+async function handleToolCall(name, args) {
+  // bad or missing arguments are the caller's mistake: answer with an error result, never throw into the transport
+  if (typeof name !== "string" || !TOOLS.some((t) => t.name === name)) return errorResult(`Unknown tool: ${String(name).slice(0, 80)}`);
+  if (args === null || args === undefined || typeof args !== "object" || Array.isArray(args)) args = {};
+  try { return await handleToolCallInner(name, args); } catch (err) { return errorResult(`${name} could not run: ${String(err.message || err).slice(0, 200)}`); }
+}
+
+async function handleToolCallInner(name, args = {}) {
   const agentResult = await handleAgentTool(name, args);
   if (agentResult) return agentResult;
 

@@ -105,6 +105,29 @@ def har_handler():
 
 
 # ---- performance (Locust)
+def safe_target(url):
+    """A scan or load test goes only to a plain http(s) address: no file:, ftp:, javascript:, no credentials in the URL, and never the cloud metadata
+    or link-local range (169.254.x.x, fd00:ec2::254), which would let a caller read the server's own cloud credentials. Returns an error text, or None if fine."""
+    try:
+        u = urlparse(str(url))
+        host = (u.hostname or "").lower()
+    except ValueError:
+        return "that address is not a valid URL"
+    if u.scheme not in ("http", "https") or not host:
+        return "only http:// or https:// addresses can be scanned or load tested"
+    if u.username or u.password:
+        return "the address must not contain a user name or password"
+    import ipaddress
+    try:
+        ip = ipaddress.ip_address(host)
+        if ip.is_link_local or host in ("fd00:ec2::254",):
+            return "link-local and cloud-metadata addresses are not allowed"
+    except ValueError:
+        if host in ("metadata.google.internal", "metadata", "instance-data"):
+            return "cloud-metadata hosts are not allowed"
+    return None
+
+
 def locust_file(steps, base_url):
     calls = [{"m": str(s.get("method", "GET")).lower(), "u": re.sub(r"^https?://[^/]+", "", s["url"]) if re.match(r"https?:", s["url"], re.I) else s["url"], "b": s.get("body")} for s in steps if isinstance(s, dict) and s.get("kind") == "api" and s.get("url")]
     if not calls:
@@ -145,6 +168,9 @@ def performance_handler(run=_run, directory="logs/performance", users=10, rate=2
     async def h(ctx):
         if not ctx.get("baseUrl"):
             return {"unavailable": True, "detail": "give the API address (baseUrl) to run a load test"}
+        bad = safe_target(ctx["baseUrl"])
+        if bad:
+            return {"unavailable": True, "detail": f"not allowed: {bad}"}
         code = None
         if ctx.get("harPath"):
             try:
@@ -207,6 +233,9 @@ def dast_handler(run=_run, directory="logs/security", env=None, fetch=_http.fetc
         url = ctx.get("appUrl") or ctx.get("baseUrl")
         if not url:
             return {"unavailable": True, "detail": "give the app address to scan"}
+        bad = safe_target(url)
+        if bad:
+            return {"unavailable": True, "detail": f"not allowed: {bad}"}
         if env.get("ZAP_API_URL"):
             try:
                 c = await zap_api(env["ZAP_API_URL"], env.get("ZAP_API_KEY"), url, bool(ctx.get("ajaxSpider")), fetch, wait)
@@ -273,8 +302,19 @@ def unitrun_handler(project="", run_id="", env=None, run=None, which=None):
         from . import logstore, test_connectors as tcx
         rq = ctx.get("repoRequest") or {}
         root, cleanup = rq.get("dir"), False
+        e = env if env is not None else os.environ
         try:
-            if not root and rq.get("cloneUrl"):
+            # Running a repo's tests runs its code. So only folders under PHOENIX_UNIT_ROOT (default: none) and clone URLs on PHOENIX_UNIT_CLONE_HOSTS (default: none) are allowed.
+            if root:
+                base = e.get("PHOENIX_UNIT_ROOT", "")
+                real = os.path.realpath(str(root))
+                if not base or not (real == os.path.realpath(base) or real.startswith(os.path.realpath(base) + os.sep)):
+                    return {"unavailable": True, "detail": "that folder is not allowed: set PHOENIX_UNIT_ROOT to the folder that holds checkouts the platform may run (running tests runs the repo's code)"}
+                root = real
+            elif rq.get("cloneUrl"):
+                host = (re.match(r"^https://([\w.-]+)/", str(rq["cloneUrl"])) or [None, ""])[1].lower()
+                if host not in [x.strip().lower() for x in e.get("PHOENIX_UNIT_CLONE_HOSTS", "").split(",") if x.strip()]:
+                    return {"unavailable": True, "detail": f"cloning from '{host or rq['cloneUrl']}' is not allowed: list trusted hosts in PHOENIX_UNIT_CLONE_HOSTS (running tests runs the repo's code)"}
                 root, cleanup = tcx.clone(rq["cloneUrl"], rq.get("ref", "")), True
             if not root or not os.path.isdir(root):
                 return {"unavailable": True, "detail": "give a checkout to run: repoRequest.dir (a folder on the server) or repoRequest.cloneUrl (https)"}

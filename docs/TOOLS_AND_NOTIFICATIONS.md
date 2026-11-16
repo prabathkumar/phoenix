@@ -41,3 +41,12 @@ One sender (`notify.py`) for every channel; set up by environment values, shown 
 3. **Receipts and replies:** set `PHOENIX_PUBLIC_URL` (the https address Twilio can reach, no trailing slash). In Twilio set the sender's incoming-message webhook to `<PHOENIX_PUBLIC_URL>/api/notify/twilio/inbound`. Phoenix adds the status callback (`/api/notify/twilio/status`) to every message itself. Both calls are checked against `X-Twilio-Signature`; unsigned or forged calls get a 403 and change nothing. With no `PHOENIX_PUBLIC_URL` they are closed.
 4. **Replies handled:** STOP / UNSUBSCRIBE / CANCEL / END switches that person's WhatsApp off; START / YES / UNSTOP switches it on. Only a number that a person registered themselves is matched. Anything else is ignored.
 Twilio charges its own per-message fee on top of Meta's; check the current price sheet for your countries.
+
+## Use a ready-made notification platform: Courier (`NOTIFY_VIA=courier`)
+Instead of wiring each channel, Phoenix makes ONE call to [Courier](https://www.courier.com), which sends to WhatsApp, Slack, Microsoft Teams, email and push. The channels and their providers (for WhatsApp: your Twilio or Meta sender) are set up in Courier's own console.
+- Set `NOTIFY_VIA=courier`, `COURIER_AUTH_TOKEN`, `COURIER_TO` (JSON: `{"list_id":"phoenix-ops"}`, `{"user_id":"..."}` or `{"email":"...","phone_number":"+65..."}`) and optionally `COURIER_CHANNELS=whatsapp,slack,email` (send on every one listed). While this is on, the direct channels above are switched off.
+- People: the person who started a run gets email, and a phone number only if they opted in to WhatsApp (`PUT /api/notify/me`). Names, mail and mobile still come from the Microsoft directory.
+- Texts are masked before they leave, but they do go to Courier, a third-party service: have it checked as a sub-processor. Courier is fully managed and cannot be self-hosted. It bills per send (check the current price sheet; its free tier has been 10,000 sends a month).
+- WhatsApp still needs a registered sender and approved templates: Courier does not remove Meta's rules.
+- Self-hosted alternative: **Novu** (open core, MIT core, runs in your own containers, covers Slack, Teams, email and push). Its WhatsApp support was not confirmed, so I have not built it in.
+- The direct channels stay in the code as a fallback: unset `NOTIFY_VIA` to use them.

@@ -33,8 +33,14 @@ def _https(url, platform=None):
     return bool(re.search(HOSTS[platform], host)) if platform in HOSTS else bool(host)
 
 
+def _via_courier(env):
+    return env.get("NOTIFY_VIA") == "courier" and bool(env.get("COURIER_AUTH_TOKEN"))
+
+
 def channels(env):
-    """{channel: {ready, ...}} for every channel that is fully set up. Never shows a secret."""
+    """{channel: {ready, ...}} for every channel that is fully set up. Never shows a secret. With NOTIFY_VIA=courier, Courier is the ONLY sender (it fans out to WhatsApp, Slack, Teams, email and push)."""
+    if _via_courier(env):
+        return {"courier": {"ready": True, "to": bool(env.get("COURIER_TO")), "channels": [x for x in env.get("COURIER_CHANNELS", "").split(",") if x.strip()] or "its own routing"}}
     c = {}
     if env.get("TESTOPS_PUSH_URL"):
         c["testops-mobile"] = {"ready": True}
@@ -287,7 +293,32 @@ async def _email(env, title, body, link, fetch):
     return True, "sent"
 
 
-SENDERS = {"testops-mobile": _mobile, "whatsapp": _whatsapp, "slack": _slack, "teams": _teams, "telegram": _telegram, "discord": _discord, "google-chat": _gchat, "email": _email, "ntfy": _ntfy, "webhook": _webhook}
+def _courier_body(env, title, body, link, to):
+    msg = {"to": to, "content": {"title": title[:150], "body": body + (f"\n{link}" if link else "")}}
+    chans = [x.strip() for x in env.get("COURIER_CHANNELS", "").split(",") if x.strip()]
+    if chans:
+        msg["routing"] = {"method": "all", "channels": chans}      # e.g. whatsapp,slack,email: every one of them, not the first that works
+    return {"message": msg}
+
+
+async def _courier(env, title, body, link, fetch):
+    """One third-party API for everything: Courier sends to WhatsApp, Slack, Teams, email and push from one call; the channels and their providers are set up in Courier's own console.
+    COURIER_TO is a Courier recipient as JSON ({"user_id":"ops"}, {"list_id":"phoenix-ops"} or {"email":"a@b.com","phone_number":"+65..."}). Message texts are masked first, like every channel."""
+    try:
+        to = json.loads(env.get("COURIER_TO") or "{}")
+    except Exception:
+        return False, "COURIER_TO must be JSON, e.g. {\"list_id\": \"phoenix-ops\"}"
+    if not isinstance(to, dict) or not to:
+        return False, "COURIER_TO is empty: say who receives it"
+    st, t = await _post(fetch, "https://api.courier.com/send", _courier_body(env, title, body, link, to), {"Authorization": f"Bearer {env['COURIER_AUTH_TOKEN']}"})
+    try:
+        rid = json.loads(t or "{}").get("requestId", "")
+    except Exception:
+        rid = ""
+    return st < 300, f"HTTP {st}" + (f" request {rid}" if rid else "")
+
+
+SENDERS = {"courier": _courier, "testops-mobile": _mobile, "whatsapp": _whatsapp, "slack": _slack, "teams": _teams, "telegram": _telegram, "discord": _discord, "google-chat": _gchat, "email": _email, "ntfy": _ntfy, "webhook": _webhook}
 ALL = tuple(SENDERS)
 _EXTRA = ("testops-mobile", "webhook")      # these two also get the event name, project and severity as fields
 
@@ -366,6 +397,16 @@ async def _to_person(who, event, sev, title, body, link, env, fetch, sleep):
     if p.get("off") or SEVERITY[sev] < SEVERITY[p.get("min", "info")]:
         return {"person": {"ok": True, "detail": "this person turned notifications off or set a higher level"}}
     d = await directory(who, env, fetch)
+    if _via_courier(env):                                   # one call: Courier chooses the channels; the phone is added only for people who opted in to WhatsApp
+        to = {"email": (d or {}).get("mail") or who}
+        num = p.get("whatsappNumber") or (d or {}).get("mobile")
+        if p.get("whatsapp") is True and num:
+            to["phone_number"] = num
+        try:
+            ok, det = await _post_courier_person(env, title, body, link, to, fetch)
+        except Exception as e:
+            ok, det = False, str(e)[:100]
+        return {"courier": {"ok": ok, "detail": det}}
     text = body + (f"\n{link}" if link else "")
     if p.get("email", True):
         addr = (d or {}).get("mail") or who
@@ -388,6 +429,11 @@ async def _to_person(who, event, sev, title, body, link, env, fetch, sleep):
         else:
             out["whatsapp"] = {"ok": False, "detail": "no mobile number in the directory and none given"}
     return out or {"person": {"ok": False, "detail": "no way to reach this person: no email channel set up and no WhatsApp opt-in"}}
+
+
+async def _post_courier_person(env, title, body, link, to, fetch):
+    st, _ = await _post(fetch, "https://api.courier.com/send", _courier_body(env, title, body, link, to), {"Authorization": f"Bearer {env['COURIER_AUTH_TOKEN']}"})
+    return st < 300, f"HTTP {st}"
 
 
 def recent(n=50):

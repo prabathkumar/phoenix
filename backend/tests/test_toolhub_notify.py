@@ -232,3 +232,30 @@ def test_status_receipts_update_the_log_and_there_is_no_sms(tmp_path):
     async def reject(m, url, h, body):
         return 400, json.dumps({"code": 63016, "message": "x"})
     assert "Twilio code 63016" in asyncio.run(notify.send("test", "R2", "x", env, fetch=reject, force=True, only=["whatsapp"]))["whatsapp"]["detail"]
+
+
+def test_courier_is_the_one_sender_for_shared_and_personal_messages(tmp_path):
+    sent = []
+
+    async def fetch(m, url, h, body):
+        sent.append((url, h, json.loads(body) if body and body.startswith("{") else body))
+        return 202, '{"requestId": "req-1"}'
+    env = {"PHOENIX_DATA_DIR": str(tmp_path), "NOTIFY_VIA": "courier", "COURIER_AUTH_TOKEN": "ck", "COURIER_TO": '{"list_id": "phoenix-ops"}', "COURIER_CHANNELS": "whatsapp,slack",
+           "SLACK_WEBHOOK_URL": "https://hooks.slack.com/services/x", "TWILIO_ACCOUNT_SID": "x"}
+    assert list(notify.channels(env)) == ["courier"], "the direct channels are off while Courier is the sender"
+    r = asyncio.run(notify.send("run-result", "C1", "password=hunter2hunter2 done", env, fetch=fetch))
+    assert r["courier"]["ok"] and "request req-1" in r["courier"]["detail"] and len(sent) == 1
+    url, h, b = sent[0]
+    assert url == "https://api.courier.com/send" and h["Authorization"] == "Bearer ck" and b["message"]["to"] == {"list_id": "phoenix-ops"}
+    assert b["message"]["routing"] == {"method": "all", "channels": ["whatsapp", "slack"]} and "hunter2hunter2" not in json.dumps(b)
+    # a person: email always, phone only after the WhatsApp opt-in
+    sent.clear()
+    asyncio.run(notify.send("needs-you", "C2", "sign off", env, fetch=fetch, to=["ann@ytl.com"], only=["none"]))
+    assert sent[0][2]["message"]["to"] == {"email": "ann@ytl.com"}
+    notify.set_prefs(env, "ann@ytl.com", {"whatsapp": True, "whatsappNumber": "+6591234567"})
+    sent.clear()
+    asyncio.run(notify.send("needs-you", "C3", "sign off", env, fetch=fetch, to=["ann@ytl.com"], only=["none"]))
+    assert sent[0][2]["message"]["to"] == {"email": "ann@ytl.com", "phone_number": "+6591234567"}
+    bad = asyncio.run(notify.send("test", "C4", "x", {**env, "COURIER_TO": "not json"}, fetch=fetch))
+    assert not bad["courier"]["ok"] and "JSON" in bad["courier"]["detail"]
+    assert "courier" not in notify.channels({k: v for k, v in env.items() if k != "NOTIFY_VIA"})

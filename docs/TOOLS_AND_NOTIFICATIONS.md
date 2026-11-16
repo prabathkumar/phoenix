@@ -64,3 +64,13 @@ Not legal advice: have your DPO confirm.
 - **Personal WhatsApp is off.** `NOTIFY_PERSONAL_PHONE=allow` switches it on; even then only a number the person types in themselves (with their consent time kept) is used, it is shown masked, and `DELETE /api/notify/me` erases it and all their choices.
 - **WhatsApp for the team goes to company-owned numbers** set by an administrator in `WHATSAPP_TO` (for example an on-call phone issued by YTL), not to numbers collected from users.
 - **No flood of emails:** `defect-raised` and `execution-failed` are counted, then sent as ONE short message every `NOTIFY_DIGEST_MINUTES` (default 15), for example "Last 15 min: 41 defect(s) raised, 1201 execution(s) failed", with the top projects and a few examples. Email never gets these unless a route names `digest` for it. `POST /api/notify/digest` sends it now. Urgent things (a run waiting for you, a blocked or rolled-back upgrade) still go out at once.
+
+## The Phoenix Teams app (personal alerts by sign-in)
+`teams-app/build.py` makes `phoenix-teams-app.zip`: a Teams app with the activity type `phoenixAlert` and a personal tab that opens Phoenix inside Teams. No secret is in it; its id is your Entra app's Application (client) id.
+1. **Entra app registration** (the one behind `MS_CLIENT_ID`): API permissions, Application type: `TeamsActivity.Send`, `User.Read.All`, and `Mail.Send` if email goes through Graph (limit `Mail.Send` to the one sender mailbox with an application access policy). Grant admin consent.
+2. **Settings:** `MS_TEAMS_APP_ID` (that same client id) and `PHOENIX_PUBLIC_URL` (the https address people use, no trailing slash) in `.env`.
+3. **Build** (needs Pillow, `pip3 install pillow`):
+   `cd /Users/prabathkumar/android-sdk/cmdline-tools/phoenix && python3 teams-app/build.py`
+4. **Publish:** Teams admin center > Teams apps > Manage apps > Upload new app > `teams-app/phoenix-teams-app.zip`. Then Teams apps > Setup policies > add Phoenix under *Installed apps* so it is installed for your people: an alert can only reach someone who has the app. Changes can take a few hours to reach every user.
+5. **Check:** `POST /api/notify/test {"me": true}` as yourself; the alert should appear in the Teams activity feed on your phone and desktop.
+The manifest follows Teams schema v1.17 from memory of its fields; Teams rejects a package it dislikes with a reason in the upload dialog, so send me that text if it does.

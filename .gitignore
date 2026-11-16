@@ -29,3 +29,5 @@ backend/phoenix.db
 web-ui/node_modules/
 web-ui/dist/
 backend/logs/
+
+teams-app/phoenix-teams-app.zip

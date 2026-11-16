@@ -45,6 +45,11 @@ pre{margin:0;max-height:220px;overflow:auto;font:12px/1.5 var(--mono);color:var(
   <div id="note" class="hint" style="margin-top:8px">Everything on this page belongs to the project ID above.</div>
 </section>
 
+<section class="card" id="apps-card"><h2>Mobile apps for this project</h2>
+  <div class="bar"><div><label for="appfile">Upload an .apk or .ipa</label><input type="file" id="appfile" accept=".apk,.ipa"></div><button id="appup" class="sec">Upload app</button></div>
+  <div id="apps" class="hint" style="margin-top:8px">Load a project to see its apps. A mobile suite names its app with <span class="mono">"app": {"file": "myapp.apk"}</span> or <span class="mono">{"url": "bs://..."}</span>.</div>
+</section>
+
 <section class="card" id="agents-card"><h2>Agents</h2><div class="agents" id="agents"></div></section>
 
 <section class="card" id="result-card" style="display:none"><h2>Release</h2>
@@ -76,10 +81,28 @@ pre{margin:0;max-height:220px;overflow:auto;font:12px/1.5 var(--mono);color:var(
     try {
       const s = await api("/api/projects/" + encodeURIComponent(p) + "/suites");
       const sel = $("suite"); sel.innerHTML = "";
-      s.suites.forEach((x) => { const o = el("option", "", x.title + " (" + x.cases + " cases" + (x.skipped ? ", " + x.skipped + " known skips" : "") + ")"); o.value = x.name; sel.appendChild(o); });
+      s.suites.forEach((x) => { const o = el("option", "", (x.platform && x.platform !== "web" ? "[" + x.platform + "] " : "") + x.title + " (" + x.cases + " cases" + (x.skipped ? ", " + x.skipped + " known skips" : "") + ")"); o.value = x.name; sel.appendChild(o); });
       $("run").disabled = !s.suites.length; say("Project " + p + ": " + s.suites.length + " suite(s).");
-      renderAgents(s.agents || {}); await loadHistory();
+      renderAgents(s.agents || {}); renderApps(s.apps || []); await loadHistory();
     } catch (e) { $("run").disabled = true; say(e.message, true); }
+  }
+
+  function renderApps(apps) {
+    const box = $("apps"); box.innerHTML = "";
+    if (!apps.length) { box.textContent = "No apps uploaded for this project yet."; return; }
+    const t = el("table"); t.innerHTML = "<tr><th>App</th><th>Platform</th><th>Size</th></tr>";
+    apps.forEach((a) => { const tr = el("tr"); tr.appendChild(el("td", "id", a.name)); tr.appendChild(el("td", "", a.platform)); tr.appendChild(el("td", "", a.sizeMb + " MB")); t.appendChild(tr); });
+    box.appendChild(t);
+  }
+  async function uploadApp() {
+    const f = $("appfile").files[0]; if (!f) return say("Choose an .apk or .ipa first.", true);
+    if (!project()) return say("Enter a project ID.", true);
+    say("Uploading " + f.name + "…");
+    try {
+      const r = await fetch("/api/projects/" + encodeURIComponent(project()) + "/apps?name=" + encodeURIComponent(f.name), { method: "POST", headers: { "Content-Type": "application/octet-stream", ...($("token").value ? { Authorization: "Bearer " + $("token").value } : {}) }, body: f });
+      const b = await r.json().catch(() => ({})); if (!r.ok) throw new Error(b.error || "HTTP " + r.status);
+      say("Uploaded " + b.app.name + "."); loadProject();
+    } catch (e) { say(e.message, true); }
   }
 
   function renderAgents(agents) {
@@ -142,7 +165,7 @@ pre{margin:0;max-height:220px;overflow:auto;font:12px/1.5 var(--mono);color:var(
     } catch (e) { h.textContent = e.message; }
   }
 
-  $("load").addEventListener("click", loadProject); $("run").addEventListener("click", run);
+  $("appup").addEventListener("click", uploadApp); $("load").addEventListener("click", loadProject); $("run").addEventListener("click", run);
   $("project").addEventListener("keydown", (e) => { if (e.key === "Enter") loadProject(); });
   renderAgents({}); if ($("project").value) loadProject();
 })();

@@ -10,6 +10,9 @@
  */
 const { runSuite } = require("../suite-run");
 const checks = require("./checks");
+const { runMobileSuite, isMobileSuite } = require("./mobile");
+/** A web suite runs in Playwright; a mobile suite (platform android|ios) runs through Appium. Same result shape. */
+const runner = (suite, opts) => (opts.runSuiteImpl ? opts.runSuiteImpl : isMobileSuite(suite) ? runMobileSuite : runSuite)(suite, opts);
 
 /** Every activity has its own agent, and every agent can say where it is. */
 const AGENTS = [
@@ -68,7 +71,7 @@ async function heal(summary, suite, runOpts, audit) {
   const failedIds = summary.results.filter((r) => r.verdict === "failed").map((r) => r.id);
   if (!failedIds.length) return;
   audit.note("healer", "retrying", { cases: failedIds });
-  const again = await runSuite(suite, { ...runOpts, only: failedIds });
+  const again = await runner(suite, { ...runOpts, only: failedIds });
   for (const a of again.results) {
     const i = summary.results.findIndex((r) => r.id === a.id);
     const first = summary.results[i];
@@ -97,18 +100,20 @@ async function runRelease(suite, { changed, only, ask, heal: doHeal = true, perf
   st("runner", "working", `running ${planned.cases.length} case(s)`);
   const log = (line) => { st("runner", "working", String(line).trim().slice(0, 140)); if (runOpts.log) runOpts.log(line); };
   let summary;
-  try { summary = await runSuite(planned, { ...runOpts, log }); } catch (e) { st("runner", "failed", e.message); throw e; }
+  try { summary = await runner(planned, { ...runOpts, log }); } catch (e) { st("runner", "failed", e.message); throw e; }
   st("runner", "done", `${summary.results.length} case(s) run`);
 
   const extra = [];
   const passive = async (id, on, fn, label) => {
-    if (!on) { st(id, "skipped", "turned off for this release"); return; }
+    if (!on) { if (audit.agents[id].status !== "skipped") st(id, "skipped", "turned off for this release"); return; }
     st(id, "working", label);
     try { const r = await fn(); extra.push({ agent: id, ...r }); audit.note(id, "checked", { warnings: r.warnings, metrics: r.metrics }); st(id, "done", r.warnings.length ? `${r.warnings.length} warning(s)` : "no warnings"); }
     catch (e) { audit.note(id, "could-not-run", { why: e.message }); st(id, "failed", `could not run: ${e.message}`.slice(0, 160)); }
   };
-  await passive("performance", perf && suite.url, () => checks.pageTiming(suite.url, { launch: runOpts.launch, ...checkDeps.perf }), "timing one page load");
-  await passive("security", security && suite.url, () => checks.headerAudit(suite.url, checkDeps.security), "reading response headers");
+  const web = !isMobileSuite(suite);
+  if (!web) { st("performance", "skipped", "web only: a mobile app has no page to time"); st("security", "skipped", "web only: header checks do not apply to an app"); }
+  await passive("performance", web && perf && suite.url, () => checks.pageTiming(suite.url, { launch: runOpts.launch, ...checkDeps.perf }), "timing one page load");
+  await passive("security", web && security && suite.url, () => checks.headerAudit(suite.url, checkDeps.security), "reading response headers");
 
   st("triage", "working", "explaining non-passes");
   await triage(summary.results, { ask }, audit);

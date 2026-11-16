@@ -70,6 +70,20 @@ Suites live in `test-cases/projects/<projectId>/`. Releases, agent status, resul
 
 The page is `/releases?project=<projectId>`. Set `PHOENIX_RELEASE_TOKEN` to require `Authorization: Bearer <token>` on every call.
 
+## Mobile apps in a release
+
+A mobile suite is the same release with a different Runner. Put `"platform": "android"` or `"ios"` and the app in the suite:
+
+```json
+{ "name": "MyYes app", "platform": "android", "app": { "file": "myyes.apk" }, "provider": "browserstack", "device": "Samsung Galaxy S23", "osVersion": "14",
+  "cases": [ { "id": "M-001", "title": "Log in screen opens", "steps": ["Tap Login", "Check that the page says Login"] } ] }
+```
+
+- **Upload the app to the project:** on `/releases` (Mobile apps card) or `POST /api/projects/:projectId/apps?name=myyes.apk` with the file as the raw body. Apps are stored per project; `GET /api/projects/:projectId/suites` lists them. Or set `"app": {"url": "bs://<hash>"}` for an app already on BrowserStack.
+- **One fresh session per case.** The app is uploaded to BrowserStack once per release. Verdicts, Triage, the Healer, the Reporter, the audit trail and the page are the same as for web.
+- **Performance and Security** are web-only and show `skipped` for a mobile suite.
+- **Needs:** the Appium host (or BrowserStack credentials in `.env`) the engine already uses for mobile. This path is covered by tests with a fake device; it has not been run on a real device from a release yet.
+
 ## Verdicts (kept apart so a release verdict is honest)
 
 | Verdict | Meaning |
@@ -117,5 +131,6 @@ Only the sandbox cannot reach yes.my; run it from a machine that can. `engine/su
 - authentication beyond the shared release token (real project login and roles)
 - performance and security checks deeper than one page load and one header read (no load test, no scanner run inside a release)
 - login journeys (the login location on yes.my is not yet known)
-- mobile app agents (MyYes on BrowserStack or Appium)
+- real project login and roles (today a shared release token)
+- a real-device run of the mobile release path (built and tested with a fake device; needs your app and an Appium host or BrowserStack)
 - the yes.my suite itself needs refreshing: the live line-up has moved to iPhone 18 and Galaxy Fold 8, so the X500 and iPhone 17 cases are stale

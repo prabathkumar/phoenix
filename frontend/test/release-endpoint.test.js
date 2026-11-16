@@ -3,7 +3,7 @@ const fs = require("fs"); const os = require("os"); const path = require("path")
 const { createReleaseEndpoint } = require("../release-endpoint");
 let failed = 0; async function test(n, f) { try { await f(); console.log(`  ok - ${n}`); } catch (e) { failed += 1; console.log(`  FAIL - ${n}\n    ${e.stack}`); } }
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rel-")); fs.mkdirSync(path.join(dir, "p1"), { recursive: true }); fs.writeFileSync(path.join(dir, "p1", "demo.json"), JSON.stringify({ name: "demo", url: "https://s.my", cases: [{ id: "A", steps: ["x"] }] }));
-function serve(ep) { return new Promise((ok) => { const srv = http.createServer((q, s) => (q.method === "POST" ? ep.start(q, s) : ep.get(q, s))); srv.listen(0, () => ok(srv)); }); }
+function serve(ep) { return new Promise((ok) => { const srv = http.createServer((q, s) => { const m = q.method === "POST" && /^\/api\/projects\/([^/?]+)\/apps/.exec(q.url); return m ? ep.uploadApp(q, s, m[1]) : q.method === "POST" ? ep.start(q, s) : ep.get(q, s); }); srv.listen(0, () => ok(srv)); }); }
 const call = (srv, method, url, body, headers = {}) => new Promise((ok) => { const r = http.request({ port: srv.address().port, method, path: url, headers: { "content-type": "application/json", ...headers } }, (res) => { let s = ""; res.on("data", (c) => (s += c)); res.on("end", () => ok({ code: res.statusCode, body: JSON.parse(s) })); }); r.end(body ? JSON.stringify(body) : undefined); });
 const wait = async (srv, id) => { for (let i = 0; i < 50; i += 1) { const r = await call(srv, "GET", `/api/releases/${id}`); if (r.body.status !== "running") return r; await new Promise((k) => setTimeout(k, 20)); } throw new Error("never finished"); };
 (async () => {
@@ -48,6 +48,23 @@ const wait = async (srv, id) => { for (let i = 0; i < 50; i += 1) { const r = aw
     const ep2 = createReleaseEndpoint({ projectsDir: dir, dataDir: out, token: "", ask: null }); const srv2 = await serve(ep2); // a restart still lists history
     assert.ok((await call(srv2, "GET", "/api/releases?projectId=p1")).body.releases.some((r) => r.releaseId === a.body.releaseId));
     srv.close(); srv2.close();
+  });
+  await test("mobile: apps are uploaded per project, a mobile suite needs its app, and the release runs through the mobile runner", async () => {
+    const out = fs.mkdtempSync(path.join(os.tmpdir(), "relapps-")); fs.mkdirSync(path.join(dir, "m1"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "m1", "app.json"), JSON.stringify({ name: "MyYes", platform: "android", app: { file: "myyes.apk" }, cases: [{ id: "M1", steps: ["Tap Login"] }] }));
+    fs.writeFileSync(path.join(dir, "m1", "nofile.json"), JSON.stringify({ name: "x", platform: "ios", cases: [{ id: "M1", steps: ["x"] }] }));
+    let seen; const ep = createReleaseEndpoint({ projectsDir: dir, dataDir: "", appsDir: out, token: "", ask: null, runRelease: async (suite, o) => { seen = o.runOpts.appFile; return { verdict: "PASS", passed: 1, total: 1, audit: [] }; } });
+    const srv = await serve(ep);
+    assert.strictEqual((await call(srv, "POST", "/api/releases", { projectId: "m1", suite: "app" })).code, 400, "app not uploaded yet");
+    assert.strictEqual((await call(srv, "POST", "/api/releases", { projectId: "m1", suite: "nofile" })).code, 400, "suite names no app");
+    const up = await new Promise((ok) => { const r = http.request({ port: srv.address().port, method: "POST", path: "/api/projects/m1/apps?name=myyes.apk", headers: { "content-type": "application/octet-stream" } }, (res) => { let b = ""; res.on("data", (c) => (b += c)); res.on("end", () => ok({ code: res.statusCode, body: JSON.parse(b) })); }); r.end(Buffer.from("fake-apk-bytes")); });
+    assert.strictEqual(up.code, 201); assert.strictEqual(up.body.app.platform, "android");
+    const bad = await new Promise((ok) => { const r = http.request({ port: srv.address().port, method: "POST", path: "/api/projects/m1/apps?name=../evil.sh" }, (res) => { res.resume(); res.on("end", () => ok(res.statusCode)); }); r.end("x"); });
+    assert.strictEqual(bad, 400);
+    const r = await call(srv, "POST", "/api/releases", { projectId: "m1", suite: "app" }); assert.strictEqual(r.code, 202);
+    await wait(srv, r.body.releaseId); assert.strictEqual(seen, path.join(out, "m1", "myyes.apk"));
+    const list = (await call(srv, "GET", "/api/projects/m1/suites")).body; assert.strictEqual(list.apps[0].name, "myyes.apk"); assert.strictEqual(list.suites.find((x) => x.name === "app").platform, "android");
+    srv.close();
   });
   await test("a crashing release is reported as an error, not lost", async () => {
     const ep = createReleaseEndpoint({ projectsDir: dir, dataDir: "", token: "", ask: null, runRelease: async () => { throw new Error("browser did not start"); } });

@@ -61,5 +61,19 @@ let failed = 0; async function test(n, f) { try { await f(); console.log(`  ok -
     const res = await runRelease({ name: "t", url: "https://s.my", cases: [{ id: "A", steps: ["x"] }] }, { security: false, runOpts: { launch: async () => browser, log: () => {}, runCase: async () => ({ status: "passed", steps: [] }) } });
     assert.strictEqual(res.agents.performance.status, "failed"); assert.match(res.agents.performance.message, /ERR_NAME_NOT_RESOLVED/); assert.strictEqual(res.total, 1); assert.ok(res.agents.reporter.status === "done");
   });
+  await test("a mobile suite runs through the mobile runner: one fresh session per case, app resolved once, sessions closed, web-only checks skipped", async () => {
+    const { runMobileSuite } = require("../agents/mobile");
+    let started = 0, closed = 0, resolved = 0;
+    const startMobile = async (o) => { started += 1; assert.strictEqual(o.capabilityOverrides["appium:app"], "bs://abc"); return { deleteSession: async () => { closed += 1; } }; };
+    const resolveApp = async () => { resolved += 1; return { "appium:app": "bs://abc" }; };
+    const suite = { name: "MyYes", platform: "android", app: { file: "myyes.apk" }, cases: [{ id: "M1", steps: ["a"] }, { id: "M2", steps: ["b"] }] };
+    const runCase = async (c) => (c.id === "M1" ? { status: "passed", steps: [{ status: "passed", text: "a" }] } : { status: "failed", steps: [{ status: "failed", text: "b", reason: "no_match: Tap Login" }] });
+    const res = await runRelease(suite, { heal: false, runOpts: { startMobile, resolveApp, appFile: "/x/myyes.apk", runCase, log: () => {}, runSuiteImpl: (su, o) => runMobileSuite(su, o) } });
+    assert.strictEqual(started, 2); assert.strictEqual(closed, 2); assert.strictEqual(resolved, 1);
+    assert.strictEqual(res.passed, 1); assert.strictEqual(res.failed, 1); assert.strictEqual(res.verdict, "FAIL");
+    assert.strictEqual(res.agents.performance.status, "skipped"); assert.match(res.agents.performance.message, /web only/); assert.match(res.agents.security.message, /web only/);
+    const none = await runMobileSuite({ name: "x", platform: "ios", cases: [{ id: "A", steps: ["x"] }] }, { log: () => {} });
+    assert.strictEqual(none.failed, 1); assert.match(none.results[0].reason, /names no app/);
+  });
   if (failed) process.exit(1); console.log("release-agents tests passed");
 })();

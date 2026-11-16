@@ -108,6 +108,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  { const m = req.method === "POST" && /^\/api\/projects\/([^/?]+)\/apps(\?|$)/.exec(req.url); if (m) { require("./release-endpoint").handleUploadApp(req, res, decodeURIComponent(m[1])); return; } }
   if (req.method === "POST" && req.url === "/api/releases") { require("./release-endpoint").handleStart(req, res); return; }
   if (req.method === "GET" && (/^\/api\/releases(\/|\?|$)/i.test(req.url) || /^\/api\/projects\/[^/]+\/suites(\?|$)/i.test(req.url))) { require("./release-endpoint").handleGet(req, res); return; }
   if (req.method === "GET" && /^\/agent-avatars\/[a-z0-9-]{2,40}\.svg$/.test(req.url)) {

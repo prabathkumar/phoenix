@@ -20,6 +20,8 @@ function rosterByJob() {
   try { for (const r of JSON.parse(fs.readFileSync(path.join(__dirname, "..", "prompts", "agents-roster.json"), "utf8")).agents) for (const j of r.releaseAgents || []) out[j] = { name: r.name, title: r.title, colour: r.colour, avatar: `/agent-avatars/${r.name}.svg` }; } catch { /* names are a bonus */ }
   return out;
 }
+const APP_EXT = /\.(apk|ipa)$/i;
+const APP_NAME = /^[a-z0-9][a-z0-9._-]{0,80}$/i;
 const ID = /^[a-z0-9][a-z0-9_-]{0,63}$/i;
 const UUID = /^[0-9a-f-]{36}$/i;
 
@@ -32,6 +34,8 @@ function createReleaseEndpoint(deps = {}) {
   const token = deps.token !== undefined ? deps.token : process.env.PHOENIX_RELEASE_TOKEN;
   const jobs = deps.roster || rosterByJob();
   const decorate = (agents) => Object.fromEntries(Object.entries(agents || {}).map(([id, a]) => [id, jobs[id] ? { ...a, roster: jobs[id] } : a]));
+  const appsDir = deps.appsDir !== undefined ? deps.appsDir : path.join(process.env.PHOENIX_DATA_DIR || ".", "project-apps");
+  const MAX_APP = 500 * 1024 * 1024;
   const releases = new Map();
   const active = new Map(); // projectId -> releaseId
 
@@ -43,7 +47,7 @@ function createReleaseEndpoint(deps = {}) {
 
   function listSuites(projectId) {
     let files = []; try { files = fs.readdirSync(path.join(projectsDir, projectId)).filter((f) => f.endsWith(".json")); } catch { return null; }
-    return files.map((f) => { const s = readSuite(projectId, f) || {}; return { name: f.replace(/\.json$/, ""), title: s.name || f, url: s.url || "", cases: (s.cases || []).length, skipped: (s.skipped || []).length }; });
+    return files.map((f) => { const s = readSuite(projectId, f) || {}; return { name: f.replace(/\.json$/, ""), title: s.name || f, platform: s.platform || "web", url: s.url || "", app: s.app || null, cases: (s.cases || []).length, skipped: (s.skipped || []).length }; });
   }
 
   const summary = (r) => ({ releaseId: r.id, projectId: r.projectId, suite: r.suite, status: r.status, startedAt: r.startedAt, finishedAt: r.finishedAt || null, verdict: r.result ? r.result.verdict : null, passed: r.result ? r.result.passed : null, total: r.result ? r.result.total : null });
@@ -55,6 +59,24 @@ function createReleaseEndpoint(deps = {}) {
     return [...out.values()].sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)));
   }
 
+  function listApps(projectId) { try { return fs.readdirSync(path.join(appsDir, projectId)).filter((f) => APP_EXT.test(f)).map((f) => ({ name: f, platform: /\.ipa$/i.test(f) ? "ios" : "android", sizeMb: Math.round(fs.statSync(path.join(appsDir, projectId, f)).size / 1048576 * 10) / 10 })); } catch { return []; } }
+
+  /** POST /api/projects/:projectId/apps?name=myyes.apk  (raw body = the file). The mobile app a project's suites run on. */
+  async function uploadApp(req, res, projectId) {
+    if (!authorised(req)) return json(res, 401, { error: "A valid Bearer token is required." });
+    if (!ID.test(projectId)) return json(res, 400, { error: "bad project id" });
+    const name = path.basename(new URLSearchParams(req.url.split("?")[1] || "").get("name") || "");
+    if (!APP_NAME.test(name) || !APP_EXT.test(name)) return json(res, 400, { error: "name must be a file name ending .apk or .ipa (letters, digits, - _ .)" });
+    fs.mkdirSync(path.join(appsDir, projectId), { recursive: true });
+    const dest = path.join(appsDir, projectId, name), tmp = `${dest}.part`;
+    let size = 0, over = false;
+    const out = fs.createWriteStream(tmp);
+    req.on("data", (c) => { size += c.length; if (size > MAX_APP && !over) { over = true; req.destroy(); out.destroy(); } });
+    req.pipe(out);
+    out.on("finish", () => { if (over || !size) { fs.unlink(tmp, () => {}); return json(res, over ? 413 : 400, { error: over ? "App is over 500 MB." : "Empty upload." }); } fs.renameSync(tmp, dest); json(res, 201, { projectId, app: { name, platform: /\.ipa$/i.test(name) ? "ios" : "android", sizeMb: Math.round(size / 1048576 * 10) / 10 } }); });
+    out.on("error", () => { fs.unlink(tmp, () => {}); if (!res.headersSent) json(res, 500, { error: "Could not save the app." }); });
+  }
+
   async function start(req, res) {
     if (!authorised(req)) return json(res, 401, { error: "A valid Bearer token is required." });
     let body; try { body = JSON.parse((await readBody(req)) || "{}"); } catch { return json(res, 400, { error: "Send JSON: {projectId, suite, changed?, heal?}" }); }
@@ -63,6 +85,11 @@ function createReleaseEndpoint(deps = {}) {
     if (!/^[a-z0-9][a-z0-9._-]*$/i.test(name)) return json(res, 400, { error: "suite must be the name of a suite in this project (letters, digits, - _ .)" });
     const suite = readSuite(projectId, name);
     if (!suite) return json(res, 404, { error: `Project ${projectId} has no suite called ${name}.` });
+    let appFile;
+    if (suite.platform === "android" || suite.platform === "ios") {
+      if (suite.app && suite.app.file) { const f = path.join(appsDir, projectId, path.basename(String(suite.app.file))); if (!fs.existsSync(f)) return json(res, 400, { error: `This suite runs on ${suite.app.file}, which has not been uploaded to project ${projectId}. Upload it first.` }); appFile = f; }
+      else if (!(suite.app && suite.app.url)) return json(res, 400, { error: "This mobile suite names no app. Set app.file (uploaded to the project) or app.url (bs://...)." });
+    }
     if (active.has(projectId)) return json(res, 409, { error: "A release is already running for this project.", releaseId: active.get(projectId) });
     const id = crypto.randomUUID();
     const rec = { id, projectId, suite: name, status: "running", startedAt: new Date().toISOString(), agents: initialAgents(), progress: [], result: null, error: null, audit: [] };
@@ -71,7 +98,7 @@ function createReleaseEndpoint(deps = {}) {
     Promise.resolve().then(() => runRelease(suite, {
       changed, ask: ask || undefined, heal: body.heal !== false, perf: body.perf !== false, security: body.security !== false,
       onStatus: (agent, a) => { rec.agents[agent] = { ...rec.agents[agent], ...a }; },
-      runOpts: { log: (line) => { rec.progress.push(String(line)); if (rec.progress.length > 500) rec.progress.shift(); } },
+      runOpts: { appFile, startMobile: deps.startMobile, resolveApp: deps.resolveApp, log: (line) => { rec.progress.push(String(line)); if (rec.progress.length > 500) rec.progress.shift(); } },
       auditSink: (e) => { rec.audit.push(e); },
     })).then((result) => { rec.result = result; rec.status = "done"; rec.agents = { ...rec.agents, ...(result.agents || {}) }; })
       .catch((err) => { rec.status = "error"; rec.error = String((err && err.message) || err); })
@@ -86,7 +113,7 @@ function createReleaseEndpoint(deps = {}) {
     if (!authorised(req)) return json(res, 401, { error: "A valid Bearer token is required." });
     const url = req.url.split("?")[0], q = new URLSearchParams(req.url.split("?")[1] || "");
     let m = /^\/api\/projects\/([^/]+)\/suites$/.exec(url);
-    if (m) { if (!ID.test(m[1])) return json(res, 400, { error: "bad project id" }); const l = listSuites(m[1]); return l ? json(res, 200, { projectId: m[1], suites: l, agents: decorate(initialAgents()) }) : json(res, 404, { error: `No suites for project ${m[1]}.` }); }
+    if (m) { if (!ID.test(m[1])) return json(res, 400, { error: "bad project id" }); const l = listSuites(m[1]); return l ? json(res, 200, { projectId: m[1], suites: l, apps: listApps(m[1]), agents: decorate(initialAgents()) }) : json(res, 404, { error: `No suites for project ${m[1]}.` }); }
     if (url === "/api/releases") { const p = q.get("projectId") || ""; if (!ID.test(p)) return json(res, 400, { error: "projectId is required" }); return json(res, 200, { projectId: p, releases: historyOf(p) }); }
     m = /^\/api\/releases\/([0-9a-f-]{36})(\/audit)?$/i.exec(url);
     if (!m || !UUID.test(m[1])) return json(res, 404, { error: "Not found." });
@@ -100,9 +127,9 @@ function createReleaseEndpoint(deps = {}) {
     json(res, 200, pub);
   }
 
-  return { start, get };
+  return { start, get, uploadApp };
 }
 
 let shared;
 const endpoint = () => (shared = shared || createReleaseEndpoint());
-module.exports = { createReleaseEndpoint, handleStart: (q, s) => endpoint().start(q, s), handleGet: (q, s) => endpoint().get(q, s) };
+module.exports = { createReleaseEndpoint, handleStart: (q, s) => endpoint().start(q, s), handleGet: (q, s) => endpoint().get(q, s), handleUploadApp: (q, s, p) => endpoint().uploadApp(q, s, p) };

@@ -10,6 +10,7 @@ import json
 import os
 import re
 import smtplib
+import threading
 import time
 from collections import deque
 from email.message import EmailMessage
@@ -18,7 +19,8 @@ from urllib.parse import urlparse
 from . import http as _http, logmask
 
 SEVERITY = {"info": 0, "warn": 1, "error": 2}
-EVENTS = {"test": "info", "run-result": "info", "needs-you": "warn", "scan-finding": "warn", "upgrade-promoted": "info", "upgrade-blocked": "warn", "upgrade-rolled-back": "error", "run-failed": "error"}
+HIGH_VOLUME = {"defect-raised", "execution-failed"}   # hundreds a day: never one message each; they are counted and sent as ONE digest
+EVENTS = {"digest": "info", "defect-raised": "warn", "execution-failed": "warn", "test": "info", "run-result": "info", "needs-you": "warn", "scan-finding": "warn", "upgrade-promoted": "info", "upgrade-blocked": "warn", "upgrade-rolled-back": "error", "run-failed": "error"}
 HOSTS = {   # the named platforms only accept their own hosts, so a mistyped or hijacked setting cannot send messages somewhere else
     "slack": r"(^|\.)slack\.com$", "teams": r"(\.webhook\.office\.com|\.logic\.azure\.com|\.powerplatform\.com|\.office\.com)$", "discord": r"^(discord|discordapp)\.com$", "google-chat": r"^chat\.googleapis\.com$",
 }
@@ -114,6 +116,8 @@ def set_routes(env, new):
 
 def wanted(ch, event, severity, env):
     r = routes(env).get(ch) or {}
+    if ch == "email" and (event in HIGH_VOLUME or event == "digest") and event not in (r.get("events") or []):
+        return False                                   # no flood of emails: a channel with a phone's attention (WhatsApp, Teams, the app) gets the digest
     if r.get("off"):
         return False
     if r.get("events") is not None and event not in r["events"]:
@@ -190,10 +194,10 @@ async def _webhook(env, title, body, link, fetch, event="", project="", severity
     return st < 300, f"HTTP {st}"
 
 
-async def _mobile(env, title, body, link, fetch, event="", project="", severity="info"):
+async def _mobile(env, title, body, link, fetch, event="", project="", severity="info", user=""):
     if not _https(env["TESTOPS_PUSH_URL"]):
         return False, "TESTOPS_PUSH_URL must be https"
-    st, _ = await _post(fetch, env["TESTOPS_PUSH_URL"], {"event": event, "severity": severity, "title": title, "body": body, "project": project, "link": link}, {"Authorization": f"Bearer {env['TESTOPS_PUSH_TOKEN']}"} if env.get("TESTOPS_PUSH_TOKEN") else {})
+    st, _ = await _post(fetch, env["TESTOPS_PUSH_URL"], {"event": event, "severity": severity, "title": title, "body": body, "project": project, "link": link, **({"user": user} if user else {})}, {"Authorization": f"Bearer {env['TESTOPS_PUSH_TOKEN']}"} if env.get("TESTOPS_PUSH_TOKEN") else {})
     return st < 300, f"HTTP {st}"
 
 
@@ -385,6 +389,31 @@ def prefs(env, who=None):
     return (d.get(str(who).lower(), {}) if who else d)
 
 
+def personal_phone_allowed(env):
+    """Off by default. A person's own mobile number is personal data (PDPA): Phoenix keeps one only when the organisation has switched this on AND the person typed it in themselves."""
+    return str(env.get("NOTIFY_PERSONAL_PHONE", "")).lower() == "allow"
+
+
+def mask_number(n):
+    d = re.sub(r"\D", "", str(n or ""))
+    return ("+" + "*" * max(len(d) - 4, 0) + d[-4:]) if d else ""
+
+
+def public_prefs(env, who):
+    p = dict(prefs(env, who))
+    if p.get("whatsappNumber"):
+        p["whatsappNumber"] = mask_number(p["whatsappNumber"])
+    return p
+
+
+def erase_prefs(env, who):
+    """The person withdraws: everything Phoenix holds about their notification choices (including any number) is deleted."""
+    allp = prefs(env)
+    gone = allp.pop(str(who).strip().lower(), None) is not None
+    json.dump(allp, open(_prefs_path(env), "w"), indent=1)
+    return gone
+
+
 def set_prefs(env, who, new):
     """A person sets their OWN: {email: bool, whatsapp: bool (opt-in), whatsappNumber?: '+65...', min: info|warn|error, off: bool}."""
     who = str(who).strip().lower()
@@ -396,7 +425,12 @@ def set_prefs(env, who, new):
             clean[k] = bool(new[k])
     if new.get("min") in SEVERITY:
         clean["min"] = new["min"]
+    if (new.get("whatsappNumber") or new.get("whatsapp") is True) and not personal_phone_allowed(env):
+        raise ValueError("personal phone numbers are turned off by your organisation: use Teams, the TestOps app or email")
+    if new.get("whatsapp") is True and not (new.get("whatsappNumber") or prefs(env, who).get("whatsappNumber")):
+        raise ValueError("to get WhatsApp, give your own number (whatsappNumber): it is used only to send you Phoenix alerts, and you can delete it any time")
     if new.get("whatsappNumber"):
+        clean["consentAt"] = int(time.time())
         n = re.sub(r"[\s()-]", "", str(new["whatsappNumber"]))
         if not re.fullmatch(r"\+?\d{8,15}", n):
             raise ValueError("whatsappNumber looks like +6591234567")
@@ -412,7 +446,7 @@ _dir_cache = {}
 
 
 async def directory(upn, env, fetch=_http.fetch):
-    """{name, mail, mobile} for a sign-in address from Microsoft Graph (needs MS_TENANT_ID, MS_CLIENT_ID, MS_CLIENT_SECRET; read-only User.Read.All). None when not set up or not found."""
+    """{name, mail} for a sign-in address (the mobile number is deliberately NOT read: PDPA data minimisation) from Microsoft Graph (needs MS_TENANT_ID, MS_CLIENT_ID, MS_CLIENT_SECRET; read-only User.Read.All). None when not set up or not found."""
     if not all(env.get(k) for k in ("MS_TENANT_ID", "MS_CLIENT_ID", "MS_CLIENT_SECRET")):
         return None
     hit = _dir_cache.get(upn.lower())
@@ -425,13 +459,22 @@ async def directory(upn, env, fetch=_http.fetch):
         tok = json.loads(t or "{}").get("access_token") if st == 200 else None
         if not tok:
             return None
-        st, t = await fetch("GET", f"https://graph.microsoft.com/v1.0/users/{quote(upn, safe='@')}?$select=displayName,mail,mobilePhone,userPrincipalName", {"Authorization": f"Bearer {tok}"}, None)
+        st, t = await fetch("GET", f"https://graph.microsoft.com/v1.0/users/{quote(upn, safe='@')}?$select=displayName,mail,userPrincipalName", {"Authorization": f"Bearer {tok}"}, None)
         u = json.loads(t or "{}") if st == 200 else None
     except Exception:
         return None
-    out = {"name": u.get("displayName", ""), "mail": u.get("mail") or u.get("userPrincipalName") or "", "mobile": u.get("mobilePhone") or "", "token": tok} if u else None
+    out = {"name": u.get("displayName", ""), "mail": u.get("mail") or u.get("userPrincipalName") or "", "token": tok} if u else None
     _dir_cache[upn.lower()] = (time.time(), out)
     return out
+
+
+async def _teams_user(env, tok, upn, title, body, link, fetch):
+    """Teams activity-feed notification to one person (Graph sendActivityNotification). Needs the Phoenix Teams app (id MS_TEAMS_APP_ID) installed for them and the TeamsActivity.Send permission; its manifest must declare the activity type `phoenixAlert`."""
+    from urllib.parse import quote
+    st, _ = await fetch("POST", f"https://graph.microsoft.com/v1.0/users/{quote(upn, safe='@')}/teamwork/sendActivityNotification", {"Authorization": f"Bearer {tok}", "Content-Type": "application/json"},
+                        json.dumps({"topic": {"source": "text", "value": "Phoenix", "webUrl": link if _https(link) else env.get("PHOENIX_PUBLIC_URL", "https://teams.microsoft.com")}, "activityType": "phoenixAlert",
+                                    "previewText": {"content": body[:150]}, "templateParameters": [{"name": "alert", "value": title[:100]}]}))
+    return st < 300, f"HTTP {st}"
 
 
 async def _graph_mail(env, tok, sender, to, title, body, fetch):
@@ -448,7 +491,7 @@ async def _to_person(who, event, sev, title, body, link, env, fetch, sleep):
     d = await directory(who, env, fetch)
     if _via_courier(env):                                   # one call: Courier chooses the channels; the phone is added only for people who opted in to WhatsApp
         to = {"email": (d or {}).get("mail") or who}
-        num = p.get("whatsappNumber") or (d or {}).get("mobile")
+        num = p.get("whatsappNumber") if personal_phone_allowed(env) else None
         if p.get("whatsapp") is True and num:
             to["phone_number"] = num
         try:
@@ -467,22 +510,82 @@ async def _to_person(who, event, sev, title, body, link, env, fetch, sleep):
                 out["email"] = {"ok": ok, "detail": det}
         except Exception as e:
             out["email"] = {"ok": False, "detail": str(e)[:100]}
-    if p.get("whatsapp") is True and (channels({**env, "WHATSAPP_TO": "+0"}).get("whatsapp")):   # only people who opted in; WhatsApp does not allow anything else
-        num = p.get("whatsappNumber") or (d or {}).get("mobile")
-        if num:
-            try:
-                ok, det = await _whatsapp({**env, "WHATSAPP_TO": num}, title, body, link, fetch)
-                out["whatsapp"] = {"ok": ok, "detail": det}
-            except Exception as e:
-                out["whatsapp"] = {"ok": False, "detail": str(e)[:100]}
-        else:
-            out["whatsapp"] = {"ok": False, "detail": "no mobile number in the directory and none given"}
-    return out or {"person": {"ok": False, "detail": "no way to reach this person: no email channel set up and no WhatsApp opt-in"}}
+    if env.get("TESTOPS_PUSH_URL"):                          # the TestOps app: addressed by sign-in, never by phone number
+        try:
+            ok, det = await _mobile({**env}, title, body, link, fetch, event=event, project="", severity=sev, user=who)
+            out["testops-mobile"] = {"ok": ok, "detail": det}
+        except Exception as e:
+            out["testops-mobile"] = {"ok": False, "detail": str(e)[:100]}
+    if d and env.get("MS_TEAMS_APP_ID"):                     # Teams activity feed: shows in the Teams app on their phone and desktop, no number involved
+        try:
+            ok, det = await _teams_user(env, d["token"], who, title, body, link, fetch)
+            out["teams"] = {"ok": ok, "detail": det}
+        except Exception as e:
+            out["teams"] = {"ok": False, "detail": str(e)[:100]}
+    if p.get("whatsapp") is True and personal_phone_allowed(env) and channels({**env, "WHATSAPP_TO": "+0"}).get("whatsapp") and p.get("whatsappNumber"):   # only a number the person typed in themselves
+        try:
+            ok, det = await _whatsapp({**env, "WHATSAPP_TO": p["whatsappNumber"]}, title, body, link, fetch)
+            out["whatsapp"] = {"ok": ok, "detail": det}
+        except Exception as e:
+            out["whatsapp"] = {"ok": False, "detail": str(e)[:100]}
+    return out or {"person": {"ok": False, "detail": "no way to reach this person: set up email, the TestOps app or the Teams app"}}
 
 
 async def _post_courier_person(env, title, body, link, to, fetch):
     st, _ = await _post(fetch, "https://api.courier.com/send", _courier_body(env, title, body, link, to), {"Authorization": f"Bearer {env['COURIER_AUTH_TOKEN']}"})
     return st < 300, f"HTTP {st}"
+
+
+# ---- digest: defects raised and executions failed are counted, then sent as one short message every NOTIFY_DIGEST_MINUTES (default 15)
+_buf, _lock = {}, threading.Lock()
+_flusher = {"started": False}
+NAMES = {"defect-raised": "defect(s) raised", "execution-failed": "execution(s) failed"}
+
+
+def collect(kind, project, detail, env, start=True):
+    """Count one high-volume event. Never blocks and never raises. The first call starts the background sender."""
+    if kind not in HIGH_VOLUME:
+        return False
+    with _lock:
+        b = _buf.setdefault(project or "-", {}).setdefault(kind, {"n": 0, "samples": []})
+        b["n"] += 1
+        if len(b["samples"]) < 5 and detail:
+            b["samples"].append(logmask.mask(str(detail), 80))
+    if start and not _flusher["started"] and channels(env):
+        _flusher["started"] = True
+        threading.Thread(target=_loop, args=(env,), daemon=True).start()
+    return True
+
+
+def digest_message(snapshot, minutes):
+    total = {k: sum(p.get(k, {}).get("n", 0) for p in snapshot.values()) for k in HIGH_VOLUME}
+    lines = []
+    for proj, kinds in sorted(snapshot.items(), key=lambda x: -sum(v["n"] for v in x[1].values()))[:6]:
+        lines.append(f"{proj}: " + ", ".join(f"{v['n']} {NAMES[k]}" for k, v in kinds.items()) + ((" (e.g. " + "; ".join(next(iter(kinds.values()))["samples"][:2]) + ")") if next(iter(kinds.values()))["samples"] else ""))
+    head = f"Last {minutes} min: " + ", ".join(f"{total[k]} {NAMES[k]}" for k in ("defect-raised", "execution-failed") if total[k])
+    return head, "\n".join(lines) + (f"\n(+{len(snapshot) - 6} more projects)" if len(snapshot) > 6 else "")
+
+
+async def flush_digest(env, fetch=_http.fetch, minutes=None, **kw):
+    """Send what has been counted as ONE message and clear the counters. Nothing counted: nothing sent."""
+    with _lock:
+        snap = {pj: dict(k) for pj, k in _buf.items() if k}
+        _buf.clear()
+    if not snap:
+        return {}
+    minutes = minutes or int(env.get("NOTIFY_DIGEST_MINUTES", 15) or 15)
+    head, body = digest_message(snap, minutes)
+    return await send("digest", head, body, env, fetch=fetch, force=False, **kw)
+
+
+def _loop(env):
+    every = max(1, int(env.get("NOTIFY_DIGEST_MINUTES", 15) or 15)) * 60
+    while True:
+        time.sleep(every)
+        try:
+            asyncio.run(flush_digest(env))
+        except Exception:  # noqa: BLE001  the digest never takes the platform down
+            pass
 
 
 def recent(n=50):

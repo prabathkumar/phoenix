@@ -367,7 +367,7 @@ def create_app(deps: Deps | None = None) -> FastAPI:
         from . import notify
         if "@" not in x_user:
             raise HTTPException(401, "Sign in first (X-User is your work address).")
-        return {"who": x_user, "prefs": notify.prefs(D.env, x_user)}
+        return {"who": x_user, "prefs": notify.public_prefs(D.env, x_user), "personalPhone": notify.personal_phone_allowed(D.env)}
 
     @app.put("/api/notify/me")
     def notify_me_put(body: dict = Body(...), x_user: str = Header(default="")):
@@ -376,9 +376,29 @@ def create_app(deps: Deps | None = None) -> FastAPI:
         if "@" not in x_user:
             raise HTTPException(401, "Sign in first (X-User is your work address).")
         try:
-            return {"who": x_user, "prefs": notify.set_prefs(D.env, x_user, body)}
+            notify.set_prefs(D.env, x_user, body)
+            return {"who": x_user, "prefs": notify.public_prefs(D.env, x_user)}
         except ValueError as e:
             raise HTTPException(400, str(e))
+
+    @app.delete("/api/notify/me")
+    def notify_me_erase(x_user: str = Header(default="")):
+        """Withdraw: delete everything Phoenix holds about this person's notification choices, including any number."""
+        from . import notify
+        if "@" not in x_user:
+            raise HTTPException(401, "Sign in first (X-User is your work address).")
+        gone = notify.erase_prefs(D.env, x_user)
+        logstore.record("user_action", {"project": "", "who": x_user, "action": "erase-notify-data", "subject": "self", "status": "ok" if gone else "nothing-held"}, D.env)
+        return {"erased": gone}
+
+    @app.post("/api/notify/digest")
+    async def notify_digest(x_user: str = Header(default="")):
+        """Send the digest now (defects raised and executions failed since the last one) instead of waiting for the timer."""
+        from . import notify
+        if not x_user.strip():
+            raise HTTPException(401, "Say who you are (X-User).")
+        r = await notify.flush_digest(D.env)
+        return {"sent": r, "detail": "nothing new to report" if not r else "sent"}
 
     @app.post("/api/notify/test")
     async def notify_test(body: dict = Body(default={}), x_user: str = Header(default="")):

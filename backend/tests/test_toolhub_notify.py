@@ -175,10 +175,18 @@ def test_twilio_whatsapp_and_people_from_the_microsoft_directory(tmp_path):
     sent.clear()
     r = asyncio.run(notify.send("needs-you", "T4", "B4", env, fetch=fetch, force=True, only=["none"], to=["ann@ytl.com"]))
     assert r["email:ann@ytl.com"]["ok"] and "whatsapp:ann@ytl.com" not in r and any("/sendMail" in x[1] for x in sent)
-    notify.set_prefs(env, "Ann@ytl.com", {"whatsapp": True})
+    with pytest.raises(ValueError, match="turned off by your organisation"):
+        notify.set_prefs(env, "Ann@ytl.com", {"whatsapp": True, "whatsappNumber": "+6591234567"})        # PDPA: off unless the organisation allows it
+    env["NOTIFY_PERSONAL_PHONE"] = "allow"
+    with pytest.raises(ValueError, match="give your own number"):
+        notify.set_prefs(env, "Ann@ytl.com", {"whatsapp": True})                                          # never taken from the directory
+    notify.set_prefs(env, "Ann@ytl.com", {"whatsapp": True, "whatsappNumber": "+6591234567"})
+    assert notify.prefs(env, "ann@ytl.com")["consentAt"] and notify.public_prefs(env, "ann@ytl.com")["whatsappNumber"] == "+******4567"
+    assert not any("mobilePhone" in x[1] for x in sent), "the directory is asked for name and mail only"
     sent.clear()
     r = asyncio.run(notify.send("needs-you", "T5", "B5", env, fetch=fetch, force=True, only=["none"], to=["ann@ytl.com"]))
     assert r["whatsapp:ann@ytl.com"]["ok"] and "To=whatsapp%3A%2B6591234567" in next(x for x in sent if "twilio" in x[1])[3]
+    assert notify.erase_prefs(env, "ann@ytl.com") and notify.prefs(env, "ann@ytl.com") == {}               # withdrawal deletes everything held, the number included
     notify.set_prefs(env, "ann@ytl.com", {"off": True})
     assert "turned notifications off" in asyncio.run(notify.send("needs-you", "T6", "B6", env, fetch=fetch, force=True, only=["none"], to=["ann@ytl.com"]))["person:ann@ytl.com"]["detail"]
     for bad in ({"whatsappNumber": "call me"},):
@@ -195,6 +203,7 @@ def test_twilio_signature_matches_the_published_example_and_forgeries_change_not
     from phoenix_api.app import create_app
     from phoenix_api.service import Deps
     env = {"PHOENIX_DATA_DIR": str(tmp_path), "TWILIO_AUTH_TOKEN": "tk", "PHOENIX_PUBLIC_URL": "https://phoenix.example.com"}
+    env["NOTIFY_PERSONAL_PHONE"] = "allow"
     notify.set_prefs(env, "ann@ytl.com", {"whatsapp": True, "whatsappNumber": "+6591234567"})
     c = TestClient(create_app(Deps(env=env)))
     form = {"From": "whatsapp:+6591234567", "Body": "stop"}
@@ -252,6 +261,7 @@ def test_courier_is_the_one_sender_for_shared_and_personal_messages(tmp_path):
     sent.clear()
     asyncio.run(notify.send("needs-you", "C2", "sign off", env, fetch=fetch, to=["ann@ytl.com"], only=["none"]))
     assert sent[0][2]["message"]["to"] == {"email": "ann@ytl.com"}
+    env["NOTIFY_PERSONAL_PHONE"] = "allow"
     notify.set_prefs(env, "ann@ytl.com", {"whatsapp": True, "whatsappNumber": "+6591234567"})
     sent.clear()
     asyncio.run(notify.send("needs-you", "C3", "sign off", env, fetch=fetch, to=["ann@ytl.com"], only=["none"]))
@@ -299,3 +309,49 @@ def test_self_hosted_apprise_container_is_a_channel_and_sms_or_call_urls_are_ref
     far = asyncio.run(notify.send("test", "A4", "x", {**base, "APPRISE_URL": "http://evil.example.com", "APPRISE_KEY": "k"}, fetch=fetch, force=True))
     assert not far["apprise"]["ok"] and not sent
     assert notify._apprise_urls_ok(["tgram://x/y", "sms://x"])[0] is False and notify._apprise_urls_ok(["mailto://u:p@host"])[0] is True
+
+
+def test_enterprise_routes_reach_people_without_any_phone_number(tmp_path):
+    sent = []
+
+    async def fetch(m, url, h, body):
+        sent.append((url, json.loads(body) if body and body.startswith("{") else body))
+        if "login.microsoftonline.com" in url:
+            return 200, '{"access_token": "TOK"}'
+        if m == "GET":
+            return 200, json.dumps({"displayName": "Ann", "mail": "ann@ytl.com", "userPrincipalName": "ann@ytl.com"})
+        return 200, "{}"
+    env = {"PHOENIX_DATA_DIR": str(tmp_path), "MS_TENANT_ID": "t", "MS_CLIENT_ID": "c", "MS_CLIENT_SECRET": "s", "MS_MAIL_SENDER": "phoenix@ytl.com", "MS_TEAMS_APP_ID": "app-1",
+           "TESTOPS_PUSH_URL": "https://push.example.com/p", "WHATSAPP_TOKEN": "w", "WHATSAPP_PHONE_ID": "1", "WHATSAPP_TO": "+6590000000"}
+    r = asyncio.run(notify.send("needs-you", "E1", "sign off", env, fetch=fetch, force=True, only=["none"], to=["ann@ytl.com"]))
+    assert set(r) == {"email:ann@ytl.com", "teams:ann@ytl.com", "testops-mobile:ann@ytl.com"} and all(v["ok"] for v in r.values())
+    assert any("sendActivityNotification" in u for u, _ in sent)
+    push = next(b for u, b in sent if "push.example.com" in u)
+    assert push["user"] == "ann@ytl.com" and "phone" not in json.dumps(push)
+    assert not any("graph.facebook.com" in u for u, _ in sent), "no WhatsApp to a person who gave no number"
+
+
+def test_defects_and_failures_become_one_whatsapp_digest_and_never_a_flood_of_emails(tmp_path):
+    sent = []
+
+    async def fetch(m, url, h, body):
+        sent.append((url, json.loads(body) if body.startswith("{") else body))
+        return 200, "{}"
+    env = {"PHOENIX_DATA_DIR": str(tmp_path), "WHATSAPP_TOKEN": "w", "WHATSAPP_PHONE_ID": "1", "WHATSAPP_TO": "+6590000000", "SMTP_HOST": "smtp.invalid", "SMTP_FROM": "p@ytl.com", "EMAIL_TO": "team@ytl.com"}
+    notify._buf.clear()
+    for i in range(1200):
+        notify.collect("execution-failed", "SHOP", f"case {i}", env, start=False)
+    for i in range(40):
+        notify.collect("defect-raised", "SHOP", f"SHOP-{i}", env, start=False)
+    notify.collect("defect-raised", "BANK", "BANK-1", env, start=False)
+    assert not notify.collect("run-result", "SHOP", "x", env, start=False)
+    assert sent == [], "counting sends nothing"
+    r = asyncio.run(notify.flush_digest(env, fetch=fetch, minutes=15))
+    assert set(r) == {"whatsapp"}, "email is left out of high-volume digests unless a route names it"
+    assert len(sent) == 1
+    text = sent[0][1]["text"]["body"]
+    assert "41 defect(s) raised" in text and "1200 execution(s) failed" in text and "SHOP: 1200 execution(s) failed, 40 defect(s) raised" in text and len(text) < 500
+    assert asyncio.run(notify.flush_digest(env, fetch=fetch)) == {} and len(sent) == 1, "nothing counted, nothing sent"
+    notify.set_routes(env, {"email": {"events": ["digest"]}})
+    notify.collect("defect-raised", "SHOP", "SHOP-99", env, start=False)
+    assert "email" in asyncio.run(notify.flush_digest(env, fetch=fetch))

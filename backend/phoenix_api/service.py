@@ -112,6 +112,12 @@ async def run_pipeline_request(body, deps: Deps):
             for cid in p["notRun"]:
                 signoff.record_execution(run_id, cid, "skipped", who, "", f"left out of a partial suite ({p['picked']} of {p['total']} in '{p['scenario']}')", 0, url)
         failed_cases.extend(r.get("failedCases", []))
+        try:
+            from . import notify as _n
+            for c in r.get("failedCases", []):
+                _n.collect("execution-failed", project or "", c.get("name", ""), env)       # counted, then sent as one digest, never one message each
+        except Exception:  # noqa: BLE001
+            pass
         if r.get("harPath"):
             state["harPath"] = r["harPath"]
         return {"ok": r.get("ok", False), "detail": r.get("detail", ""), "data": {"failedCases": [{"name": c["name"]} for c in r.get("failedCases", [])], "partial": partial}}
@@ -123,7 +129,9 @@ async def run_pipeline_request(body, deps: Deps):
         r = await J.defects_handler(deps.jira, jira_key, list(values.values()))({**ctx, "failedCases": failed_cases})
         try:  # each defect the run found goes to the defect log (found in the system test phase), for leakage and detection numbers
             from . import logstore
+            from . import notify as _n
             for m in (r.get("data") or {}).get("defects", []):
+                _n.collect("defect-raised", project or "", m.get("key", ""), env)
                 logstore.record("defect", {"project": project, "run": run_id, "dkey": m.get("key", ""), "found_in": "system", "severity": m.get("severity", ""), "status": "open", "source": "pipeline"}, env)
         except Exception:  # noqa: BLE001
             pass

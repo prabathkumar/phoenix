@@ -56,3 +56,11 @@ Open source (BSD-2). One container reaches 100+ services, including WhatsApp, Sl
 - **No SMS and no calls:** when Phoenix hands Apprise the URLs, any SMS or voice scheme (twilio, sns, vonage, clicksend, ...) is refused and nothing is sent. Configs saved inside the container are outside Phoenix's sight: keep SMS and voice services out of them.
 - It is in `tools/tools.json`, so it upgrades through the same VA gate. The image name `caronc/apprise` is from memory: confirm it on the first pull. Nothing was run against a real Apprise container here.
 - It sits beside the other channels, Courier included.
+
+## PDPA: no personal phone numbers by default, and WhatsApp as a digest
+Not legal advice: have your DPO confirm.
+- **Phoenix does not read anyone's mobile number from the directory.** It asks Microsoft Graph for name and work mail only.
+- **People are reached by sign-in, not by number:** the Teams app (activity feed, which shows on their phone), the TestOps mobile app (the push carries their sign-in, `user`), and work email. Teams personal push needs the Phoenix Teams app installed for them (`MS_TEAMS_APP_ID`, permission `TeamsActivity.Send`; the manifest declares the activity type `phoenixAlert`); that app package is not built yet.
+- **Personal WhatsApp is off.** `NOTIFY_PERSONAL_PHONE=allow` switches it on; even then only a number the person types in themselves (with their consent time kept) is used, it is shown masked, and `DELETE /api/notify/me` erases it and all their choices.
+- **WhatsApp for the team goes to company-owned numbers** set by an administrator in `WHATSAPP_TO` (for example an on-call phone issued by YTL), not to numbers collected from users.
+- **No flood of emails:** `defect-raised` and `execution-failed` are counted, then sent as ONE short message every `NOTIFY_DIGEST_MINUTES` (default 15), for example "Last 15 min: 41 defect(s) raised, 1201 execution(s) failed", with the top projects and a few examples. Email never gets these unless a route names `digest` for it. `POST /api/notify/digest` sends it now. Urgent things (a run waiting for you, a blocked or rolled-back upgrade) still go out at once.

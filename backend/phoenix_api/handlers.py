@@ -639,3 +639,65 @@ def evidence_handler(project="", run_id="", env=None, dirs=None):
         return {"ok": v["ok"], "detail": f"{b['files']} file(s) packed ({b['rawBytes']} to {b['packedBytes']} bytes), " + ("checked: all good" if v["ok"] else "check FAILED: " + "; ".join(v["problems"][:2])) + f"; the AI was given the digest{' and a training example to label' if trained else ' (training capture is off)'}",
                 "data": {"archive": b["path"], "ratio": b["ratio"], "validation": v, "screenshots": v["screenshots"]}}
     return h
+
+
+def revalidate_handler(connect_repo, fetch=_http.fetch, env=None, run=None, which=None):
+    """The agents check what the AI wrote, again: FLAKY (everything repeated, mixed results are named), FUNCTIONAL (the API cases from the schema) and
+    NEGATIVE (invalid data from the schema and synthetic hostile data on every text field: never a 5xx, never accepted when invalid).
+    Request: repoRequest {provider, project, apiBaseUrl?, allowWrites?, dir?, repeat?}. Any part with nothing to run is said plainly."""
+    async def h(ctx):
+        from . import api_layer, api_functional as AF, logstore, test_connectors as tcx
+        rq = ctx.get("repoRequest") or {}
+        times = max(2, min(int(rq.get("repeat") or 3), 10))
+        run_id = str(ctx.get("run") or int(time.time()))
+        project, parts, flaky, bad = ctx.get("project", ""), {}, [], []
+        base = rq.get("apiBaseUrl") or ctx.get("apiBaseUrl")
+        if base and rq.get("project"):
+            if safe_target(base):
+                return {"unavailable": True, "detail": f"apiBaseUrl not allowed: {safe_target(base)}"}
+            try:
+                repo = connect_repo(rq)
+                ref = rq.get("ref") or await repo.default_branch()
+                allf = await repo.list_files(ref)
+                texts = {}
+                for f in [f for f in allf if api_layer.SPEC_NAME.search(f)][:3] + unit_tests_pick(allf, rq.get("languages"), {})[:60]:
+                    try:
+                        texts[f] = await repo.read_file(f, ref)
+                    except Exception:
+                        pass
+                eps = api_layer.analyse(allf, texts, unit_tests.language_of)["endpoints"]
+            except Exception as e:
+                return {"unavailable": True, "detail": str(e)}
+            key = str((rq.get("requirement") or {}).get("key") or "")[:40]
+            for label, cases in (("functional", AF.build_cases(eps, key)), ("negative", [c for c in AF.build_cases(eps, key) if c["expect"]["status"] == "4xx" or c["expect"]["status"] == 404] + AF.hostile_cases(eps, key))):
+                if not cases:
+                    parts[label] = {"ran": 0, "detail": "no cases (no API calls found)"}
+                    continue
+                rows, fl = await AF.run_repeated(base, cases, fetch, times, bool(rq.get("allowWrites")), (env if env is not None else os.environ).get("API_TOKEN", ""))
+                ran = [r for r in rows if r["result"] != "skipped"]
+                failed = [r for r in ran if r["result"] == "failed"]
+                parts[label] = {"ran": len(ran), "failed": len(failed), "flaky": len(fl), "skipped": len(rows) - len(ran), "firstFailures": [f"{r['name']}: {r['detail']}" for r in failed[:5]]}
+                flaky += fl
+                bad += [f"{label}: {r['name']}" for r in failed]
+                for r in ran:
+                    logstore.record("unit_result", {"project": project, "run": run_id, "requirement": key, "language": "api", "kind": label, "test": r["name"], "status": "failed" if r["result"] in ("failed", "flaky") else "passed", "ms": 0}, env)
+        if rq.get("dir"):
+            rep = {"dir": rq["dir"], **{k: rq[k] for k in ("languages",) if k in rq}}
+            seen, tallies = {}, 0
+            for n in range(times):
+                r = await unitrun_handler(project, f"{run_id}-r{n + 1}", env, run, which)({"repoRequest": rep})
+                if r.get("unavailable"):
+                    parts["unit"] = {"ran": 0, "detail": r["detail"]}
+                    break
+                tallies += 1
+                for x in (r.get("data") or {}).get("runs", []):
+                    seen.setdefault((x["language"], x["kind"]), []).append(x["ok"])
+            if tallies:
+                fl = [f"{l} {k}" for (l, k), v in seen.items() if len(set(v)) > 1]
+                parts["unit"] = {"ran": tallies, "flaky": len(fl), "failed": sum(1 for v in seen.values() if not all(v))}
+                flaky += [f"unit: {x}" for x in fl]
+                bad += [f"unit: {l} {k} failed" for (l, k), v in seen.items() if not any(v)]
+        if not any(p.get("ran") for p in parts.values()):
+            return {"unavailable": True, "detail": "nothing to re-check: give a repo with apiBaseUrl (API checks) and/or a checkout folder (unit and integration checks)" if not parts else "; ".join(f"{k}: {v.get('detail', 'nothing ran')}" for k, v in parts.items()), "data": {"parts": parts}}
+        return {"ok": not bad and not flaky, "detail": f"repeated {times} times: {len(bad)} failing, {len(flaky)} flaky" + (f" (first: {(bad or flaky)[0]})" if bad or flaky else ""), "data": {"parts": parts, "flaky": flaky[:30], "failing": bad[:30], "times": times}}
+    return h

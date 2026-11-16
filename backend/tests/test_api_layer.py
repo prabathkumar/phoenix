@@ -119,3 +119,42 @@ def test_api_tests_written_with_markers():
     assert "@group integration" in U.mark_integration("php", "<?php\nfinal class A {}")[0]
     empty = asyncio.run(U.generate_api_tests(eps, None, lambda p: asyncio.sleep(0, {"code": ""}), lambda n, p: {"text": "T"}))
     assert empty["skipped"] and not empty["files"]
+
+
+def test_hostile_data_and_flaky_detection():
+    eps = A.analyse(["openapi.json"], {"openapi.json": SPEC}, U.language_of)["endpoints"]
+    hc = F.hostile_cases(eps)
+    assert any("hostile name (empty)" in c["name"] for c in hc) and any("DROP TABLE" in json.dumps(c["body"]) for c in hc) and all(c["expect"]["status"] == "not5xx" for c in hc)
+    assert not any("age" in c["name"] for c in hc), "only text fields get hostile text"
+    n = {"calls": 0}
+
+    async def fetch(m, url, h, body):
+        if body and "DROP TABLE" in body:
+            return 500, "boom"                          # hostile input crashes the server
+        if m == "GET" and url.endswith("/users/1"):
+            n["calls"] += 1
+            return (200, '{"id": 1, "name": "a"}') if n["calls"] % 2 else (503, "")   # every other answer fails: flaky
+        return (404, "{}") if url.endswith("999999999") else (400, "{}")
+    rows, flaky = asyncio.run(F.run_repeated("http://x", F.build_cases(eps), fetch, times=4))
+    assert any("users/{id} with valid data" in f for f in flaky)
+    hrows, _ = asyncio.run(F.run_repeated("http://x", hc, fetch, times=2, allow_writes=True))
+    assert any(r["result"] == "failed" and "server error 500" in r["detail"] for r in hrows)
+    assert any(r["result"] == "passed" for r in hrows)
+
+
+def test_revalidate_handler_reports_failing_flaky_and_says_when_nothing_ran():
+    files = {"openapi.json": SPEC}
+    state = {"n": 0}
+
+    async def fetch(m, url, h, body):
+        if body and "DROP TABLE" in body:
+            return 500, ""
+        if m == "GET" and url.endswith("/users/1"):
+            state["n"] += 1
+            return (200, '{"id": 1, "name": "a"}') if state["n"] % 2 else (500, "")
+        return (404, "{}") if url.endswith("999999999") else (400, "{}")
+    r = asyncio.run(H.revalidate_handler(lambda rq: FakeRepo(files), fetch=fetch, env={})({"repoRequest": {"project": "o/n", "apiBaseUrl": "http://localhost:3000", "allowWrites": True, "repeat": 2}}))
+    assert r["ok"] is False and r["data"]["parts"]["functional"]["ran"] > 0 and r["data"]["parts"]["negative"]["failed"] > 0 and "failing" in r["detail"]
+    none = asyncio.run(H.revalidate_handler(lambda rq: FakeRepo(files), fetch=fetch)({"repoRequest": {"project": "o/n"}}))
+    assert none["unavailable"] and "nothing to re-check" in none["detail"]
+    assert asyncio.run(H.revalidate_handler(lambda rq: FakeRepo(files), fetch=fetch)({"repoRequest": {"project": "o/n", "apiBaseUrl": "http://169.254.169.254"}}))["unavailable"]

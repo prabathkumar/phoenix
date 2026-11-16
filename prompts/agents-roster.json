@@ -94,7 +94,8 @@
    "stages": [
     "secrets",
     "sast",
-    "traceability"
+    "traceability",
+    "revalidate"
    ],
    "description": "Scans for leaked secrets and code flaws, and checks requirements against what is built.",
    "goal": "Scan for committed secrets and insecure code, and check that every requirement has something built and a test. List findings with where they are.",

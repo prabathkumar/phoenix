@@ -26,6 +26,7 @@ STAGES = [
     {"id": "traceability", "name": "Requirements vs what is built (repo)", "needs": []},
     {"id": "unittests", "name": "Unit and API integration tests written by the AI (many languages)", "needs": []},
     {"id": "unitrun", "name": "Unit and integration tests run (language by language)", "needs": []},
+    {"id": "revalidate", "name": "Flaky, functional and negative checks repeated by the agents (AI-written tests, synthetic data)", "needs": []},
     {"id": "testspr", "name": "Pull/merge request with the tests (GitHub or GitLab)", "needs": ["unittests"]},
     # 3. after the deployment: is the app up, then the security test
     {"id": "deployed", "name": "Deployment check: the app answers", "needs": []},

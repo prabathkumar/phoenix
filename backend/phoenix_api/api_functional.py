@@ -55,7 +55,46 @@ def check_shape(schema, data, path="$"):
     return bad[:5]
 
 
+HOSTILE = ["", "   ", "A" * 5000, "'; DROP TABLE users;--", "<script>alert(1)</script>", "../../etc/passwd", "\u0000", "\U0001F600" * 40, "-1", "9" * 40]
+
+
+def hostile_cases(endpoints, requirement_key="", per_field=3):
+    """Synthetic negative data: for every string field of every request body, a few hostile values. The API may accept or reject them but must NEVER fail with a 5xx."""
+    cases, tag = [], f"{requirement_key} " if requirement_key else ""
+    for e in endpoints:
+        req = (e.get("testData") or {}).get("request") or {}
+        valid, props = req.get("valid"), ((e.get("requestSchema") or {}).get("properties") or {})
+        if not isinstance(valid, dict):
+            continue
+        for k, sch in props.items():
+            if not isinstance(sch, dict) or sch.get("type", "string") != "string":
+                continue
+            for v in HOSTILE[:per_field] + HOSTILE[3:5]:
+                body = {**valid, k: v}
+                cases.append({"name": f"{tag}{e['method']} {e['path']}: hostile {k} ({_label(v)})", "method": e["method"], "path": _fill(e["path"], {p: 1 for p in e.get("pathParams") or []}), "body": body, "expect": {"status": "not5xx"}, "writes": True, "call": f"{e['method']} {e['path']}"})
+    return cases
+
+
+def _label(v):
+    return "empty" if v == "" else "blank" if not v.strip() else f"{len(v)} chars" if len(v) > 40 else v[:20]
+
+
+async def run_repeated(base, cases, fetch, times=3, allow_writes=False, token=""):
+    """Every case `times` times. A case that does not give the same result every time is FLAKY. -> (per-case rows, flaky names)."""
+    runs = [await run_cases(base, cases, fetch, allow_writes, token) for _ in range(max(1, min(times, 10)))]
+    rows, flaky = [], []
+    for i, c in enumerate(cases):
+        rs = [r[i]["result"] for r in runs if r[i]["result"] != "skipped"]
+        verdict = "skipped" if not rs else "flaky" if len(set(rs)) > 1 else rs[0]
+        if verdict == "flaky":
+            flaky.append(c["name"])
+        rows.append({"name": c["name"], "call": c["call"], "result": verdict, "passed": rs.count("passed"), "of": len(rs), "detail": next((r[i]["detail"] for r in runs if r[i]["result"] == "failed"), "ok")})
+    return rows, flaky
+
+
 def _status_ok(expect, status):
+    if expect == "not5xx":
+        return status < 500
     if isinstance(expect, list):
         return status in expect
     if isinstance(expect, int):

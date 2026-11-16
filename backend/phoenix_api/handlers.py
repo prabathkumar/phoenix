@@ -317,8 +317,25 @@ def signoff_handler(run_id, url=None, actor="Phoenix AI"):
     return h
 
 
-def feedback_handler(directory="logs/reports"):
+def measure_handler(project="", url=None, env=None):
+    """Gauge: computes the KPIs and the indicative TMMI view from this platform's own logs and says where it stands. Reads only; changes nothing."""
     async def h(ctx):
+        from . import kpi
+        r = kpi.report(project or None, 30, url, env)
+        k, t = r["kpis"], r["tmmi"]
+        q = r["quality"]
+        return {"ok": True, "detail": f"pass rate {k['passRate']}, flaky {k['flakyRate']}, defect leakage {q['defectLeakage']}, unit-test leakage {q['unitTestLeakage']}, DDP {q['defectDetectionPercentage']}; indicative TMMI level {t['achieved']}", "data": {"kpis": k, "quality": q, "tmmi": t["achieved"]}}
+    return h
+
+
+def feedback_handler(directory="logs/reports", project="", run_id=""):
+    async def h(ctx):
+        try:  # every stage of the run also goes to the log store, so the run is queryable by project, agent and day
+            from . import logstore
+            for s_ in ctx.get("results", []):
+                logstore.record("agent_event", {"project": project, "run": run_id, "agent": s_["id"], "event": "stage", "status": s_["status"], "ms": s_.get("ms", 0), "detail": str(s_.get("detail") or "")[:300]})
+        except Exception:  # noqa: BLE001
+            pass
         Path(directory).mkdir(parents=True, exist_ok=True)
         f = Path(directory, f"{int(time.time() * 1000)}.json")
         f.write_text(json.dumps({"goal": ctx.get("goal", ""), "stages": [{"id": s["id"], "status": s["status"], "detail": str(s.get("detail") or "")[:300]} for s in ctx.get("results", [])]}, indent=2))

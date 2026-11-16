@@ -1,17 +1,191 @@
 {
-  "_note": "The named agent team. One agent per pipeline stage group. Read by the Python API (seeds them as saved agents) and by the Node engine (names and avatars on the release page). Edit names, titles, icons and colours here.",
-  "agents": [
-    {"name": "scout",   "title": "Scenarios",          "icon": "🧭", "colour": "#4f8cff", "stages": ["scenarios"],                          "description": "Reads requirements and proposes test scenarios.", "goal": "Read the requirement and propose clear, non-overlapping test scenarios: happy paths, edge cases and failure cases. Say what each scenario proves.", "platform": "web", "releaseAgents": []},
-    {"name": "scribe",  "title": "Test cases",         "icon": "✍️", "colour": "#a06cff", "stages": ["cases"],                              "description": "Turns scenarios into test cases in plain English steps.", "goal": "Turn each approved scenario into a test case of short English steps a tester can read, with a check at the end of each journey. Do not duplicate cases that already exist.", "platform": "web", "releaseAgents": ["planner"]},
-    {"name": "mint",    "title": "Test data",          "icon": "🧪", "colour": "#2fbf9b", "stages": ["testdata"],                           "description": "Makes test data and asks only for what cannot be made up.", "goal": "Generate every test value that can be made up, and ask the tester only for logins, existing IDs, OTPs and tokens. Never write secrets into cases.", "platform": "web", "releaseAgents": []},
-    {"name": "runner",  "title": "Test execution",     "icon": "▶️", "colour": "#ff5a36", "stages": ["execution"],                          "description": "Runs the test cases on the live app, and retries real failures once.", "goal": "Run the test cases on the target, report what passed, what the site blocked and what failed, and retry real failures once.", "platform": "web", "releaseAgents": ["runner", "healer"]},
-    {"name": "tracer",  "title": "HAR capture",        "icon": "📡", "colour": "#14a3c7", "stages": ["har"],                                "description": "Captures the network traffic of a run.", "goal": "Capture the network traffic (HAR) of the run and flag failing or slow requests.", "platform": "web", "releaseAgents": []},
-    {"name": "pacer",   "title": "Performance",        "icon": "⏱️", "colour": "#e0a21b", "stages": ["performance"],                        "description": "Times pages and runs load tests.", "goal": "Measure how fast the pages load and, when asked, run a load test. Report numbers against a budget, not opinions.", "platform": "web", "releaseAgents": ["performance"]},
-    {"name": "warden",  "title": "Code and secrets",   "icon": "🛡️", "colour": "#7a8a99", "stages": ["secrets", "sast", "traceability"],    "description": "Scans for leaked secrets and code flaws, and checks requirements against what is built.", "goal": "Scan for committed secrets and insecure code, and check that every requirement has something built and a test. List findings with where they are.", "platform": "web", "releaseAgents": ["security"]},
-    {"name": "prowler", "title": "App security (DAST)","icon": "🕵️", "colour": "#d1495b", "stages": ["dast"],                               "description": "Scans the running app for vulnerabilities (ZAP).", "goal": "Scan the running app with ZAP against the agreed scope only, and report findings with severity.", "platform": "web", "releaseAgents": []},
-    {"name": "judge",   "title": "AI answer quality",  "icon": "⚖️", "colour": "#8f6b3f", "stages": ["aieval"],                             "description": "Scores the quality of AI answers (DeepEval).", "goal": "Score the AI answers for relevance, faithfulness and safety, and say which answers fail and why.", "platform": "web", "releaseAgents": []},
-    {"name": "forge",   "title": "Unit tests and PRs", "icon": "🔨", "colour": "#5b6b7c", "stages": ["unittests", "testspr"],               "description": "Writes unit tests and opens the pull request.", "goal": "Write unit tests for the code, run them, and open a pull or merge request with only the tests.", "platform": "web", "releaseAgents": []},
-    {"name": "herald",  "title": "Defects and sign-off","icon": "📣", "colour": "#e8743b", "stages": ["defects", "signoff"],                "description": "Explains failures, files defects to Jira and asks for sign-off.", "goal": "Explain every case that did not pass in plain words, file defects to Jira for real failures, and send the sign-off request for the run.", "platform": "web", "releaseAgents": ["triage", "reporter"]},
-    {"name": "mentor",  "title": "Feedback to the AI", "icon": "🎓", "colour": "#3fb950", "stages": ["feedback"],                           "description": "Sends logs, results and reports back to the AI so it improves.", "goal": "Send run logs, results and reports back to the AI as feedback, so the next run starts better.", "platform": "web", "releaseAgents": []}
-  ]
+ "_note": "The named agent team. One agent per pipeline stage group. Read by the Python API (seeds them as saved agents) and by the Node engine (names and avatars on the release page). Edit names, titles, icons and colours here.",
+ "agents": [
+  {
+   "name": "scout",
+   "title": "Scenarios",
+   "icon": "🧭",
+   "colour": "#4f8cff",
+   "stages": [
+    "scenarios"
+   ],
+   "description": "Reads requirements and proposes test scenarios.",
+   "goal": "Read the requirement and propose clear, non-overlapping test scenarios: happy paths, edge cases and failure cases. Say what each scenario proves.",
+   "platform": "web",
+   "releaseAgents": []
+  },
+  {
+   "name": "scribe",
+   "title": "Test cases",
+   "icon": "✍️",
+   "colour": "#a06cff",
+   "stages": [
+    "cases"
+   ],
+   "description": "Turns scenarios into test cases in plain English steps.",
+   "goal": "Turn each approved scenario into a test case of short English steps a tester can read, with a check at the end of each journey. Do not duplicate cases that already exist.",
+   "platform": "web",
+   "releaseAgents": [
+    "planner"
+   ]
+  },
+  {
+   "name": "mint",
+   "title": "Test data",
+   "icon": "🧪",
+   "colour": "#2fbf9b",
+   "stages": [
+    "testdata"
+   ],
+   "description": "Makes test data and asks only for what cannot be made up.",
+   "goal": "Generate every test value that can be made up, and ask the tester only for logins, existing IDs, OTPs and tokens. Never write secrets into cases.",
+   "platform": "web",
+   "releaseAgents": []
+  },
+  {
+   "name": "runner",
+   "title": "Test execution",
+   "icon": "▶️",
+   "colour": "#ff5a36",
+   "stages": [
+    "execution"
+   ],
+   "description": "Runs the test cases on the live app, and retries real failures once.",
+   "goal": "Run the test cases on the target, report what passed, what the site blocked and what failed, and retry real failures once.",
+   "platform": "web",
+   "releaseAgents": [
+    "runner",
+    "healer"
+   ]
+  },
+  {
+   "name": "tracer",
+   "title": "HAR capture",
+   "icon": "📡",
+   "colour": "#14a3c7",
+   "stages": [
+    "har"
+   ],
+   "description": "Captures the network traffic of a run.",
+   "goal": "Capture the network traffic (HAR) of the run and flag failing or slow requests.",
+   "platform": "web",
+   "releaseAgents": []
+  },
+  {
+   "name": "pacer",
+   "title": "Performance",
+   "icon": "⏱️",
+   "colour": "#e0a21b",
+   "stages": [
+    "performance"
+   ],
+   "description": "Times pages and runs load tests.",
+   "goal": "Measure how fast the pages load and, when asked, run a load test. Report numbers against a budget, not opinions.",
+   "platform": "web",
+   "releaseAgents": [
+    "performance"
+   ]
+  },
+  {
+   "name": "warden",
+   "title": "Code and secrets",
+   "icon": "🛡️",
+   "colour": "#7a8a99",
+   "stages": [
+    "secrets",
+    "sast",
+    "traceability"
+   ],
+   "description": "Scans for leaked secrets and code flaws, and checks requirements against what is built.",
+   "goal": "Scan for committed secrets and insecure code, and check that every requirement has something built and a test. List findings with where they are.",
+   "platform": "web",
+   "releaseAgents": [
+    "security"
+   ]
+  },
+  {
+   "name": "prowler",
+   "title": "App security (DAST)",
+   "icon": "🕵️",
+   "colour": "#d1495b",
+   "stages": [
+    "dast"
+   ],
+   "description": "Scans the running app for vulnerabilities (ZAP).",
+   "goal": "Scan the running app with ZAP against the agreed scope only, and report findings with severity.",
+   "platform": "web",
+   "releaseAgents": []
+  },
+  {
+   "name": "judge",
+   "title": "AI answer quality",
+   "icon": "⚖️",
+   "colour": "#8f6b3f",
+   "stages": [
+    "aieval"
+   ],
+   "description": "Scores the quality of AI answers (DeepEval).",
+   "goal": "Score the AI answers for relevance, faithfulness and safety, and say which answers fail and why.",
+   "platform": "web",
+   "releaseAgents": []
+  },
+  {
+   "name": "forge",
+   "title": "Unit and integration tests",
+   "icon": "🔨",
+   "colour": "#5b6b7c",
+   "stages": [
+    "unittests",
+    "unitrun",
+    "testspr"
+   ],
+   "description": "Writes unit tests with AI in Java, PHP, Python, JavaScript, TypeScript, Go and C#, runs unit and integration tests per language, and opens the pull request.",
+   "goal": "Pick the language(s) of the repo, write unit tests for the code that has none, run the unit and integration tests with the language's own toolchain, and report results against the requirement keys they carry. Never merge: raise a pull request for a person.",
+   "platform": "web",
+   "releaseAgents": []
+  },
+  {
+   "name": "herald",
+   "title": "Defects and sign-off",
+   "icon": "📣",
+   "colour": "#e8743b",
+   "stages": [
+    "defects",
+    "signoff"
+   ],
+   "description": "Explains failures, files defects to Jira and asks for sign-off.",
+   "goal": "Explain every case that did not pass in plain words, file defects to Jira for real failures, and send the sign-off request for the run.",
+   "platform": "web",
+   "releaseAgents": [
+    "triage",
+    "reporter"
+   ]
+  },
+  {
+   "name": "mentor",
+   "title": "Feedback to the AI",
+   "icon": "🎓",
+   "colour": "#3fb950",
+   "stages": [
+    "feedback"
+   ],
+   "description": "Keeps the logs, saves every stage to the log store, and prepares the data the 8B model learns from.",
+   "goal": "Record what happened in every run to the log store, keep the data clean (no secrets), and offer captured model answers to a person for labelling. Never train or promote a model on your own.",
+   "platform": "web",
+   "releaseAgents": []
+  },
+  {
+   "name": "measure",
+   "title": "Measurement (TMMI, leakage)",
+   "icon": "📏",
+   "colour": "#e3a008",
+   "stages": [
+    "measure"
+   ],
+   "description": "Measures the framework from its logs: defect leakage, unit-test leakage, detection percentage, quality KPIs and an indicative TMMI level.",
+   "goal": "Compute defect leakage, defect detection percentage, per-phase and unit-test leakage, test case effectiveness, the quality KPIs and the TMMI process-area ratings from the stored logs. Say plainly what has no data; never estimate. Say what is needed to reach the next TMMI level.",
+   "platform": "web",
+   "releaseAgents": []
+  }
+ ]
 }

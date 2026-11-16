@@ -120,14 +120,21 @@ async def run_pipeline_request(body, deps: Deps):
         return await H.har_handler()({**ctx, "harPath": state.get("harPath")})
 
     async def defects_h(ctx):
-        return await J.defects_handler(deps.jira, jira_key, list(values.values()))({**ctx, "failedCases": failed_cases})
+        r = await J.defects_handler(deps.jira, jira_key, list(values.values()))({**ctx, "failedCases": failed_cases})
+        try:  # each defect the run found goes to the defect log (found in the system test phase), for leakage and detection numbers
+            from . import logstore
+            for m in (r.get("data") or {}).get("defects", []):
+                logstore.record("defect", {"project": project, "run": run_id, "dkey": m.get("key", ""), "found_in": "system", "severity": m.get("severity", ""), "status": "open", "source": "pipeline"}, env)
+        except Exception:  # noqa: BLE001
+            pass
+        return r
 
     hs = {
         "scenarios": H.scenarios_handler(call_json, get_prompt), "cases": H.cases_handler(call_json, get_prompt, project, jira_key or "", run_id, url, str(body.get("goal") or "")[:120]),
         "testdata": testdata_h, "execution": execution_h, "har": har_h, "performance": H.performance_handler(**run_kw), "dast": H.dast_handler(env=env, **run_kw),
         "traceability": H.traceability_handler(call_json, deps.connect_repo), "aieval": H.aieval_handler(env=env, run_id=run_id, **run_kw),
         "unittests": H.unittests_handler(call_json, get_prompt, deps.connect_repo), "testspr": H.testspr_handler(deps.connect_repo),
-        "defects": defects_h, "signoff": H.signoff_handler(run_id, url, str(body.get("onBehalfOf") or "Phoenix AI")), "feedback": H.feedback_handler(env.get("PHOENIX_REPORTS_DIR", "logs/reports")),
+        "defects": defects_h, "signoff": H.signoff_handler(run_id, url, str(body.get("onBehalfOf") or "Phoenix AI")), "feedback": H.feedback_handler(env.get("PHOENIX_REPORTS_DIR", "logs/reports"), project or "", run_id), "measure": H.measure_handler(project or "", url, env),
     }
     ev = body.get("evaluate") if isinstance(body.get("evaluate"), dict) else None
     out = await ai_pipeline.run_ai_pipeline(

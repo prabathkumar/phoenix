@@ -5,7 +5,7 @@ from fastapi import Body, FastAPI, Header, HTTPException, Query
 from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import agents, ai_eval, avatars, analytics, dashboard, db, gateway, guardrails, handlers as H, mcp_registry, pipeline, prompt_store, run_record, signoff
+from . import agents, ai_eval, avatars, analytics, dashboard, db, gateway, guardrails, handlers as H, kpi, logstore, mcp_registry, pipeline, training, prompt_store, run_record, signoff
 from .service import Deps, run_chain, run_pipeline_request
 
 
@@ -279,6 +279,96 @@ def create_app(deps: Deps | None = None) -> FastAPI:
             return await gateway.call_prompt(body["name"], body.get("platform", "shared"), body.get("vars") or {}, body.get("input", ""), providers, list(providers), env=D.env)
         except (KeyError, ValueError) as e:
             raise bad(e)
+
+    # ---- logs: one ingest door, reads keyed by project, and the training of the 8B model (people decide)
+    def _ingest_ok(token):
+        need = D.env.get("PHOENIX_INGEST_TOKEN", "")
+        if need and token != need:
+            raise HTTPException(401, "Ingest token missing or wrong.")
+
+    @app.post("/api/ingest")
+    def ingest(body: dict = Body(...), x_ingest_token: str = Header(default="")):
+        _ingest_ok(x_ingest_token)
+        events = body.get("events") if isinstance(body.get("events"), list) else [body]
+        stored = sum(1 for e in events[:2000] if isinstance(e, dict) and logstore.record(e.get("kind", ""), e.get("row") or {}, D.env))
+        return {"stored": stored, "received": min(len(events), 2000), "backend": analytics.default().backend}
+
+    @app.get("/api/logs/{table}")
+    def logs_read(table: str, project: str = "", n: int = 100, days: int = 30, agent: str = "", tool: str = "", who: str = "", verdict: str = "", run: str = ""):
+        try:
+            return {"rows": logstore.read(table, project or None, n, days, {"agent": agent, "tool": tool, "who": who, "verdict": verdict, "run": run}), "backend": analytics.default().backend}
+        except ValueError as e:
+            raise bad(e)
+
+    @app.get("/api/logs-summary")
+    def logs_summary(project: str = "", days: int = 7):
+        return {"counts": logstore.summary(project or None, days), "backend": analytics.default().backend, "status": analytics.default().status()}
+
+    @app.post("/api/defects")
+    def defect_record(body: dict = Body(...), x_user: str = Header(default="")):
+        """A defect found in any phase: unit | integration | system | uat | production. A production defect is a leak; unitTestable=true marks one a unit test should have caught."""
+        if body.get("foundIn") not in ("unit", "integration", "system", "uat", "production"):
+            raise HTTPException(400, "foundIn is one of unit, integration, system, uat, production.")
+        ok = logstore.record("defect", {"project": body.get("project", ""), "run": body.get("run", ""), "dkey": body.get("key", ""), "found_in": body["foundIn"], "severity": body.get("severity", ""),
+                                         "unit_testable": 1 if body.get("unitTestable") else 0, "status": body.get("status", "open"), "case_id": body.get("caseId", ""), "source": body.get("source") or (body.get("actor") or x_user or "manual")}, D.env)
+        return {"stored": ok}
+
+    @app.get("/api/kpi")
+    def kpi_report(project: str = "", days: int = 30):
+        return kpi.report(project or None, max(1, min(days, 365)), url, D.env)
+
+    @app.post("/api/training/label")
+    def training_label(body: dict = Body(...), x_user: str = Header(default="")):
+        """A person marks a captured example good, bad or corrected (with the better answer). Stored as a new row; export keeps the latest label per prompt."""
+        who = body.get("actor") or x_user
+        if not who:
+            raise HTTPException(400, "Labelling needs a signed-in person.")
+        if body.get("outcome") not in ("good", "bad", "corrected"):
+            raise HTTPException(400, "outcome is good, bad or corrected.")
+        if body["outcome"] == "corrected" and not str(body.get("preferred") or "").strip():
+            raise HTTPException(400, "A correction needs the better answer.")
+        ok = logstore.record("training_example", {"project": body.get("project", ""), "source": body.get("source", "label"), "prompt": body.get("prompt", ""), "response": body.get("response", ""), "outcome": body["outcome"], "preferred": body.get("preferred", "")}, D.env)
+        logstore.record("user_action", {"who": who, "action": "label-example", "subject": body["outcome"], "status": "ok" if ok else "capture-off"}, D.env)
+        return {"stored": ok}
+
+    @app.get("/api/training/status")
+    def training_status(project: str = ""):
+        return {"stats": training.stats(project or None, D.env), **training.list_jobs(D.env)}
+
+    @app.post("/api/training/export")
+    def training_export(body: dict = Body(default={})):
+        return training.export(body.get("project") or None, D.env)
+
+    @app.post("/api/training/jobs")
+    def training_start(body: dict = Body(default={}), x_user: str = Header(default="")):
+        try:
+            return training.start(body.get("project") or None, body.get("actor") or x_user, body.get("base") or "Qwen/Qwen3-8B", int(body.get("epochs") or 2), D.env)
+        except ValueError as e:
+            raise bad(e)
+
+    @app.get("/api/training/jobs/{job_id}")
+    def training_job(job_id: str):
+        try:
+            return training.get(job_id, D.env)
+        except ValueError as e:
+            raise HTTPException(404, str(e))
+
+    @app.post("/api/training/jobs/{job_id}/result")
+    def training_result(job_id: str, body: dict = Body(...), x_ingest_token: str = Header(default="")):
+        _ingest_ok(x_ingest_token)
+        try:
+            return training.report(job_id, body, D.env)
+        except ValueError as e:
+            raise HTTPException(404, str(e))
+
+    @app.post("/api/training/jobs/{job_id}/promote")
+    def training_promote(job_id: str, body: dict = Body(...), x_user: str = Header(default="")):
+        try:
+            j = training.promote(job_id, body.get("actor") or x_user, body.get("note", ""), D.env)
+        except ValueError as e:
+            raise bad(e)
+        logstore.record("user_action", {"who": body.get("actor") or x_user, "action": "promote-model", "subject": job_id, "status": "ok"}, D.env)
+        return j
 
     ui = os.environ.get("PHOENIX_UI_DIR")
     if ui and os.path.isdir(ui):

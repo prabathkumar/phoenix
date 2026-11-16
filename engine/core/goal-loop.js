@@ -220,7 +220,21 @@ async function runGoalLoopInner(surface, goal, opts = {}) {
 const BLOCKER = /(temporarily reserved|out of stock|sold out|unavailable|not available|something went wrong|try again|please check again|error|failed|session (has )?expired|access denied|too many requests|maintenance)/i;
 
 async function runGoalLoop(surface, goal, opts = {}) {
+  // every model decision in this step is logged; when training capture is on it is kept as a training example, marked passed only if the step passed
+  const logger = opts.logger === undefined ? require("../agents/logger").sharedLogger() : opts.logger;
+  const calls = [];
+  if (logger && (process.env.PHOENIX_API_URL || opts.logger)) {
+    const base = opts.callModel || require("../../generation/llm").callOllamaJson;
+    opts = { ...opts, callModel: async (prompt, ...rest) => { const t0 = Date.now(); try { const out = await base(prompt, ...rest); calls.push({ prompt, out, ms: Date.now() - t0 }); return out; } catch (e) { calls.push({ prompt, out: null, ms: Date.now() - t0, err: e.message }); throw e; } } };
+  }
   const r = await runGoalLoopInner(surface, goal, opts);
+  if (calls.length) {
+    const capture = String(process.env.PHOENIX_TRAIN_CAPTURE || "") === "1";
+    for (const c of calls) {
+      logger.log("agent_event", { agent: "runner", event: "model-decision", status: c.err ? "failed" : "ok", ms: c.ms, detail: c.err || "" });
+      if (capture && !c.err) logger.log("training_example", { source: "runner", prompt: String(c.prompt), response: typeof c.out === "string" ? c.out : JSON.stringify(c.out), outcome: r.success ? "passed" : "failed" });
+    }
+  }
   if (r.success) return r;
   try {
     const seen = (await surface.lines()).map((l) => String(l).trim()).filter((l) => l && l.length <= 160 && BLOCKER.test(l));

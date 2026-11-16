@@ -20,11 +20,13 @@ STAGES = [
     {"id": "aieval", "name": "AI answer quality (DeepEval)", "needs": []},
     {"id": "traceability", "name": "Requirements vs what is built (repo)", "needs": []},
     {"id": "unittests", "name": "Unit tests written by the AI (many languages)", "needs": []},
+    {"id": "unitrun", "name": "Unit and integration tests run (language by language)", "needs": []},
     {"id": "testspr", "name": "Pull/merge request with the tests (GitHub or GitLab)", "needs": ["unittests"]},
     {"id": "dast", "name": "DAST (ZAP, running app)", "needs": []},
     {"id": "defects", "name": "Defects to Jira", "needs": ["execution"], "always": True},
     {"id": "signoff", "name": "Sign-off request (test cases and run)", "needs": [], "always": True},
     {"id": "feedback", "name": "Logs, data and reports back to the AI", "needs": [], "always": True},
+    {"id": "measure", "name": "Measure: KPIs and TMMI view from the logs", "needs": [], "always": True},
 ]
 RISKY = {"defects", "testspr"}
 ALWAYS_ASK = {"dast"}

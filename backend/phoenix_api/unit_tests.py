@@ -1,5 +1,5 @@
 """AI-written unit tests for several languages, wired to the repo and to Semgrep.
-Languages: JavaScript, TypeScript, Python, Java, Go, C#. Semgrep findings steer file choice and go into the prompt.
+Languages: JavaScript, TypeScript, Python, Java, Go, C#, PHP. Semgrep findings steer file choice and go into the prompt.
 Checks: not empty, right test shape, real syntax check where a toolchain exists (node, python). The generated tests are NOT run here; the repo's CI runs them on the pull request."""
 import ast
 import json
@@ -13,11 +13,12 @@ LANGS = {
     "python": {"ext": (".py",), "framework": "pytest", "test": lambda f: posixpath.join(posixpath.dirname(f), "test_" + posixpath.basename(f))},
     "java": {"ext": (".java",), "framework": "JUnit 5 (org.junit.jupiter)", "test": lambda f: re.sub(r"\.java$", "Test.java", re.sub(r"(^|/)src/main/", r"\1src/test/", f))},
     "go": {"ext": (".go",), "framework": "the standard testing package", "test": lambda f: re.sub(r"\.go$", "_test.go", f)},
+    "php": {"ext": (".php",), "framework": "PHPUnit (PHPUnit\\Framework\\TestCase)", "test": lambda f: re.sub(r"\.php$", "Test.php", re.sub(r"(^|/)(src|app|lib)/", r"\1tests/", f))},
     "csharp": {"ext": (".cs",), "framework": "xUnit", "test": lambda f: re.sub(r"\.cs$", "Tests.cs", f)},
 }
 IGNORE = re.compile(r"(^|/)(node_modules|vendor|dist|build|target|bin|obj|\.git|generated)/")
-IS_TEST = re.compile(r"(\.test\.|\.spec\.|_test\.|(^|/)test_|Tests?\.(java|cs)$|(^|/)(tests?|__tests__)/)", re.I)
-SHAPE = {"javascript": r"\b(test|it|describe)\s*\(", "typescript": r"\b(test|it|describe)\s*\(", "python": r"\bdef test_", "java": r"@Test\b", "go": r"func Test\w+\(t \*testing\.T\)", "csharp": r"\[(Fact|Theory)\]"}
+IS_TEST = re.compile(r"(Test\.php$|\.test\.|\.spec\.|_test\.|(^|/)test_|Tests?\.(java|cs)$|(^|/)(tests?|__tests__)/)", re.I)
+SHAPE = {"javascript": r"\b(test|it|describe)\s*\(", "typescript": r"\b(test|it|describe)\s*\(", "python": r"\bdef test_", "java": r"@Test\b", "go": r"func Test\w+\(t \*testing\.T\)", "csharp": r"\[(Fact|Theory)\]", "php": r"function test\w+\(|@test\b|#\[Test\]"}
 
 
 def language_of(f):
@@ -48,6 +49,9 @@ def syntax_check(lang, code, run=subprocess.run):
         if lang == "python":
             ast.parse(code)
             return {"ok": True}
+        if lang == "php":
+            r = run(["php", "-l"], input=code, capture_output=True, text=True, timeout=20)
+            return {"ok": True} if r.returncode == 0 else {"ok": False, "why": (r.stdout or r.stderr).splitlines()[0] if (r.stdout or r.stderr) else "syntax error"}
         if lang == "javascript":
             r = run(["node", "--check", "--input-type=module", "-"], input=code, capture_output=True, text=True, timeout=20)
             return {"ok": True} if r.returncode == 0 or re.search(r"require is not defined|Cannot use import", r.stderr) else {"ok": False, "why": r.stderr.splitlines()[0] if r.stderr else "syntax error"}

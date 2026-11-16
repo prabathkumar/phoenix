@@ -91,8 +91,13 @@ function report(summary, audit) {
   return out;
 }
 
-async function runRelease(suite, { changed, only, ask, heal: doHeal = true, perf = true, security = true, runOpts = {}, auditSink, onStatus, checkDeps = {} } = {}) {
-  const audit = createAudit(auditSink, onStatus); const st = audit.setStatus;
+async function runRelease(suite, { changed, only, ask, heal: doHeal = true, perf = true, security = true, runOpts = {}, auditSink, onStatus, checkDeps = {}, logger, projectId = "", releaseId = "" } = {}) {
+  // every audit note and status change also goes to the log store (ClickHouse via the API); a logger problem never touches the run
+  const L = (kind, row) => { if (logger) { try { logger.log(kind, { project: projectId, run: releaseId, ...row }); } catch { /* logs are a bonus */ } } };
+  const t0 = {}; if (logger && ask) ask = logger.wrapAsk(ask, { agent: "triage", project: projectId });
+  const sink = (e) => { if (auditSink) auditSink(e); const { at, agent, action, ...d } = e; L("agent_event", { agent, event: action, status: "note", detail: JSON.stringify(d).slice(0, 500) }); };
+  const status = (id, a, all) => { if (onStatus) onStatus(id, a, all); const now = Date.now(); if (a.status !== "working" || !t0[id]) { L("agent_event", { agent: id, event: "status", status: a.status, ms: t0[id] ? now - t0[id] : 0, detail: a.message }); } if (a.status === "working" && !t0[id]) t0[id] = now; };
+  const audit = createAudit(sink, status); const st = audit.setStatus;
   st("planner", "working", "choosing cases");
   const planned = plan(suite, { changed, only }, audit);
   st("planner", "done", `${planned.cases.length} case(s) chosen${(suite.skipped || []).length ? `, ${suite.skipped.length} known skips` : ""}`);
@@ -131,6 +136,9 @@ async function runRelease(suite, { changed, only, ask, heal: doHeal = true, perf
   if (final.verdict === "PASS" && extra.some((x) => x.warnings.length)) final.verdict = "PASS-WITH-GAPS";
   final.checks = extra.map((x) => ({ agent: x.agent, metrics: x.metrics, status: x.status, cookies: x.cookies, warnings: x.warnings }));
   st("reporter", "done", `${final.verdict}: ${final.passed}/${final.total} passed`);
+  for (const r of summary.results) L("release_result", { case_id: r.id, verdict: r.verdict, flaky: r.flaky ? 1 : 0, seconds: r.seconds, failed_step: r.failedStep, reason: r.reason });
+  L("agent_event", { agent: "reporter", event: "verdict", status: final.verdict, detail: `${final.passed}/${final.total} passed` });
+  if (logger) { try { await logger.flush(); } catch { /* ignore */ } }
   return { ...final, agents: audit.agents, audit: audit.trail };
 }
 

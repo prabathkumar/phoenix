@@ -78,6 +78,11 @@ async def execute(prompt_id, version, input, models, providers, rules, secrets, 
         except Exception:
             value = gout["text"]
     _log({**log, "status": "ok"})
+    try:  # opt-in (PHOENIX_TRAIN_CAPTURE=1): the guarded prompt and answer, masked, as a candidate training example; a person labels it later
+        from . import logstore
+        logstore.record("training_example", {"project": "", "source": name, "prompt": gin["text"], "response": gout["text"], "outcome": "unknown"})
+    except Exception:  # noqa: BLE001
+        pass
     return {"ok": True, "value": value, "model": model, "guardrails": results}
 
 

@@ -29,6 +29,7 @@ function createReleaseEndpoint(deps = {}) {
   const runRelease = deps.runRelease || require("../engine/agents/release").runRelease;
   const AGENTS = deps.agents || require("../engine/agents/release").AGENTS;
   const ask = deps.ask !== undefined ? deps.ask : require("../engine/agents/ollama-ask").ollamaAsk();
+  const logger = deps.logger !== undefined ? deps.logger : require("../engine/agents/logger").createLogger();
   const projectsDir = deps.projectsDir || path.join(__dirname, "..", "test-cases", "projects");
   const dataDir = deps.dataDir !== undefined ? deps.dataDir : path.join(process.env.PHOENIX_DATA_DIR || ".", "release-runs");
   const token = deps.token !== undefined ? deps.token : process.env.PHOENIX_RELEASE_TOKEN;
@@ -73,7 +74,7 @@ function createReleaseEndpoint(deps = {}) {
     const out = fs.createWriteStream(tmp);
     req.on("data", (c) => { size += c.length; if (size > MAX_APP && !over) { over = true; req.destroy(); out.destroy(); } });
     req.pipe(out);
-    out.on("finish", () => { if (over || !size) { fs.unlink(tmp, () => {}); return json(res, over ? 413 : 400, { error: over ? "App is over 500 MB." : "Empty upload." }); } fs.renameSync(tmp, dest); json(res, 201, { projectId, app: { name, platform: /\.ipa$/i.test(name) ? "ios" : "android", sizeMb: Math.round(size / 1048576 * 10) / 10 } }); });
+    out.on("finish", () => { if (over || !size) { fs.unlink(tmp, () => {}); return json(res, over ? 413 : 400, { error: over ? "App is over 500 MB." : "Empty upload." }); } fs.renameSync(tmp, dest); logger.log("user_action", { project: projectId, who: String(req.headers["x-user"] || "token").slice(0, 80), action: "upload-app", subject: name, status: "ok" }); json(res, 201, { projectId, app: { name, platform: /\.ipa$/i.test(name) ? "ios" : "android", sizeMb: Math.round(size / 1048576 * 10) / 10 } }); });
     out.on("error", () => { fs.unlink(tmp, () => {}); if (!res.headersSent) json(res, 500, { error: "Could not save the app." }); });
   }
 
@@ -96,7 +97,7 @@ function createReleaseEndpoint(deps = {}) {
     releases.set(id, rec); active.set(projectId, id);
     const changed = Array.isArray(body.changed) ? body.changed.map(String).slice(0, 20) : [];
     Promise.resolve().then(() => runRelease(suite, {
-      changed, ask: ask || undefined, heal: body.heal !== false, perf: body.perf !== false, security: body.security !== false,
+      changed, ask: ask || undefined, logger, projectId, releaseId: id, heal: body.heal !== false, perf: body.perf !== false, security: body.security !== false,
       onStatus: (agent, a) => { rec.agents[agent] = { ...rec.agents[agent], ...a }; },
       runOpts: { appFile, startMobile: deps.startMobile, resolveApp: deps.resolveApp, log: (line) => { rec.progress.push(String(line)); if (rec.progress.length > 500) rec.progress.shift(); } },
       auditSink: (e) => { rec.audit.push(e); },
@@ -106,6 +107,7 @@ function createReleaseEndpoint(deps = {}) {
         rec.finishedAt = new Date().toISOString(); if (active.get(projectId) === id) active.delete(projectId);
         if (dataDir) { try { fs.mkdirSync(path.join(dataDir, projectId), { recursive: true }); fs.writeFileSync(path.join(dataDir, projectId, `release-${id}.json`), JSON.stringify({ record: rec }, null, 2)); } catch { /* the API still has it */ } }
       });
+    logger.log("user_action", { project: projectId, who: String(req.headers["x-user"] || "token").slice(0, 80), action: "start-release", subject: `${name} (${id})`, status: "started" });
     json(res, 202, { releaseId: id, projectId, status: "running" });
   }
 

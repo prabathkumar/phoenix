@@ -22,9 +22,11 @@ TABLES = {
     "mcp_calls": "at DateTime64(3), project LowCardinality(String), who String, tool LowCardinality(String), status LowCardinality(String), ms UInt32, args String",
     "user_actions": "at DateTime64(3), project LowCardinality(String), who String, action LowCardinality(String), subject String, status LowCardinality(String)",
     "release_results": "at DateTime64(3), project LowCardinality(String), run String, case_id String, verdict LowCardinality(String), flaky UInt8, seconds UInt32, failed_step String, reason String",
+    "defects": "at DateTime64(3), project LowCardinality(String), run String, dkey String, found_in LowCardinality(String), severity LowCardinality(String), unit_testable UInt8, status LowCardinality(String), case_id String, source LowCardinality(String)",
+    "unit_results": "at DateTime64(3), project LowCardinality(String), run String, requirement String, language LowCardinality(String), kind LowCardinality(String), test String, status LowCardinality(String), ms UInt32",
     "training_examples": "at DateTime64(3), project LowCardinality(String), source LowCardinality(String), prompt String, response String, outcome LowCardinality(String), preferred String, split LowCardinality(String)",
 }
-PARTITIONED = {"agent_events", "mcp_calls", "user_actions", "release_results", "training_examples"}  # new tables: monthly partitions, project first in the key
+PARTITIONED = {"unit_results", "defects", "agent_events", "mcp_calls", "user_actions", "release_results", "training_examples"}  # new tables: monthly partitions, project first in the key
 COLS = {t: [c.split()[0] for c in d.split(", ") if not c.startswith("Array")] for t, d in TABLES.items()}
 
 

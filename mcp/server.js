@@ -366,6 +366,8 @@ async function handleToolCall(name, args = {}) {
   return errorResult(`unknown tool "${name}"`);
 }
 
+const mcpLogger = require("../engine/agents/logger").createLogger();
+
 function createServer() {
   const server = new Server(
     { name: "testops-mobile-mcp", version: "0.0.1" },
@@ -375,10 +377,17 @@ function createServer() {
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const t0 = Date.now(); let status = "ok";
     try {
-      return await handleToolCall(request.params.name, request.params.arguments || {});
+      const r = await handleToolCall(request.params.name, request.params.arguments || {});
+      if (r && r.isError) status = "error";
+      return r;
     } catch (err) {
+      status = "error";
       return errorResult(`internal error: ${err.message}`);
+    } finally {
+      // every tool call is logged (name, caller, status, timing, masked arguments) to the Phoenix log store; never affects the call
+      try { mcpLogger.log("mcp_call", { project: String((request.params.arguments || {}).projectId || ""), who: process.env.PHOENIX_MCP_USER || "mcp", tool: request.params.name, status, ms: Date.now() - t0, args: JSON.stringify(request.params.arguments || {}).slice(0, 600) }); } catch { /* ignore */ }
     }
   });
 
@@ -398,4 +407,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { _setFetch, createServer, handleToolCall, TOOLS, summarizeHealth, listTestCaseFiles };
+module.exports = { mcpLogger, _setFetch, createServer, handleToolCall, TOOLS, summarizeHealth, listTestCaseFiles };

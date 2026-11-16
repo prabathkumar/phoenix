@@ -1,5 +1,5 @@
 """One AI-driven pipeline: scenarios -> cases -> test data -> execution -> HAR -> performance -> secrets -> SAST -> DeepEval -> traceability ->
-unit tests -> PR -> DAST -> defects -> feedback. Each stage reports passed | failed | needs-you | skipped | not-built | unavailable.
+API functional tests -> repo link -> unit tests -> PR -> deployment check -> DAST -> defects -> feedback -> confirm. Each stage reports passed | failed | needs-you | skipped | not-built | unavailable.
 Autonomy: ask-everything | ask-when-matters (default) | run-everything. A live security scan (dast) and anything aimed at production always wait for approval.
 A handler is `async (ctx) -> {ok, detail, data?, unavailable?}`. 'not-built' is stated plainly; nothing is faked as passed."""
 import asyncio
@@ -9,28 +9,37 @@ import time
 from . import testdata as td, unit_tests
 
 STAGES = [
+    # 1. the AI writes test cases and asks for each layer: API, web, mobile, performance
     {"id": "scenarios", "name": "Test scenarios (prompts)", "needs": []},
     {"id": "cases", "name": "Test cases (prompts)", "needs": ["scenarios"]},
     {"id": "testdata", "name": "Test data", "needs": ["cases"]},
-    {"id": "execution", "name": "Test execution (local or BrowserStack)", "needs": ["testdata"]},
+    {"id": "apitests", "name": "API functional tests (built from the API layer, run by the agent)", "needs": []},
+    {"id": "execution", "name": "Web and mobile test execution (local or BrowserStack)", "needs": ["testdata"]},
     {"id": "har", "name": "HAR capture", "needs": ["execution"]},
     {"id": "performance", "name": "Performance (Locust)", "needs": ["cases"]},
+    # 2. the code repo is linked: languages found, then secrets, Semgrep, unit tests, unit integration tests
+    {"id": "repolink", "name": "Code repo linked: languages and API calls found", "needs": []},
     {"id": "secrets", "name": "Secrets scan (Gitleaks)", "needs": []},
     {"id": "sast", "name": "SAST (Semgrep, source code)", "needs": []},
     {"id": "aieval", "name": "AI answer quality (DeepEval)", "needs": []},
     {"id": "traceability", "name": "Requirements vs what is built (repo)", "needs": []},
-    {"id": "unittests", "name": "Unit tests written by the AI (many languages)", "needs": []},
+    {"id": "unittests", "name": "Unit and API integration tests written by the AI (many languages)", "needs": []},
     {"id": "unitrun", "name": "Unit and integration tests run (language by language)", "needs": []},
     {"id": "testspr", "name": "Pull/merge request with the tests (GitHub or GitLab)", "needs": ["unittests"]},
-    {"id": "dast", "name": "DAST (ZAP, running app)", "needs": []},
+    # 3. after the deployment: is the app up, then the security test
+    {"id": "deployed", "name": "Deployment check: the app answers", "needs": []},
+    {"id": "dast", "name": "Security test after deployment (ZAP, running app)", "needs": ["deployed"]},
     {"id": "defects", "name": "Defects to Jira", "needs": ["execution"], "always": True},
     {"id": "signoff", "name": "Sign-off request (test cases and run)", "needs": [], "always": True},
     {"id": "feedback", "name": "Logs, data and reports back to the AI", "needs": [], "always": True},
     {"id": "measure", "name": "Measure: KPIs and TMMI view from the logs", "needs": [], "always": True},
+    {"id": "evidence", "name": "Evidence: reports and screenshots packed, checked, and given to the AI", "needs": [], "always": True},
+    # 4. last: confirm that everything that was asked for works
+    {"id": "confirm", "name": "Confirm: every step that was asked for is working", "needs": [], "always": True},
 ]
 RISKY = {"defects", "testspr"}
 ALWAYS_ASK = {"dast"}
-TOUCHES_APP = {"execution", "har", "performance", "dast"}
+TOUCHES_APP = {"execution", "har", "performance", "dast", "apitests", "deployed"}
 REASON = {"production": "it is aimed at production, which always needs your approval",
           "always": "it sends attack traffic to a live app, which always needs your approval",
           "level": "waiting for your approval at the autonomy level you chose"}
@@ -79,7 +88,19 @@ def builtins(run=_default_run):
             return {"ok": False, "detail": f"needs you: {', '.join(plan['needs_you'])}", "data": {"names": names, "needsYou": plan["needs_you"]}}
         return {"ok": True, "detail": f"{len(plan['fields'])} field(s) ready", "data": {"names": names}}
 
+    async def confirm(ctx):
+        """Every stage that was asked for must have PASSED. Skipped stages are listed (not counted). Unavailable, not-built, failed and waiting stages are NOT working, and are named."""
+        rows = [x for x in ctx.get("results", []) if x["id"] != "confirm"]
+        asked = [x for x in rows if x["status"] != "skipped"]
+        bad = [x for x in asked if x["status"] != "passed"]
+        left = [x["id"] for x in rows if x["status"] == "skipped"]
+        data = {"asked": len(asked), "working": len(asked) - len(bad), "notWorking": [{"id": x["id"], "status": x["status"], "detail": x.get("detail", "")[:160]} for x in bad], "notAsked": left}
+        if not asked:
+            return {"ok": False, "detail": "nothing was run, so nothing is confirmed", "data": data}
+        return {"ok": not bad, "detail": f"all {len(asked)} step(s) asked for are working" if not bad else f"{len(bad)} of {len(asked)} step(s) are not working: " + ", ".join(f"{x['id']} ({x['status']})" for x in bad), "data": data}
+
     return {
+        "confirm": confirm,
         "testdata": testdata,
         "secrets": scan("gitleaks", lambda d, c: ["detect", "--no-git", "-s", d, "--redact"], "gitleaks"),
         "sast": scan("semgrep", lambda d, c: ["--config", "p/security-audit" if c.get("ruleset") == "security-audit" else "auto", "--json", "--error", "--quiet", d], "semgrep",

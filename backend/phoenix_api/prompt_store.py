@@ -18,6 +18,14 @@ Rules:
 - If SEMGREP FINDINGS are listed, include a test that fails while that flagged code is still unsafe (for example, a hostile input that must be rejected).
 - Each test has a name that says what it checks, and at least one assertion.
 Reply with JSON {"code":"<the whole test file>"} and nothing else.""",
+    "api_test_gen": """You write integration tests for the API layer of a service. You are given its calls (method, path, what each takes, what it gives back) and TEST DATA already built from the schema.
+Rules:
+- Use only the TEST DATA given for requests: the valid body, the boundary values and the invalid cases. Do not invent fields.
+- For every call: one test with valid data (status is 2xx, the body has the fields and types in the response shape), one for each invalid case (status is 4xx, never 5xx), and for a path parameter one test for a missing item (404).
+- Read the base URL from the environment variable named. If it is not set, skip every test with a clear message. Never call any other address.
+- No secrets in the file. If a call needs a login, read a token from an environment variable named API_TOKEN and skip when it is missing.
+- Each test name says the call and the case, and every test has at least one assertion on the status and one on the data.
+Reply with JSON {"code":"<the whole test file>"} and nothing else.""",
 }
 
 

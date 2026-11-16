@@ -108,3 +108,92 @@ async def generate_tests(files, read_file, call_json, get_prompt, findings=None,
         except Exception as e:
             skipped.append({"source": source, "why": str(e)})
     return {"files": out, "skipped": skipped}
+
+
+# ---- API-layer integration tests: one test file per source file that serves calls, with test data built from the schema (api_layer.py)
+def api_test_path(lang, source):
+    d, b = posixpath.dirname(source), posixpath.splitext(posixpath.basename(source))[0]
+    if lang == "javascript":
+        return posixpath.join(d, b + ".api.integration.test.js")
+    if lang == "typescript":
+        return posixpath.join(d, b + ".api.integration.test.ts")
+    if lang == "python":
+        return posixpath.join("tests", f"test_{b}_api_integration.py")
+    if lang == "java":
+        return re.sub(r"\.java$", "ApiIT.java", re.sub(r"(^|/)src/main/", r"\1src/test/", source))
+    if lang == "go":
+        return posixpath.join(d, b + "_api_integration_test.go")
+    if lang == "php":
+        return posixpath.join("tests", "Integration", b + "ApiTest.php")
+    return re.sub(r"\.cs$", "ApiTests.cs", source)
+
+
+def mark_integration(lang, body):
+    """The run connectors tell unit from integration by a marker per language. Add it when the model forgot it; returns (body, ok)."""
+    if lang == "python":
+        if re.search(r"mark\.integration", body):
+            return body, True
+        return ("import pytest\npytestmark = pytest.mark.integration\n" + body, True) if "from __future__" not in body else (body, False)
+    if lang == "go":
+        return (body, True) if re.match(r"\s*//go:build\s+integration", body) else ("//go:build integration\n\n" + body, True)
+    if lang == "php":
+        if re.search(r"@group\s+integration|Group\(\s*['\"]integration", body, re.I):
+            return body, True
+        new = re.sub(r"(\n)((?:final\s+|abstract\s+)?class\s)", r"\1/** @group integration */\n\2", body, count=1)
+        return (new, new != body)
+    if lang == "csharp":
+        if re.search(r"Trait\(\s*\"Category\"\s*,\s*\"Integration\"", body):
+            return body, True
+        new = re.sub(r"(\n)((?:public\s+)?(?:sealed\s+)?class\s)", r'\1[Trait("Category", "Integration")]\n\2', body, count=1)
+        return (new, new != body)
+    return body, True   # JavaScript/TypeScript: the file name carries it; Java: the *IT.java name
+
+
+def _compact(e):
+    keep = {k: e[k] for k in ("method", "path", "pathParams", "summary", "query", "line") if e.get(k)}
+    keep["testData"] = e.get("testData")
+    keep["responseShape"] = {k: v for k, v in (e.get("responses") or {}).items() if v}
+    if e.get("source") == "code":
+        keep["code"] = e.get("snippet", "")
+    return keep
+
+
+async def generate_api_tests(endpoints, read_file, call_json, get_prompt, syntax=syntax_check, requirement=None, base_env="API_BASE_URL"):
+    """endpoints: api_layer.analyse()['endpoints']. One integration test file per source file; the tests read the base URL from the environment,
+    skip when it is not set, and check status, the shape of the data given back, and the invalid-input cases from the test data."""
+    requirement = requirement or {}
+    out, skipped, by_file = [], [], {}
+    for e in endpoints:
+        by_file.setdefault(e["file"], []).append(e)
+    for source, eps in by_file.items():
+        lang = language_of(source)
+        if not lang:                        # an OpenAPI file: tests go next to the first language we can find in the repo, chosen by the caller
+            continue
+        L = LANGS[lang]
+        try:
+            text = get_prompt("api_test_gen", "shared")["text"]
+            req = requirement.get("key", "")
+            extra = f"REQUIREMENT {req}: {str(requirement.get('text') or '')[:1200]}\nPut the key {req} in every test name (underscore instead of a dash where the language needs it).\n" if req else ""
+            r = await call_json(f"{text}\n\n{extra}LANGUAGE: {lang}\nFRAMEWORK: {L['framework']} (use the language's standard HTTP client; no extra library unless the framework already needs it)\nBASE URL: read it from the environment variable {base_env}; skip every test when it is not set\n"
+                                f"SOURCE FILE: {source}\nTEST FILE: {api_test_path(lang, source)}\nCALLS (JSON, with test data built from the schema):\n{json.dumps([_compact(e) for e in eps[:12]], indent=1)[:14000]}")
+            body = _strip_fence(r if isinstance(r, str) else (r or {}).get("code") or (r or {}).get("test") or (r or {}).get("content"))
+            if not body.strip():
+                skipped.append({"source": source, "why": "the model returned no API test code"})
+                continue
+            if not re.search(SHAPE[lang], body):
+                skipped.append({"source": source, "why": f"the answer has no {L['framework']} test in it"})
+                continue
+            body, marked = mark_integration(lang, body)
+            if not marked:
+                skipped.append({"source": source, "why": "could not mark the tests as integration tests"})
+                continue
+            sx = syntax(lang, body)
+            if not sx["ok"]:
+                skipped.append({"source": source, "why": f"syntax error: {sx.get('why')}"})
+                continue
+            out.append({"path": api_test_path(lang, source), "source": source, "language": lang, "kind": "integration", "layer": "api", "content": body if body.endswith("\n") else body + "\n",
+                        "requirement": req, "calls": [f"{e['method']} {e['path']}" for e in eps[:12]], "changed": False, "flagged": 0,
+                        "checks": {"syntax": "not checked (no toolchain here)" if sx.get("unchecked") else "ok"}})
+        except Exception as ex:
+            skipped.append({"source": source, "why": str(ex)})
+    return {"files": out, "skipped": skipped}

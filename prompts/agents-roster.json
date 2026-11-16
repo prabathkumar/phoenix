@@ -109,7 +109,8 @@
    "icon": "🕵️",
    "colour": "#d1495b",
    "stages": [
-    "dast"
+    "dast",
+    "deployed"
    ],
    "description": "Scans the running app for vulnerabilities (ZAP).",
    "goal": "Scan the running app with ZAP against the agreed scope only, and report findings with severity.",
@@ -137,7 +138,9 @@
    "stages": [
     "unittests",
     "unitrun",
-    "testspr"
+    "testspr",
+    "repolink",
+    "apitests"
    ],
    "description": "Writes unit tests with AI in Java, PHP, Python, JavaScript, TypeScript, Go and C#, runs unit and integration tests per language, and opens the pull request.",
    "goal": "Pick the language(s) of the repo, write unit tests for the code that has none, run the unit and integration tests with the language's own toolchain, and report results against the requirement keys they carry. Never merge: raise a pull request for a person.",
@@ -167,7 +170,8 @@
    "icon": "🎓",
    "colour": "#3fb950",
    "stages": [
-    "feedback"
+    "feedback",
+    "evidence"
    ],
    "description": "Keeps the logs, saves every stage to the log store, and prepares the data the 8B model learns from.",
    "goal": "Record what happened in every run to the log store, keep the data clean (no secrets), and offer captured model answers to a person for labelling. Never train or promote a model on your own.",
@@ -180,7 +184,8 @@
    "icon": "📏",
    "colour": "#e3a008",
    "stages": [
-    "measure"
+    "measure",
+    "confirm"
    ],
    "description": "Measures the framework from its logs: defect leakage, unit-test leakage, detection percentage, quality KPIs and an indicative TMMI level.",
    "goal": "Compute defect leakage, defect detection percentage, per-phase and unit-test leakage, test case effectiveness, the quality KPIs and the TMMI process-area ratings from the stored logs. Say plainly what has no data; never estimate. Say what is needed to reach the next TMMI level.",

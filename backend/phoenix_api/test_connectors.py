@@ -126,7 +126,7 @@ def summarize(tests):
     return {"total": len(tests), **c, "passRate": round(c["passed"] / ran, 3) if ran else None, "requirements": sorted({t["requirement"] for t in tests if t["requirement"]})}
 
 
-def run_tests(lang, kind, root, run=subprocess.run, which=shutil.which, timeout=900):
+def run_tests(lang, kind, root, run=subprocess.run, which=shutil.which, timeout=900, env=None):
     """Run one language and kind in a checkout. Never raises: returns {ok, available, detail, tests, summary}."""
     if lang not in LANGUAGES or kind not in KINDS:
         raise ValueError(f"language is one of {', '.join(LANGUAGES)}; kind is unit or integration.")
@@ -137,7 +137,7 @@ def run_tests(lang, kind, root, run=subprocess.run, which=shutil.which, timeout=
     out = os.path.join(tmp, "result.xml")
     argv, where, parser = command(lang, kind, out)
     try:
-        p = run(argv, cwd=root, capture_output=True, text=True, timeout=timeout)
+        p = run(argv, cwd=root, capture_output=True, text=True, timeout=timeout, **({"env": env} if env else {}))
         if parser == "gojson":
             tests = parse_go_json(p.stdout or "")
         elif parser == "junit-dir":
@@ -160,11 +160,11 @@ def run_tests(lang, kind, root, run=subprocess.run, which=shutil.which, timeout=
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def run_all(root, languages=None, kinds=("unit", "integration"), run=subprocess.run, which=shutil.which):
+def run_all(root, languages=None, kinds=("unit", "integration"), run=subprocess.run, which=shutil.which, env=None):
     langs = [l for l in (languages or detect_languages(root)) if l in LANGUAGES]
     if not langs:
         return []
-    return [run_tests(l, k, root, run, which) for l in langs for k in kinds]
+    return [run_tests(l, k, root, run, which, env=env) for l in langs for k in kinds]
 
 
 def clone(url, ref="", dest=None, run=subprocess.run):

@@ -319,6 +319,27 @@ def create_app(deps: Deps | None = None) -> FastAPI:
         from . import test_connectors
         return {"languages": test_connectors.availability(), "kinds": list(test_connectors.KINDS)}
 
+    @app.post("/api/unit-tests/link")
+    async def unit_link(body: dict = Body(...), x_user: str = Header(default="")):
+        """Link a code repo: detect its languages, test frameworks and API calls, so the next step (write unit and API integration tests) can be offered at once."""
+        rq = dict(body.get("repo") or {})
+        r = await H.repolink_handler(D.connect_repo)({"repoRequest": rq})
+        logstore.record("user_action", {"project": body.get("project", ""), "who": x_user or "unknown", "action": "link-repo", "subject": rq.get("project", ""), "status": "ok" if r.get("ok") else "failed"}, D.env)
+        return r
+
+    @app.post("/api/unit-tests/api-functional")
+    async def unit_api_functional(body: dict = Body(...), x_user: str = Header(default="")):
+        """The agent plans (no apiBaseUrl) or runs (with apiBaseUrl) functional API tests built from the repo's API layer."""
+        rq = dict(body.get("repo") or {})
+        for k in ("apiBaseUrl", "allowWrites"):
+            if k in body:
+                rq[k] = body[k]
+        if body.get("requirementKey") and not rq.get("requirement"):
+            rq["requirement"] = {"key": body["requirementKey"], "text": ""}
+        r = await H.apifunc_handler(D.connect_repo, env=D.env)({"repoRequest": rq, "project": body.get("project", "")})
+        logstore.record("user_action", {"project": body.get("project", ""), "who": x_user or "unknown", "action": "api-functional-tests", "subject": rq.get("project", ""), "status": "ok" if r.get("ok") else "none"}, D.env)
+        return r
+
     @app.post("/api/unit-tests/generate")
     async def unit_generate(body: dict = Body(...), x_user: str = Header(default="")):
         """Write unit tests with the AI for a requirement and the code that changed. Returns the test files; with openPr it raises a pull request (never merges)."""

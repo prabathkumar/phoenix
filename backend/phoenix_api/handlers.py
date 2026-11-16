@@ -287,10 +287,113 @@ def unittests_handler(call_json, get_prompt, connect_repo, max_files=5):
         files = unit_tests.pick_files(allf, only, order, rq.get("max") or max_files, rq.get("languages"))
         if not files:
             return {"ok": True, "detail": "no source files in a supported language to test", "data": {"tests": [], "skipped": []}}
+        return await _finish_unit(rq, ref, allf, files, findings, changes, requirement, call_json, get_prompt, _CachedRepo(repo, {}))
+    return h
+
+
+class _CachedRepo:
+    def __init__(self, repo, cache):
+        self._r, self._c = repo, cache
+
+    def __getattr__(self, n):
+        return getattr(self._r, n)
+
+    async def read_file(self, f, ref):
+        if f not in self._c:
+            self._c[f] = await self._r.read_file(f, ref)
+        return self._c[f]
+
+
+async def _finish_unit(rq, ref, allf, files, findings, changes, requirement, call_json, get_prompt, repo):
+    if True:  # (kept at this indent)
         r = await unit_tests.generate_tests(files, lambda f: repo.read_file(f, ref), call_json, get_prompt, findings, requirement=requirement, changes=changes)
+        for t in r["files"]:
+            t["kind"], t["layer"] = "unit", "code"
+        api = {"endpoints": [], "specFiles": []}
+        if rq.get("api", True):
+            api, a = await _api_tests(repo, ref, allf, rq, changes, call_json, get_prompt, requirement)
+            r["files"] += a["files"]
+            r["skipped"] += a["skipped"]
         langs = sorted({f["language"] for f in r["files"]})
-        return {"ok": bool(r["files"]), "detail": f"{len(r['files'])} test file(s) written{' (' + ', '.join(langs) + ')' if langs else ''}{' for ' + requirement['key'] if requirement['key'] else ''}, {len(r['skipped'])} skipped{': ' + r['skipped'][0]['why'] if r['skipped'] else ''}",
-                "data": {"tests": r["files"], "skipped": r["skipped"], "ref": ref, "requirement": requirement["key"], "changedFiles": len(changes)}}
+        nu, na = sum(1 for f in r["files"] if f["kind"] == "unit"), sum(1 for f in r["files"] if f["kind"] == "integration")
+        return {"ok": bool(r["files"]), "detail": f"{nu} unit and {na} API integration test file(s) written{' (' + ', '.join(langs) + ')' if langs else ''}{' for ' + requirement['key'] if requirement['key'] else ''}, {len(r['skipped'])} skipped{': ' + r['skipped'][0]['why'] if r['skipped'] else ''}",
+                "data": {"tests": r["files"], "skipped": r["skipped"], "ref": ref, "requirement": requirement["key"], "changedFiles": len(changes),
+                         "api": {"endpoints": len(api["endpoints"]), "specFiles": api["specFiles"], "calls": [{k: e.get(k) for k in ("method", "path", "file", "testData")} for e in api["endpoints"][:40]]}}}
+
+
+async def _api_tests(repo, ref, allf, rq, changes, call_json, get_prompt, requirement, max_files=40):
+    """The API layer of the repo: calls found in code or an OpenAPI file, test data from their schema, one integration test file per source file."""
+    from . import api_layer
+    cand = [f for f in allf if api_layer.SPEC_NAME.search(f) and not changes][:3] + unit_tests_pick(allf, rq.get("languages"), changes)[:max_files]
+    texts = {}
+    for f in cand:
+        try:
+            t = await repo.read_file(f, ref)
+            if len(t) <= 200000:
+                texts[f] = t
+        except Exception:
+            pass
+    layer = api_layer.analyse(allf, texts, unit_tests.language_of)
+    eps = layer["endpoints"]
+    if changes:                                   # when two refs are compared, only calls in changed files (or from the spec) are tested
+        eps = [e for e in eps if e["file"] in changes or e["source"] == "openapi"]
+    code_eps = [e for e in eps if unit_tests.language_of(e["file"])]
+    spec_eps = [e for e in eps if e["source"] == "openapi"]
+    if spec_eps and not code_eps:                 # spec only: write the tests in the repo's main language
+        lang = (rq.get("languages") or [None])[0] or next((unit_tests.language_of(f) for f in allf if unit_tests.language_of(f)), None)
+        anchor = next((f for f in allf if unit_tests.language_of(f) == lang), None)
+        if anchor:
+            ext = unit_tests.LANGS[lang]["ext"][0]
+            code_eps = [dict(e, file=posixpath_join("api", "spec" + ext)) for e in spec_eps]
+    gen = await unit_tests.generate_api_tests(code_eps, None, call_json, get_prompt, requirement=requirement) if code_eps else {"files": [], "skipped": []}
+    return {"endpoints": eps, "specFiles": layer["specFiles"]}, gen
+
+
+def unit_tests_pick(allf, languages, changes):
+    ok = [f for f in allf if unit_tests.language_of(f) and not unit_tests.IS_TEST.search(f) and not unit_tests.IGNORE.search(f) and (not languages or unit_tests.language_of(f) in languages)]
+    return [f for f in ok if f in changes] if changes else ok
+
+
+def posixpath_join(*a):
+    import posixpath
+    return posixpath.join(*a)
+
+
+def repolink_handler(connect_repo):
+    """Link a repo: which languages it holds, which test frameworks, how many tests exist, and which API calls it offers. Called straight after the link so the next step can be offered at once."""
+    async def h(ctx):
+        from . import api_layer, test_connectors
+        rq = ctx.get("repoRequest")
+        if not rq or not rq.get("project"):
+            return {"unavailable": True, "detail": "give a repo (provider and project) to link"}
+        try:
+            repo = connect_repo(rq)
+            ref = rq.get("ref") or await repo.default_branch()
+            allf = await repo.list_files(ref)
+        except Exception as e:
+            return {"unavailable": True, "detail": str(e)}
+        langs = {}
+        for f in allf:
+            if unit_tests.IGNORE.search(f):
+                continue
+            l = unit_tests.language_of(f)
+            if l:
+                d = langs.setdefault(l, {"source": 0, "tests": 0})
+                d["tests" if unit_tests.IS_TEST.search(f) else "source"] += 1
+        specs = [f for f in allf if api_layer.SPEC_NAME.search(f)]
+        routes = 0
+        for f in [f for f in allf if unit_tests.language_of(f) and not unit_tests.IS_TEST.search(f) and not unit_tests.IGNORE.search(f)][:60]:
+            if routes > 500:
+                break
+            try:
+                routes += len(api_layer.detect_endpoints(f, await repo.read_file(f, ref), unit_tests.language_of(f)))
+            except Exception:
+                pass
+        avail = test_connectors.availability()
+        out = [{"language": l, "sourceFiles": v["source"], "testFiles": v["tests"], "toolchainHere": bool(avail.get(l, {}).get("available")), "framework": unit_tests.LANGS[l]["framework"]} for l, v in sorted(langs.items(), key=lambda x: -x[1]["source"])]
+        main = out[0]["language"] if out else None
+        return {"ok": bool(out), "detail": (f"{', '.join(o['language'] for o in out)} found; {routes} API call(s) in code" + (f" and {len(specs)} OpenAPI file(s)" if specs else "") + ". Ready to write unit and API integration tests.") if out else "no supported language found in this repo",
+                "data": {"ref": ref, "languages": out, "main": main, "apiCalls": routes, "openapi": specs, "next": "unit-tests"}}
     return h
 
 
@@ -319,6 +422,11 @@ def unitrun_handler(project="", run_id="", env=None, run=None, which=None):
             if not root or not os.path.isdir(root):
                 return {"unavailable": True, "detail": "give a checkout to run: repoRequest.dir (a folder on the server) or repoRequest.cloneUrl (https)"}
             kw = {k: v for k, v in (("run", run), ("which", which)) if v}
+            if rq.get("apiBaseUrl"):
+                bad = safe_target(rq["apiBaseUrl"])
+                if bad:
+                    return {"unavailable": True, "detail": f"apiBaseUrl not allowed: {bad}"}
+                kw["env"] = {**os.environ, "API_BASE_URL": str(rq["apiBaseUrl"])}
             results = tcx.run_all(root, rq.get("languages"), tuple(rq.get("kinds") or ("unit", "integration")), **kw)
         except (ValueError, OSError) as e:
             return {"unavailable": True, "detail": str(e)}
@@ -449,3 +557,85 @@ def tool_status(run=_run, env=None):
     out["clickhouse"] = bool(env.get("CLICKHOUSE_URL"))
     out["postgres"] = str(env.get("DATABASE_URL", "")).startswith(("postgres", "postgresql"))
     return out
+
+
+def apifunc_handler(connect_repo, fetch=_http.fetch, env=None):
+    """The agent builds functional API tests from the repo's API layer (code or OpenAPI) and runs them against a base URL, then logs each case.
+    Request: repoRequest {provider, project, ref?, languages?} + apiBaseUrl (+ allowWrites, requirement {key}). Without apiBaseUrl it only plans (returns the cases)."""
+    async def h(ctx):
+        from . import api_layer, api_functional as AF, logstore
+        rq = ctx.get("repoRequest") or {}
+        if not rq.get("project"):
+            return {"unavailable": True, "detail": "give a repo (provider and project) whose API should be tested"}
+        base = rq.get("apiBaseUrl") or ctx.get("apiBaseUrl")
+        if base:
+            bad = safe_target(base)
+            if bad:
+                return {"unavailable": True, "detail": f"apiBaseUrl not allowed: {bad}"}
+        try:
+            repo = connect_repo(rq)
+            ref = rq.get("ref") or await repo.default_branch()
+            allf = await repo.list_files(ref)
+        except Exception as e:
+            return {"unavailable": True, "detail": str(e)}
+        cand = [f for f in allf if api_layer.SPEC_NAME.search(f)][:3] + unit_tests_pick(allf, rq.get("languages"), {})[:60]
+        texts = {}
+        for f in cand:
+            try:
+                t = await repo.read_file(f, ref)
+                if len(t) <= 200000:
+                    texts[f] = t
+            except Exception:
+                pass
+        eps = api_layer.analyse(allf, texts, unit_tests.language_of)["endpoints"]
+        if not eps:
+            return {"ok": False, "detail": "no API calls found in this repo (no routes in code and no OpenAPI file)", "data": {"cases": [], "results": []}}
+        key = str((rq.get("requirement") or {}).get("key") or ctx.get("requirementKey") or "")[:40]
+        cases = AF.build_cases(eps, key)
+        brief = [{k: c[k] for k in ("name", "call", "method", "path", "writes")} for c in cases]
+        if not base:
+            return {"ok": True, "detail": f"{len(cases)} functional API case(s) planned for {len(eps)} call(s); give apiBaseUrl to run them", "data": {"cases": brief, "results": [], "calls": len(eps)}}
+        e = env if env is not None else os.environ
+        res = await AF.run_cases(base, cases, fetch, bool(rq.get("allowWrites")), e.get("API_TOKEN", ""))
+        run_id = str(ctx.get("run") or int(time.time()))
+        for r in res:
+            logstore.record("unit_result", {"project": ctx.get("project", ""), "run": run_id, "requirement": key, "language": "api", "kind": "functional", "test": r["name"], "status": r["result"], "ms": r["ms"]}, env)
+        sm = AF.summary(res)
+        return {"ok": sm["failed"] == 0 and sm["passed"] > 0, "detail": f"{sm['passed']} passed, {sm['failed']} failed, {sm['skipped']} skipped across {len(eps)} call(s)" + ("" if rq.get("allowWrites") else " (writes off)"),
+                "data": {"summary": sm, "results": res, "calls": len(eps), "run": run_id}}
+    return h
+
+
+def deployed_handler(fetch=_http.fetch):
+    """After the deployment: the app must answer before the security test is allowed to aim at it. Any answer below 500 counts as up."""
+    async def h(ctx):
+        url = ctx.get("appUrl") or ctx.get("baseUrl")
+        if not url:
+            return {"unavailable": True, "detail": "give the deployed app address (appUrl) to check"}
+        bad = safe_target(url)
+        if bad:
+            return {"unavailable": True, "detail": f"not allowed: {bad}"}
+        try:
+            status, _ = await fetch("GET", str(url), {"Accept": "text/html,application/json"}, None)
+        except Exception as e:
+            return {"ok": False, "detail": f"the app did not answer: {str(e)[:120]}"}
+        return {"ok": status < 500, "detail": f"the app answered {status}" if status < 500 else f"the app is failing ({status}), so the security test waits", "data": {"status": status}}
+    return h
+
+
+def evidence_handler(project="", run_id="", env=None, dirs=None):
+    """After the run: reports, screenshots, HAR and logs go into one compressed archive, which is checked, and the AI is given a digest."""
+    async def h(ctx):
+        from . import evidence
+        e = env if env is not None else os.environ
+        ds = [d for d in (dirs or [e.get("PHOENIX_REPORTS_DIR", "logs/reports"), e.get("PHOENIX_SCREENSHOT_DIR", "logs/screenshots"), "logs/security"]) if os.path.isdir(d)]
+        extra = {"stages.json": json.dumps([{k: s.get(k) for k in ("id", "status", "detail")} for s in ctx.get("results", [])])}
+        if ctx.get("testDataUsed"):
+            extra["test-data.json"] = json.dumps(ctx["testDataUsed"])
+        b = await asyncio.to_thread(evidence.bundle, run_id, ds, e.get("PHOENIX_EVIDENCE_DIR", "logs/evidence"), extra)
+        v = await asyncio.to_thread(evidence.validate, b["path"])
+        dig = evidence.digest(b["manifest"], ctx.get("results", []), ctx.get("goal", ""))
+        trained = evidence.feed(project, run_id, dig, e)
+        return {"ok": v["ok"], "detail": f"{b['files']} file(s) packed ({b['rawBytes']} to {b['packedBytes']} bytes), " + ("checked: all good" if v["ok"] else "check FAILED: " + "; ".join(v["problems"][:2])) + f"; the AI was given the digest{' and a training example to label' if trained else ' (training capture is off)'}",
+                "data": {"archive": b["path"], "ratio": b["ratio"], "validation": v, "screenshots": v["screenshots"]}}
+    return h

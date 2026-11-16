@@ -120,6 +120,8 @@ Test credentials never go in the repo. `scripts/encrypt-secret.js` prompts for a
 
 `bash scripts/test-agents.sh` runs only the agent tests (release agents, check steps, suite runner, release API, backend agents and avatars, MCP agent tools), kept apart from the rest of the suite. Each package's own `npm test` still runs everything.
 
+**Integration tests** (`engine/test/integration/`, run by the same script; `--unit-only` skips them, or `cd engine && npm run test:integration`) drive every agent through a real Chromium against a local fake store (`fake-store.js`: product cards, sold-out, a one-off error page, a checkout that ends in an error, a slow page with weak headers). They cover pass / blocked-by-site / failed, check steps, the Healer turning a one-off failure into `flaky`, Performance and Security warnings, every agent ending `done`, the audit trail, and the project-keyed release API from one POST to the verdict and history. The model endpoint points at a closed port, so they prove the page-reading path needs no model. They found and fixed four real faults: short product cards had no card context, numbers in names ("24 Months") were ignored, a failed check or model error was mislabelled as a site block, and the Healer's retry reset the Runner's status.
+
 ## Running it
 
 ```

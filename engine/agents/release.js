@@ -121,7 +121,7 @@ async function runRelease(suite, { changed, only, ask, heal: doHeal = true, perf
   st("triage", "done", nonPass ? `${nonPass} case(s) explained` : "nothing to explain");
   if (doHeal) {
     const failedN = summary.results.filter((r) => r.verdict === "failed").length;
-    if (failedN) { st("healer", "working", `retrying ${failedN} failed case(s)`); await heal(summary, planned, { ...runOpts, log }, audit); st("healer", "done", `${summary.results.filter((r) => r.flaky).length} flaky, ${summary.results.filter((r) => r.retried).length} still failing`); }
+    if (failedN) { st("healer", "working", `retrying ${failedN} failed case(s)`); await heal(summary, planned, { ...runOpts, log: (line) => st("healer", "working", String(line).trim().slice(0, 140)) }, audit); st("healer", "done", `${summary.results.filter((r) => r.flaky).length} flaky, ${summary.results.filter((r) => r.retried).length} still failing`); }
     else st("healer", "done", "no failures to retry");
   } else st("healer", "skipped", "turned off for this release");
   await triage(summary.results.filter((r) => r.verdict !== "passed" && !r.triage), { ask }, audit);

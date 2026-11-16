@@ -25,6 +25,22 @@ function SNAPSHOT_SCRIPT() {
     }
     return "";
   };
+  // A SHORT card ("Aurora X1" + "Buy now" is under 25 characters of extra text) still is a card: use the nearest ancestor that has
+  // some more text and holds only one control with this name, so "Buy now on the Aurora X1" can find its own button.
+  var shortCard = function (el, own) {
+    if (!own) return "";
+    var node = el.parentElement, ownLen = String(own).length;
+    for (var hop = 0; node && node !== document.body && hop < 4; hop++, node = node.parentElement) {
+      var t = String(node.innerText || "").replace(/\s+/g, " ").trim();
+      if (t.length > 420) return "";
+      if (t.length > ownLen + 3) {
+        var same = 0;
+        Array.prototype.forEach.call(node.querySelectorAll(SEL), function (c) { if (String(c.innerText || c.getAttribute("aria-label") || "").replace(/\s+/g, " ").trim() === own) same++; });
+        if (same <= 1) return t.split(own).join(" ").replace(/\s+/g, " ").trim().slice(0, 120);
+      }
+    }
+    return "";
+  };
   // A colour swatch has no text: name it by the colour it shows ("grey colour swatch") so "select the grey colour" can find it.
   var colourName = function (el) {
     var cs0 = window.getComputedStyle(el), bg = cs0.backgroundColor;
@@ -94,7 +110,7 @@ function SNAPSHOT_SCRIPT() {
       ref: ref, tag: tag, role: role, name: name, type: type || undefined,
       editable: !!editable, disabled: !!el.disabled || el.getAttribute("aria-disabled") === "true",
       hint: isLogo ? "logo" : undefined,
-      within: around(el, name) || undefined,
+      within: around(el, name) || shortCard(el, name) || undefined,
       id: id, testid: el.getAttribute("data-testid") || el.getAttribute("data-test") || el.getAttribute("data-qa") || undefined,
       placeholder: el.getAttribute("placeholder") || undefined,
       alt: swatch ? (swatch === "grey" ? "gray color" : swatch.replace("grey", "gray") + " color") : undefined,

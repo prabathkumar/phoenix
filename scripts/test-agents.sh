@@ -12,4 +12,7 @@ run "engine: page read first / named targets / blockers" node engine/test/named-
 run "frontend: release API, project keying, mobile apps, agent status" node frontend/test/release-endpoint.test.js
 run "backend: saved agents, roster, avatars, run by name" bash -c 'cd backend && python3 -m pytest tests/test_agents.py -q'
 run "mcp: agent and avatar tools" bash -c 'cd mcp && node test/server.test.js'
+if [ "${1:-}" != "--unit-only" ]; then
+run "integration: all agents on a real browser against a fake store (needs Chromium)" node engine/test/integration/release-agents.integration.test.js
+fi
 [ $fail -eq 0 ] && echo "ALL AGENT TESTS PASSED" || { echo "SOME AGENT TESTS FAILED"; exit 1; }

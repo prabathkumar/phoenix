@@ -32,7 +32,7 @@ function namedWords(instruction) {
   let m = t.match(/^(?:click|tap|press|select|choose|pick)\s+(?:on\s+)?(?:the\s+)?(.+?)\s+(?:on|against|for|of|in|under|next to|beside)\s+(?:the\s+)?.+$/i)
     || t.match(/^(?:click|tap|press|select|choose|pick)\s+(?:on\s+)?(?:the\s+)?(.+)$/i);
   if (!m || /\b(and|then)\b|[,;]/i.test(m[1])) return null;
-  const words = m[1].toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 3 && !STOP.has(w) && !["menu", "tab", "option", "item", "icon"].includes(w));
+  const words = m[1].toLowerCase().split(/[^a-z0-9]+/).filter((w) => (w.length >= 3 || (/\d/.test(w) && w.length >= 2)) && !STOP.has(w) && !["menu", "tab", "option", "item", "icon"].includes(w));
   return words.length ? words : null;
 }
 

@@ -158,3 +158,14 @@ function page() {
   assert.ok(MATCH_RULES.includes("Never choose a different element"));
   console.log("named-target tests passed");
 })().catch((e) => { console.error(e); process.exit(1); });
+
+// regression (found by the integration tests): numbers name a control, and a failed check is a finding, not a site block
+{
+  const { plainName } = require("../core/named-target");
+  const { classify } = require("../suite-run");
+  const els = [{ ref: 1, name: "24 Months" }, { ref: 2, name: "36 Months" }];
+  require("assert").strictEqual(plainName("Select 24 Months", els).element.ref, 1);
+  require("assert").strictEqual(classify({ status: "failed", steps: [{ text: "Check that no error is showing", status: "failed", reason: 'the page is showing: "Please try again later"' }] }), "failed");
+  require("assert").strictEqual(classify({ status: "failed", steps: [{ text: "Select 256GB", status: "failed", reason: 'model call failed: x - the page is showing: "Try again"' }] }), "failed");
+  console.log("  ok - numbers name a control; failed checks and model errors are failures, not site blocks");
+}

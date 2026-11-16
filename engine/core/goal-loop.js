@@ -11,6 +11,7 @@
  * and a list of risky words (pay, delete, ...) that stops the loop for a human.
  */
 const { assertSurface, diffLines } = require("./surface");
+const { runCheck } = require("./check-step");
 const { snapshotToText } = require("./semantic-resolve");
 const { parseRepeat, mismatch, domMatch, plainName, enterTarget, MATCH_RULES } = require("./named-target");
 
@@ -66,6 +67,8 @@ function onProductPage(url) {
 
 async function runGoalLoopInner(surface, goal, opts = {}) {
   assertSurface(surface);
+  const checked = await runCheck(surface, goal, { settleMs: opts.blockedWaitMs ?? 700 }); // "Check that ..." reads the page; it never clicks or asks the model
+  if (checked) return { ...checked, steps: [], actions: [] };
   const callModel = opts.callModel || require("../../generation/llm").callOllamaJson;
   const maxSteps = opts.maxSteps || 12;
   const rep = parseRepeat(goal); // "click the logo 10 times": the runner repeats, the model resolves once

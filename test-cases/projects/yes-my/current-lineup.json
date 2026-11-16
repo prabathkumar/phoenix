@@ -1,7 +1,7 @@
 {
   "name": "yes.my current line-up - web, read-only (production)",
   "url": "https://www.yes.my",
-  "note": "Written by Phoenix on 16 Nov 2026 from the live Latest Devices row (iPhone 18 Pro / Pro Max, vivo X300 FE, Galaxy Z Flip 8 / Fold 8). Not from the YOS export: use release-web.json for the YOS cases. Each journey stops before any login, ID, TAC or payment step. Verified on the live page: iPhone 18 Pro (In Stock; storage 256GB-2TB; New Line / Existing; Infinite+ and Infinite Cashback; Cashback has No Contract and tiers Ultra/Premium/Standard/Basic) and vivo X300 FE (In Stock; one storage; Infinite+ only). The other devices are assumed to follow the same layout; a failure there is a finding about the suite or the page, not necessarily a defect.",
+  "note": "Written by Phoenix on 16 Nov 2026 from the live Latest Devices row (iPhone 18 Pro / Pro Max, vivo X300 FE, Galaxy Z Flip 8 / Fold 8). Not from the YOS export: use release-web.json for the YOS cases. Each journey stops before any login, ID, TAC or payment step. Verified on the live page: iPhone 18 Pro (In Stock; storage 256GB-2TB; New Line / Existing; Infinite+ and Infinite Cashback; Cashback has No Contract and tiers Ultra/Premium/Standard/Basic) and vivo X300 FE (In Stock; one storage; Infinite+ only). The other devices are assumed to follow the same layout; a failure there is a finding about the suite or the page, not necessarily a defect. Every journey ends with 'Check that no error is showing' (the page must end clean, not just reach the last tap).",
   "cases": [
     {
       "id": "PHX-YM-001",
@@ -16,7 +16,8 @@
         "Select the Infinite+ payment plan",
         "Select 24 Months",
         "Select Infinite+ Ultra",
-        "Click Next"
+        "Click Next",
+        "Check that no error is showing"
       ],
       "stopsBefore": "identity / payment (needs a person)"
     },
@@ -33,7 +34,8 @@
         "Select the Infinite+ payment plan",
         "Select 36 Months",
         "Select Infinite+ Premium",
-        "Click Next"
+        "Click Next",
+        "Check that no error is showing"
       ],
       "stopsBefore": "identity / payment (needs a person)",
       "note": "tier name 'Infinite+ Premium' not yet confirmed on the live page"
@@ -51,7 +53,8 @@
         "Select the Infinite Cashback payment plan",
         "Select No Contract",
         "Select Infinite Cashback Standard",
-        "Click Next"
+        "Click Next",
+        "Check that no error is showing"
       ],
       "stopsBefore": "identity / payment (needs a person)"
     },
@@ -68,7 +71,8 @@
         "Select the Infinite Cashback payment plan",
         "Select No Contract",
         "Select Infinite Cashback Basic",
-        "Click Next"
+        "Click Next",
+        "Check that no error is showing"
       ],
       "stopsBefore": "identity / payment (needs a person)"
     },
@@ -85,7 +89,8 @@
         "Select the Infinite+ payment plan",
         "Select 24 Months",
         "Select Infinite+ Ultra",
-        "Click Next"
+        "Click Next",
+        "Check that no error is showing"
       ],
       "stopsBefore": "identity / payment (needs a person)"
     },
@@ -102,7 +107,8 @@
         "Select the Infinite+ payment plan",
         "Select 36 Months",
         "Select Infinite+ Premium",
-        "Click Next"
+        "Click Next",
+        "Check that no error is showing"
       ],
       "stopsBefore": "identity / payment (needs a person)",
       "note": "tier name 'Infinite+ Premium' not yet confirmed on the live page"
@@ -120,7 +126,8 @@
         "Select the Infinite Cashback payment plan",
         "Select No Contract",
         "Select Infinite Cashback Standard",
-        "Click Next"
+        "Click Next",
+        "Check that no error is showing"
       ],
       "stopsBefore": "identity / payment (needs a person)"
     },
@@ -137,7 +144,8 @@
         "Select the Infinite Cashback payment plan",
         "Select No Contract",
         "Select Infinite Cashback Basic",
-        "Click Next"
+        "Click Next",
+        "Check that no error is showing"
       ],
       "stopsBefore": "identity / payment (needs a person)"
     },
@@ -153,7 +161,8 @@
         "Select the Infinite+ payment plan",
         "Select 24 Months",
         "Select Infinite+ Ultra",
-        "Click Next"
+        "Click Next",
+        "Check that no error is showing"
       ],
       "stopsBefore": "identity / payment (needs a person)"
     },
@@ -169,7 +178,8 @@
         "Select the Infinite+ payment plan",
         "Select 36 Months",
         "Select Infinite+ Ultra",
-        "Click Next"
+        "Click Next",
+        "Check that no error is showing"
       ],
       "stopsBefore": "identity / payment (needs a person)"
     },
@@ -185,7 +195,8 @@
         "Select the Infinite+ payment plan",
         "Select 24 Months",
         "Select Infinite+ Premium",
-        "Click Next"
+        "Click Next",
+        "Check that no error is showing"
       ],
       "stopsBefore": "identity / payment (needs a person)",
       "note": "tier name 'Infinite+ Premium' not yet confirmed on the live page"
@@ -202,7 +213,8 @@
         "Select the Infinite+ payment plan",
         "Select 36 Months",
         "Select Infinite+ Premium",
-        "Click Next"
+        "Click Next",
+        "Check that no error is showing"
       ],
       "stopsBefore": "identity / payment (needs a person)",
       "note": "tier name 'Infinite+ Premium' not yet confirmed on the live page"
@@ -219,7 +231,8 @@
         "Select the Infinite+ payment plan",
         "Select 24 Months",
         "Select Infinite+ Ultra",
-        "Click Next"
+        "Click Next",
+        "Check that no error is showing"
       ],
       "stopsBefore": "identity / payment (needs a person)",
       "note": "live page confirmed for X300 FE; layout of this device not yet read"
@@ -236,7 +249,8 @@
         "Select the Infinite+ payment plan",
         "Select 36 Months",
         "Select Infinite+ Ultra",
-        "Click Next"
+        "Click Next",
+        "Check that no error is showing"
       ],
       "stopsBefore": "identity / payment (needs a person)",
       "note": "live page confirmed for X300 FE; layout of this device not yet read"
@@ -253,7 +267,8 @@
         "Select the Infinite+ payment plan",
         "Select 24 Months",
         "Select Infinite+ Premium",
-        "Click Next"
+        "Click Next",
+        "Check that no error is showing"
       ],
       "stopsBefore": "identity / payment (needs a person)",
       "note": "tier name 'Infinite+ Premium' not yet confirmed on the live page"
@@ -270,7 +285,8 @@
         "Select the Infinite+ payment plan",
         "Select 36 Months",
         "Select Infinite+ Premium",
-        "Click Next"
+        "Click Next",
+        "Check that no error is showing"
       ],
       "stopsBefore": "identity / payment (needs a person)",
       "note": "tier name 'Infinite+ Premium' not yet confirmed on the live page"
@@ -287,7 +303,8 @@
         "Select the Infinite+ payment plan",
         "Select 24 Months",
         "Select Infinite+ Ultra",
-        "Click Next"
+        "Click Next",
+        "Check that no error is showing"
       ],
       "stopsBefore": "identity / payment (needs a person)",
       "note": "live page confirmed for X300 FE; layout of this device not yet read"
@@ -304,7 +321,8 @@
         "Select the Infinite+ payment plan",
         "Select 36 Months",
         "Select Infinite+ Ultra",
-        "Click Next"
+        "Click Next",
+        "Check that no error is showing"
       ],
       "stopsBefore": "identity / payment (needs a person)",
       "note": "live page confirmed for X300 FE; layout of this device not yet read"
@@ -321,7 +339,8 @@
         "Select the Infinite+ payment plan",
         "Select 24 Months",
         "Select Infinite+ Premium",
-        "Click Next"
+        "Click Next",
+        "Check that no error is showing"
       ],
       "stopsBefore": "identity / payment (needs a person)",
       "note": "tier name 'Infinite+ Premium' not yet confirmed on the live page"
@@ -338,7 +357,8 @@
         "Select the Infinite+ payment plan",
         "Select 36 Months",
         "Select Infinite+ Premium",
-        "Click Next"
+        "Click Next",
+        "Check that no error is showing"
       ],
       "stopsBefore": "identity / payment (needs a person)",
       "note": "tier name 'Infinite+ Premium' not yet confirmed on the live page"

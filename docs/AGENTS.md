@@ -80,7 +80,7 @@ The page is `/releases?project=<projectId>`. Set `PHOENIX_RELEASE_TOKEN` to requ
 | `failed` | a step could not be done: control missing, disabled, wrong |
 | `flaky` | failed once, passed on the Healer's retry; shown in the report, never hidden |
 
-Release verdict: `FAIL` if any case failed, `PASS-WITH-GAPS` if some were blocked, not run or flaky, else `PASS`. A pass means every step reached the right control; it does not yet prove the page ended in the right state (no "no error message is showing" check yet).
+Release verdict: `FAIL` if any case failed, `PASS-WITH-GAPS` if some were blocked, not run or flaky, else `PASS`. A pass means every step reached the right control. To prove the page also ended in the right state, end a journey with a check step: `Check that no error is showing`, `Check that the page says "Order summary"` or `Check that the URL contains /cart`. Check steps only read the page (no clicks, no model) and fail with the page's own words.
 
 ## Audit trail
 
@@ -116,7 +116,6 @@ Only the sandbox cannot reach yes.my; run it from a machine that can. `engine/su
 
 - authentication beyond the shared release token (real project login and roles)
 - performance and security checks deeper than one page load and one header read (no load test, no scanner run inside a release)
-- a "check that no error is showing" assertion step
 - login journeys (the login location on yes.my is not yet known)
 - mobile app agents (MyYes on BrowserStack or Appium)
 - the yes.my suite itself needs refreshing: the live line-up has moved to iPhone 18 and Galaxy Fold 8, so the X500 and iPhone 17 cases are stale

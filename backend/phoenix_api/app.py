@@ -2,7 +2,7 @@ import json
 """Phoenix API (FastAPI). React talks to this; this talks to Postgres, ClickHouse, the Node execution engine, Jira, GitHub/GitLab and the model."""
 import os
 
-from fastapi import Body, FastAPI, Header, HTTPException, Query
+from fastapi import Request, Body, FastAPI, Header, HTTPException, Query
 from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -389,6 +389,28 @@ def create_app(deps: Deps | None = None) -> FastAPI:
         only = [body["channel"]] if body.get("channel") in notify.ALL else None
         r = await notify.send("test", "Phoenix test message", f"Sent by {x_user}. If you can read this, notifications work.", D.env, only=only, force=True, to=[x_user] if body.get("me") and "@" in x_user else None)
         return {"sent": r, "detail": "no channel is set up" if not r else "sent"}
+
+    async def _twilio_form(request: Request, path: str):
+        from urllib.parse import parse_qsl
+        from . import notify
+        raw = (await request.body())[:20000].decode("utf-8", "replace")
+        params = dict(parse_qsl(raw, keep_blank_values=True))
+        if not notify.verify_twilio(D.env, path, params, request.headers.get("x-twilio-signature", "")):
+            raise HTTPException(403, "not from Twilio")                  # an unsigned or forged call changes nothing
+        return params
+
+    @app.post("/api/notify/twilio/status")
+    async def twilio_status(request: Request):
+        from . import notify
+        return notify.twilio_status(await _twilio_form(request, "/api/notify/twilio/status"))
+
+    @app.post("/api/notify/twilio/inbound")
+    async def twilio_inbound(request: Request):
+        from . import notify
+        r = notify.twilio_inbound(D.env, await _twilio_form(request, "/api/notify/twilio/inbound"))
+        if r["action"] != "none":
+            logstore.record("user_action", {"project": "", "who": r.get("who", ""), "action": f"whatsapp-{r['action']}", "subject": "twilio", "status": "ok"}, D.env)
+        return r
 
     @app.post("/api/live/start")
     async def live_start(body: dict = Body(...), x_user: str = Header(default="")):

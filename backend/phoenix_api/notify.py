@@ -53,6 +53,8 @@ def channels(env):
         c["google-chat"] = {"ready": True}
     if env.get("SMTP_HOST") and env.get("SMTP_FROM") and env.get("EMAIL_TO"):
         c["email"] = {"ready": True, "to": len([x for x in env["EMAIL_TO"].split(",") if x.strip()])}
+    if env.get("SMS_TO") and all(env.get(k) for k in ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_SMS_FROM")):
+        c["sms"] = {"ready": True, "to": len([x for x in env["SMS_TO"].split(",") if x.strip()])}
     if env.get("NTFY_URL"):
         c["ntfy"] = {"ready": True}
     if env.get("NOTIFY_WEBHOOK_URL"):
@@ -189,10 +191,87 @@ async def _twilio_whatsapp(env, text, fetch):
         else:
             form["Body"] = text
         auth = base64.b64encode(f"{env['TWILIO_ACCOUNT_SID']}:{env['TWILIO_AUTH_TOKEN']}".encode()).decode()
-        st, _ = await fetch("POST", f"https://api.twilio.com/2010-04-01/Accounts/{quote(env['TWILIO_ACCOUNT_SID'], safe='')}/Messages.json", {"Authorization": f"Basic {auth}", "Content-Type": "application/x-www-form-urlencoded"}, urlencode(form))
+        if env.get("PHOENIX_PUBLIC_URL") and _https(env["PHOENIX_PUBLIC_URL"]):
+            form["StatusCallback"] = env["PHOENIX_PUBLIC_URL"].rstrip("/") + "/api/notify/twilio/status"
+        st, t = await fetch("POST", f"https://api.twilio.com/2010-04-01/Accounts/{quote(env['TWILIO_ACCOUNT_SID'], safe='')}/Messages.json", {"Authorization": f"Basic {auth}", "Content-Type": "application/x-www-form-urlencoded"}, urlencode(form))
         if st >= 300:
-            bad.append(f"HTTP {st} for ...{to[-4:]}")
+            bad.append(f"HTTP {st} for ...{to[-4:]}" + (f" (Twilio code {_twilio_code(t)})" if _twilio_code(t) else ""))
+        else:
+            _sids[_sid(t)] = {"to": to[-4:], "at": time.time()}
     return not bad, "; ".join(bad) or "sent"
+
+
+def _twilio_code(t):
+    try:
+        return json.loads(t or "{}").get("code") or ""
+    except Exception:
+        return ""
+
+
+def _sid(t):
+    try:
+        return str(json.loads(t or "{}").get("sid") or "")
+    except Exception:
+        return ""
+
+
+async def _sms(env, title, body, link, fetch):
+    """Plain SMS through the same Twilio account (a fallback for people without WhatsApp). One segment-sized text."""
+    import base64
+    from urllib.parse import quote, urlencode
+    bad = []
+    for to in [x.strip() for x in env["SMS_TO"].split(",") if x.strip()]:
+        auth = base64.b64encode(f"{env['TWILIO_ACCOUNT_SID']}:{env['TWILIO_AUTH_TOKEN']}".encode()).decode()
+        st, t = await fetch("POST", f"https://api.twilio.com/2010-04-01/Accounts/{quote(env['TWILIO_ACCOUNT_SID'], safe='')}/Messages.json", {"Authorization": f"Basic {auth}", "Content-Type": "application/x-www-form-urlencoded"},
+                            urlencode({"From": env["TWILIO_SMS_FROM"], "To": to if to.startswith("+") else "+" + to, "Body": f"{title}: {body}"[:300]}))
+        if st >= 300:
+            bad.append(f"HTTP {st} for ...{to[-4:]}" + (f" (Twilio code {_twilio_code(t)})" if _twilio_code(t) else ""))
+    return not bad, "; ".join(bad) or "sent"
+
+
+# ---- Twilio calls US: the signature proves it was Twilio, then delivery status and STOP / START replies are handled
+def twilio_signature(token, url, params):
+    import base64
+    data = url + "".join(f"{k}{params[k]}" for k in sorted(params))
+    return base64.b64encode(hmac.new(token.encode(), data.encode(), hashlib.sha1).digest()).decode()
+
+
+def verify_twilio(env, path, params, signature):
+    """False unless PHOENIX_PUBLIC_URL and TWILIO_AUTH_TOKEN are set AND the signature matches the exact public address Twilio was given."""
+    if not (env.get("TWILIO_AUTH_TOKEN") and env.get("PHOENIX_PUBLIC_URL") and signature):
+        return False
+    return hmac.compare_digest(twilio_signature(env["TWILIO_AUTH_TOKEN"], env["PHOENIX_PUBLIC_URL"].rstrip("/") + path, params), signature)
+
+
+def twilio_status(params):
+    """Delivery receipt: queued, sent, delivered, read, undelivered, failed. Updates the delivery log so 'did it reach them' has a real answer."""
+    sid, st = params.get("MessageSid", ""), params.get("MessageStatus", "")
+    hit = _sids.get(sid)
+    for e in reversed(_log):
+        if hit and e["channel"].startswith("whatsapp") and e.get("detail", "").startswith("sent") and not e.get("final"):
+            e["detail"] = f"{st}" + (f" (Twilio code {params['ErrorCode']})" if params.get("ErrorCode") else "")
+            e["ok"] = st not in ("undelivered", "failed")
+            e["final"] = st in ("delivered", "read", "undelivered", "failed")
+            break
+    return {"sid": sid, "status": st, "known": bool(hit)}
+
+
+def twilio_inbound(env, params):
+    """A reply on WhatsApp or SMS. STOP / UNSUBSCRIBE / CANCEL switches that number's WhatsApp off; START / YES switches it on. Anything else is only counted, never acted on."""
+    text = str(params.get("Body", "")).strip().upper()
+    num = re.sub(r"^whatsapp:", "", str(params.get("From", ""))).strip()
+    who = next((w for w, p in prefs(env).items() if p.get("whatsappNumber") and re.sub(r"\D", "", p["whatsappNumber"]) == re.sub(r"\D", "", num)), None)
+    if text in ("STOP", "UNSUBSCRIBE", "CANCEL", "END") and who:
+        set_prefs(env, who, {"whatsapp": False})
+        return {"action": "opted-out", "who": who}
+    if text in ("START", "YES", "UNSTOP") and who:
+        set_prefs(env, who, {"whatsapp": True})
+        return {"action": "opted-in", "who": who}
+    return {"action": "none", "known": bool(who)}
+
+
+_sids = {}
+
 
 
 async def _whatsapp(env, title, body, link, fetch):
@@ -224,7 +303,7 @@ async def _email(env, title, body, link, fetch):
     return True, "sent"
 
 
-SENDERS = {"testops-mobile": _mobile, "whatsapp": _whatsapp, "slack": _slack, "teams": _teams, "telegram": _telegram, "discord": _discord, "google-chat": _gchat, "email": _email, "ntfy": _ntfy, "webhook": _webhook}
+SENDERS = {"testops-mobile": _mobile, "whatsapp": _whatsapp, "slack": _slack, "teams": _teams, "telegram": _telegram, "discord": _discord, "google-chat": _gchat, "email": _email, "sms": _sms, "ntfy": _ntfy, "webhook": _webhook}
 ALL = tuple(SENDERS)
 _EXTRA = ("testops-mobile", "webhook")      # these two also get the event name, project and severity as fields
 

@@ -186,3 +186,49 @@ def test_twilio_whatsapp_and_people_from_the_microsoft_directory(tmp_path):
             notify.set_prefs(env, "ann@ytl.com", bad)
     with pytest.raises(ValueError):
         notify.set_prefs(env, "not-an-address", {})
+
+
+def test_twilio_signature_matches_the_published_example_and_forgeries_change_nothing(tmp_path):
+    p = {"CallSid": "CA1234567890ABCDE", "Caller": "+14158675310", "Digits": "1234", "From": "+14158675310", "To": "+18005551212"}
+    assert notify.twilio_signature("12345", "https://mycompany.com/myapp.php?foo=1&bar=2", p) == "GvWf1cFY/Q7PnoempGyD5oXAezc="
+    from fastapi.testclient import TestClient
+    from phoenix_api.app import create_app
+    from phoenix_api.service import Deps
+    env = {"PHOENIX_DATA_DIR": str(tmp_path), "TWILIO_AUTH_TOKEN": "tk", "PHOENIX_PUBLIC_URL": "https://phoenix.example.com"}
+    notify.set_prefs(env, "ann@ytl.com", {"whatsapp": True, "whatsappNumber": "+6591234567"})
+    c = TestClient(create_app(Deps(env=env)))
+    form = {"From": "whatsapp:+6591234567", "Body": "stop"}
+    good = notify.twilio_signature("tk", "https://phoenix.example.com/api/notify/twilio/inbound", form)
+    assert c.post("/api/notify/twilio/inbound", data=form).status_code == 403                                   # no signature
+    assert c.post("/api/notify/twilio/inbound", data=form, headers={"X-Twilio-Signature": "AAAA"}).status_code == 403
+    assert notify.prefs(env, "ann@ytl.com")["whatsapp"] is True                                                  # forged calls changed nothing
+    assert c.post("/api/notify/twilio/inbound", data=form, headers={"X-Twilio-Signature": good}).json() == {"action": "opted-out", "who": "ann@ytl.com"}
+    assert notify.prefs(env, "ann@ytl.com")["whatsapp"] is False
+    form2 = {"From": "whatsapp:+6591234567", "Body": "Yes"}
+    sig2 = notify.twilio_signature("tk", "https://phoenix.example.com/api/notify/twilio/inbound", form2)
+    assert c.post("/api/notify/twilio/inbound", data=form2, headers={"X-Twilio-Signature": sig2}).json()["action"] == "opted-in"
+    form3 = {"From": "whatsapp:+6500000000", "Body": "STOP"}                                                     # a stranger cannot switch anyone off
+    sig3 = notify.twilio_signature("tk", "https://phoenix.example.com/api/notify/twilio/inbound", form3)
+    assert c.post("/api/notify/twilio/inbound", data=form3, headers={"X-Twilio-Signature": sig3}).json()["action"] == "none"
+    assert TestClient(create_app(Deps(env={"TWILIO_AUTH_TOKEN": "tk"}))).post("/api/notify/twilio/status", data={"MessageSid": "x"}, headers={"X-Twilio-Signature": "x"}).status_code == 403   # no public URL set: closed
+
+
+def test_status_receipts_update_the_log_and_sms_is_a_channel(tmp_path):
+    sent = []
+
+    async def fetch(m, url, h, body):
+        sent.append((url, body))
+        return 201, json.dumps({"sid": "SM123"})
+    env = {"PHOENIX_DATA_DIR": str(tmp_path), "WHATSAPP_PROVIDER": "twilio", "TWILIO_ACCOUNT_SID": "ACx", "TWILIO_AUTH_TOKEN": "tk", "TWILIO_WHATSAPP_FROM": "+14155238886", "WHATSAPP_TO": "+6590000000",
+           "PHOENIX_PUBLIC_URL": "https://phoenix.example.com", "SMS_TO": "+6590000001", "TWILIO_SMS_FROM": "+15005550006"}
+    assert "sms" in notify.channels(env)
+    r = asyncio.run(notify.send("test", "R1", "receipts", env, fetch=fetch, force=True))
+    assert r["whatsapp"]["ok"] and r["sms"]["ok"] and "StatusCallback=https%3A%2F%2Fphoenix.example.com%2Fapi%2Fnotify%2Ftwilio%2Fstatus" in sent[0][1] and "Body=R1%3A+receipts" in sent[1][1]
+    assert notify.twilio_status({"MessageSid": "SM123", "MessageStatus": "delivered"})["known"]
+    assert next(e for e in notify.recent() if e["channel"] == "whatsapp")["detail"] == "delivered"
+    notify.twilio_status({"MessageSid": "SM123", "MessageStatus": "failed", "ErrorCode": "63016"})
+    assert not notify.twilio_status({"MessageSid": "unknown", "MessageStatus": "sent"})["known"]
+
+    async def reject(m, url, h, body):
+        return 400, json.dumps({"code": 63016, "message": "x"})
+    assert "Twilio code 63016" in asyncio.run(notify.send("test", "R2", "x", env, fetch=reject, force=True, only=["whatsapp"]))["whatsapp"]["detail"]

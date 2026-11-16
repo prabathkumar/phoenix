@@ -33,8 +33,12 @@ def _https(url, platform=None):
     return bool(re.search(HOSTS[platform], host)) if platform in HOSTS else bool(host)
 
 
+NO_PHONE_CHANNELS = {"sms", "voice", "call", "calls", "phone", "text"}      # Phoenix never sends SMS or calls, through any provider
+
+
 def _via_courier(env):
-    return env.get("NOTIFY_VIA") == "courier" and bool(env.get("COURIER_AUTH_TOKEN"))
+    """Courier is the ONLY sender only when NOTIFY_VIA=courier-only. Otherwise it is one more channel next to the others."""
+    return env.get("NOTIFY_VIA") == "courier-only" and bool(env.get("COURIER_AUTH_TOKEN"))
 
 
 def channels(env):
@@ -42,6 +46,8 @@ def channels(env):
     if _via_courier(env):
         return {"courier": {"ready": True, "to": bool(env.get("COURIER_TO")), "channels": [x for x in env.get("COURIER_CHANNELS", "").split(",") if x.strip()] or "its own routing"}}
     c = {}
+    if env.get("COURIER_AUTH_TOKEN") and env.get("COURIER_TO"):
+        c["courier"] = {"ready": True, "channels": [x for x in env.get("COURIER_CHANNELS", "").split(",") if x.strip() and x.strip().lower() not in NO_PHONE_CHANNELS] or "its own routing"}
     if env.get("TESTOPS_PUSH_URL"):
         c["testops-mobile"] = {"ready": True}
     tw = env.get("WHATSAPP_PROVIDER") == "twilio" and all(env.get(k) for k in ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_WHATSAPP_FROM"))
@@ -294,8 +300,12 @@ async def _email(env, title, body, link, fetch):
 
 
 def _courier_body(env, title, body, link, to):
+    to = dict(to or {})
     msg = {"to": to, "content": {"title": title[:150], "body": body + (f"\n{link}" if link else "")}}
-    chans = [x.strip() for x in env.get("COURIER_CHANNELS", "").split(",") if x.strip()]
+    chans = [x.strip() for x in env.get("COURIER_CHANNELS", "").split(",") if x.strip() and x.strip().lower() not in NO_PHONE_CHANNELS]
+    if (to or {}).get("phone_number") and not chans:
+        to = {k: v for k, v in to.items() if k != "phone_number"}        # a phone number with no named channel would let Courier choose SMS: never
+        msg["to"] = to
     if chans:
         msg["routing"] = {"method": "all", "channels": chans}      # e.g. whatsapp,slack,email: every one of them, not the first that works
     return {"message": msg}

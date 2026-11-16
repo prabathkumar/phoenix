@@ -240,7 +240,7 @@ def test_courier_is_the_one_sender_for_shared_and_personal_messages(tmp_path):
     async def fetch(m, url, h, body):
         sent.append((url, h, json.loads(body) if body and body.startswith("{") else body))
         return 202, '{"requestId": "req-1"}'
-    env = {"PHOENIX_DATA_DIR": str(tmp_path), "NOTIFY_VIA": "courier", "COURIER_AUTH_TOKEN": "ck", "COURIER_TO": '{"list_id": "phoenix-ops"}', "COURIER_CHANNELS": "whatsapp,slack",
+    env = {"PHOENIX_DATA_DIR": str(tmp_path), "NOTIFY_VIA": "courier-only", "COURIER_AUTH_TOKEN": "ck", "COURIER_TO": '{"list_id": "phoenix-ops"}', "COURIER_CHANNELS": "whatsapp,slack",
            "SLACK_WEBHOOK_URL": "https://hooks.slack.com/services/x", "TWILIO_ACCOUNT_SID": "x"}
     assert list(notify.channels(env)) == ["courier"], "the direct channels are off while Courier is the sender"
     r = asyncio.run(notify.send("run-result", "C1", "password=hunter2hunter2 done", env, fetch=fetch))
@@ -259,3 +259,22 @@ def test_courier_is_the_one_sender_for_shared_and_personal_messages(tmp_path):
     bad = asyncio.run(notify.send("test", "C4", "x", {**env, "COURIER_TO": "not json"}, fetch=fetch))
     assert not bad["courier"]["ok"] and "JSON" in bad["courier"]["detail"]
     assert "courier" not in notify.channels({k: v for k, v in env.items() if k != "NOTIFY_VIA"})
+
+
+def test_courier_sits_beside_the_other_channels_and_never_sends_sms_or_calls(tmp_path):
+    sent = []
+
+    async def fetch(m, url, h, body):
+        sent.append((url, json.loads(body)))
+        return 202, "{}"
+    env = {"PHOENIX_DATA_DIR": str(tmp_path), "COURIER_AUTH_TOKEN": "ck", "COURIER_TO": '{"list_id": "ops"}', "COURIER_CHANNELS": "whatsapp,sms,voice,slack", "SLACK_WEBHOOK_URL": "https://hooks.slack.com/services/x"}
+    assert set(notify.channels(env)) == {"courier", "slack"}, "the others are kept"
+    r = asyncio.run(notify.send("test", "K1", "both", env, fetch=fetch, force=True))
+    assert r["courier"]["ok"] and r["slack"]["ok"]
+    assert next(b for u, b in sent if "courier" in u)["message"]["routing"]["channels"] == ["whatsapp", "slack"], "sms and voice are removed from the route"
+    # a phone number with no named channels is dropped, so Courier cannot pick SMS on its own
+    b = notify._courier_body({}, "t", "b", "", {"email": "a@b.com", "phone_number": "+65123"})
+    assert b["message"]["to"] == {"email": "a@b.com"} and "routing" not in b["message"]
+    b2 = notify._courier_body({"COURIER_CHANNELS": "whatsapp,email"}, "t", "b", "", {"phone_number": "+65123"})
+    assert b2["message"]["to"]["phone_number"] == "+65123" and b2["message"]["routing"]["channels"] == ["whatsapp", "email"]
+    assert not any(k in notify.ALL for k in ("sms", "voice", "call"))

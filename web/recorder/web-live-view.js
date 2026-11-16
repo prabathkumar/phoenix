@@ -170,7 +170,7 @@ async function startWebLiveView({ port, startUrl, name, browser, headless, aiLoo
         }
       } else if (message.type === "type") {
         try {
-          const { index } = await recorder.type(String(message.value ?? ""), message.param ? { param: String(message.param) } : {});
+          const { index } = await recorder.type(String(message.value ?? ""), message.param ? { param: String(message.param), secret: message.secret === true } : {});
           send({ type: "text-entered", stepIndex: index });
         } catch (err) {
           if (err.code === "no-field") send({ type: "type-error", code: "no-field", message: err.message });

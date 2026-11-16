@@ -141,7 +141,7 @@ class WebRecorder {
   }
 
   /** Types the FULL current value into the focused field (idempotent: replaces, never appends). */
-  async type(text, { param } = {}) {
+  async type(text, { param, secret } = {}) {
     const target = this._lastTap;
     if (!target) {
       const err = new Error("Click a field before typing into it — there's no focused field to type into yet.");
@@ -156,6 +156,7 @@ class WebRecorder {
     if (existing && existing.kind === "type") {
       existing.text = text;
       if (param) existing.param = param; else delete existing.param;
+      if (secret && param) existing.secret = true; else delete existing.secret;
       return { index: target.index, step: existing };
     }
     const step = {
@@ -164,6 +165,7 @@ class WebRecorder {
       selector: target.selector,
       text,
       ...(param ? { param } : {}),
+      ...(secret && param ? { secret: true } : {}),
     };
     this.steps[target.index] = step; // replaces the focusing click
     return { index: target.index, step };

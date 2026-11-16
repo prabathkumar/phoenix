@@ -1,3 +1,4 @@
+import json
 """Phoenix API (FastAPI). React talks to this; this talks to Postgres, ClickHouse, the Node execution engine, Jira, GitHub/GitLab and the model."""
 import os
 
@@ -318,6 +319,31 @@ def create_app(deps: Deps | None = None) -> FastAPI:
     def unit_connectors():
         from . import test_connectors
         return {"languages": test_connectors.availability(), "kinds": list(test_connectors.KINDS)}
+
+    @app.post("/api/live/start")
+    async def live_start(body: dict = Body(...), x_user: str = Header(default="")):
+        """Open a browser the tester can see and type into (Chromium on the engine, or BrowserStack). Returns the port of its live view; the page connects to it.
+        Starts only for a named person, and only at an address a scan would be allowed to reach (no cloud metadata, no file:, no passwords in the URL)."""
+        from . import http as _h
+        if not x_user.strip():
+            raise HTTPException(401, "Say who you are (X-User) before opening a browser.")
+        url = str(body.get("url") or "")
+        bad = H.safe_target(url)
+        if not url or bad:
+            raise HTTPException(400, f"That address is not allowed: {bad or 'give a start URL'}")
+        engine = D.env.get("ENGINE_URL")
+        if not engine:
+            raise HTTPException(503, "The execution engine is not connected (ENGINE_URL is not set).")
+        run_on = "browserstack" if str(body.get("runOn", "")).lower() == "browserstack" else "local"
+        status, text = await _h.fetch("POST", engine.rstrip("/") + "/api/web-sessions", {"Content-Type": "application/json"}, json.dumps({"url": url, "name": str(body.get("name") or "live_session")[:60], "runOn": run_on}), 90)
+        try:
+            out = json.loads(text or "{}")
+        except Exception:
+            out = {}
+        if status != 200 or not out.get("port"):
+            raise HTTPException(502, str(out.get("error") or "The engine could not open the browser.")[:200])
+        logstore.record("user_action", {"project": body.get("project", ""), "who": x_user, "action": "open-live-browser", "subject": run_on, "status": "ok"}, D.env)
+        return {"port": out["port"], "runOn": run_on}
 
     @app.post("/api/unit-tests/link")
     async def unit_link(body: dict = Body(...), x_user: str = Header(default="")):

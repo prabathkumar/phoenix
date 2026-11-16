@@ -80,10 +80,11 @@ services:
     environment:
       PHOENIX_DATA_DIR: /data
       TESTOPS_MOBILE_LOCATOR_DB_PATH: /data/locator-store.db
+      TESTOPS_MOBILE_WEB_PORT_RANGE: 8092-8099   # live browser views (the tester sees and types into the browser); one port per open session
       PHOENIX_API_URL: http://phoenix-api:8000   # the engine, release agents and MCP server send their logs here (/api/ingest -> ClickHouse)
     volumes: [platform-data:/data]
     # the "run from English" page and its API; this machine only (the engine has no login of its own)
-    ports: ["127.0.0.1:8091:8091"]
+    ports: ["127.0.0.1:8091:8091", "127.0.0.1:8092-8099:8092-8099"]
     shm_size: "1gb"
     profiles: ["platform"]
     restart: unless-stopped

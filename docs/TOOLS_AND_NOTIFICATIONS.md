@@ -15,7 +15,22 @@ Every open source tool (Semgrep, Gitleaks, Trivy, Locust, ZAP) has its own pinne
 5. otherwise promotes (writes `tools.lock.json`), then runs the new container's health check; if it does not start, **the previous version is put back** (self-healing).
 Every outcome goes to the phone. `GET /api/tools` shows live version, previous version, last check and baseline. Nothing runs this on a schedule yet: create a scheduled task that POSTs the upgrade for each tool.
 
-## The phone
-- **TestOps mobile app**: set `TESTOPS_PUSH_URL` (+ `TESTOPS_PUSH_TOKEN`). Phoenix POSTs `{event, title, body, project, link}`; the app side of that contract has to exist (it is not in this repo).
-- **WhatsApp** (Meta Cloud API): `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`, `WHATSAPP_TO` (comma list). Free text only works inside WhatsApp's 24-hour window after the person last wrote; set `WHATSAPP_TEMPLATE` (approved, one body variable) to reach them any time.
-- Sent for: upgrade blocked / promoted / rolled back, and every run that finishes or waits for you. `POST /api/notify/test` checks the setup. Texts are masked and cut short first; a phone that is off never fails a run.
+## Notifications platform
+One sender (`notify.py`) for every channel; set up by environment values, shown by `GET /api/notify/channels`.
+
+| Channel | Set | Notes |
+|---|---|---|
+| Slack | `SLACK_WEBHOOK_URL` (hooks.slack.com) or `SLACK_BOT_TOKEN` + `SLACK_CHANNEL` | |
+| Microsoft Teams | `TEAMS_WEBHOOK_URL` (a Workflows / Power Automate webhook) | posts an Adaptive Card to a channel |
+| WhatsApp | Meta: `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`, `WHATSAPP_TO`. **Twilio (easier):** `WHATSAPP_PROVIDER=twilio`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM`, `WHATSAPP_TO` | see below |
+| Telegram | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | |
+| Discord / Google Chat | `DISCORD_WEBHOOK_URL` / `GOOGLE_CHAT_WEBHOOK_URL` | |
+| Email | `SMTP_HOST`, `SMTP_FROM`, `EMAIL_TO` (+ `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`) | |
+| ntfy | `NTFY_URL` (+ `NTFY_TOKEN`) | push to a phone with no account |
+| Webhook | `NOTIFY_WEBHOOK_URL` (+ `NOTIFY_WEBHOOK_SECRET`: HMAC-SHA256 in `X-Phoenix-Signature`) | for anything else |
+| TestOps mobile app | `TESTOPS_PUSH_URL` (+ `TESTOPS_PUSH_TOKEN`) | the app's side of the push contract must exist |
+
+- **Safety:** named platforms accept only their own hosts over https, so a wrong or hijacked setting cannot send messages elsewhere. Texts are masked and cut to size; the same message is not repeated within a minute; a 5xx is retried once.
+- **Routing:** `PUT /api/notify/routes` sets, per channel, which events (`run-result`, `needs-you`, `upgrade-blocked`, `upgrade-promoted`, `upgrade-rolled-back`, ...) and the lowest level (`info` < `warn` < `error`). `GET /api/notify/log` shows what was delivered or failed.
+- **People (Microsoft sign-in):** with `MS_TENANT_ID`, `MS_CLIENT_ID`, `MS_CLIENT_SECRET` (an app with read-only `User.Read.All`) Phoenix reads a person's mail and mobile from the directory. The person who started a run gets it personally: email (Graph `sendMail` with `MS_MAIL_SENDER` and `Mail.Send`, else SMTP) and WhatsApp **only if they opted in** (`PUT /api/notify/me {"whatsapp": true}`; they may give another number). Each person sets only their own choices. A Teams personal push (activity feed) needs a registered Teams app and is not built.
+- **WhatsApp alternatives to Meta direct:** Twilio, 360dialog, Vonage, Infobip, Bird and Gupshup are all official providers on the same WhatsApp Business Platform. They make sign-up and the API simpler, but the rules stay Meta's: a registered business number, approved templates, and free text only inside the 24-hour window. Twilio is built in here (its sandbox lets you test in minutes). Tools that link a normal number by QR code are easier still, but break WhatsApp's terms and can get the number banned, so they are not offered.

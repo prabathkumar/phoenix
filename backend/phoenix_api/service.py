@@ -157,7 +157,8 @@ async def run_pipeline_request(body, deps: Deps):
         if notify.channels(env):
             sm = out["summary"]
             await notify.send("needs-you" if out["needsYou"] else "run-result", f"Run {'needs you' if out['needsYou'] else 'passed' if out['ok'] else 'failed'}: {str(body['goal'])[:60]}",
-                              f"{sm['passed']} passed, {sm['failed']} failed" + (f", waiting on {', '.join(out['needsYou'])}" if out["needsYou"] else ""), env, project or "")
+                              f"{sm['passed']} passed, {sm['failed']} failed" + (f", waiting on {', '.join(out['needsYou'])}" if out["needsYou"] else ""), env, project or "",
+                              to=[w for w in [str(body.get("onBehalfOf") or "")] if "@" in w])           # the person who started it hears first
     except Exception:  # noqa: BLE001  a phone that is off never fails a run
         pass
     clean = [{k: v for k, v in s.items() if k != "data"} for s in out["stages"]]

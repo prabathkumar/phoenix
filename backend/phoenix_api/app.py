@@ -342,14 +342,52 @@ def create_app(deps: Deps | None = None) -> FastAPI:
     @app.get("/api/notify/channels")
     def notify_channels():
         from . import notify
-        return {"channels": notify.channels(D.env)}
+        return {"channels": notify.channels(D.env), "available": list(notify.ALL), "routes": notify.routes(D.env), "directory": bool(all(D.env.get(k) for k in ("MS_TENANT_ID", "MS_CLIENT_ID", "MS_CLIENT_SECRET")))}
 
-    @app.post("/api/notify/test")
-    async def notify_test(x_user: str = Header(default="")):
+    @app.get("/api/notify/log")
+    def notify_log():
+        from . import notify
+        return {"deliveries": notify.recent(100)}
+
+    @app.put("/api/notify/routes")
+    def notify_routes(body: dict = Body(...), x_user: str = Header(default="")):
+        """Which events go to which shared channel, from what level up: {slack: {events: [...], min: "warn"}}."""
         from . import notify
         if not x_user.strip():
             raise HTTPException(401, "Say who you are (X-User).")
-        r = await notify.send("test", "Phoenix test message", f"Sent by {x_user}. If you can read this on your phone, notifications work.", D.env)
+        try:
+            r = notify.set_routes(D.env, body)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        logstore.record("user_action", {"project": "", "who": x_user, "action": "set-notify-routes", "subject": ",".join(r), "status": "ok"}, D.env)
+        return {"routes": r}
+
+    @app.get("/api/notify/me")
+    def notify_me_get(x_user: str = Header(default="")):
+        from . import notify
+        if "@" not in x_user:
+            raise HTTPException(401, "Sign in first (X-User is your work address).")
+        return {"who": x_user, "prefs": notify.prefs(D.env, x_user)}
+
+    @app.put("/api/notify/me")
+    def notify_me_put(body: dict = Body(...), x_user: str = Header(default="")):
+        """A person sets only their OWN choices: email on/off, WhatsApp opt-in (and number), lowest level, or off."""
+        from . import notify
+        if "@" not in x_user:
+            raise HTTPException(401, "Sign in first (X-User is your work address).")
+        try:
+            return {"who": x_user, "prefs": notify.set_prefs(D.env, x_user, body)}
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+
+    @app.post("/api/notify/test")
+    async def notify_test(body: dict = Body(default={}), x_user: str = Header(default="")):
+        """Send a test: to every set-up shared channel (or just body.channel), and to the caller personally with body.me = true."""
+        from . import notify
+        if not x_user.strip():
+            raise HTTPException(401, "Say who you are (X-User).")
+        only = [body["channel"]] if body.get("channel") in notify.ALL else None
+        r = await notify.send("test", "Phoenix test message", f"Sent by {x_user}. If you can read this, notifications work.", D.env, only=only, force=True, to=[x_user] if body.get("me") and "@" in x_user else None)
         return {"sent": r, "detail": "no channel is set up" if not r else "sent"}
 
     @app.post("/api/live/start")

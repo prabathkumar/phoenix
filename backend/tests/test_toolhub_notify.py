@@ -111,5 +111,78 @@ def test_phone_channels_mask_and_never_raise():
     r2 = asyncio.run(notify.send("test", "t", "b", env, fetch=boom))
     assert not r2["testops-mobile"]["ok"] and not r2["whatsapp"]["ok"]
     assert asyncio.run(notify.send("test", "t", "b", {}, fetch=boom)) == {}
-    tpl = asyncio.run(notify.send("test", "t", "b", {**env, "WHATSAPP_TEMPLATE": "alert"}, fetch=fetch))
+    tpl = asyncio.run(notify.send("test", "t2", "b2", {**env, "WHATSAPP_TEMPLATE": "alert"}, fetch=fetch))
     assert sent[-1][2]["type"] == "template" and tpl["whatsapp"]["ok"]
+
+
+def test_every_platform_gets_its_own_shape_and_only_its_own_hosts(tmp_path):
+    sent = []
+
+    async def fetch(m, url, h, body):
+        sent.append((m, url, h, body))
+        return 200, '{"ok": true}'
+    env = {"SLACK_WEBHOOK_URL": "https://hooks.slack.com/services/T/B/x", "TEAMS_WEBHOOK_URL": "https://prod-1.westus.logic.azure.com/workflows/x", "DISCORD_WEBHOOK_URL": "https://discord.com/api/webhooks/1/x",
+           "GOOGLE_CHAT_WEBHOOK_URL": "https://chat.googleapis.com/v1/spaces/x", "TELEGRAM_BOT_TOKEN": "123:abc", "TELEGRAM_CHAT_ID": "9", "NTFY_URL": "https://ntfy.sh/phoenix", "NOTIFY_WEBHOOK_URL": "https://hooks.example.com/p", "NOTIFY_WEBHOOK_SECRET": "s3",
+           "PHOENIX_DATA_DIR": str(tmp_path)}
+    r = asyncio.run(notify.send("upgrade-blocked", "Blocked", "details", env, link="https://phoenix.test/run/1", fetch=fetch, force=True))
+    assert set(r) == {"slack", "teams", "discord", "google-chat", "telegram", "ntfy", "webhook"} and all(v["ok"] for v in r.values())
+    by = {u.split("/")[2]: (u, b) for _, u, _, b in sent}
+    assert "Action.OpenUrl" in by["prod-1.westus.logic.azure.com"][1] and json.loads(by["discord.com"][1])["content"].startswith("*Blocked*")
+    sig = next(h for _, u, h, _ in sent if "example.com" in u)["X-Phoenix-Signature"]
+    assert sig.startswith("sha256=") and len(sig) == 71
+    # a look-alike host is refused, never posted to
+    bad = asyncio.run(notify.send("test", "x1", "y1", {"SLACK_WEBHOOK_URL": "https://hooks.slack.com.evil.test/x"}, fetch=fetch, force=True))
+    assert not bad["slack"]["ok"] and not any("evil" in s[1] for s in sent)
+    assert not asyncio.run(notify.send("test", "x2", "y2", {"TEAMS_WEBHOOK_URL": "http://prod.logic.azure.com/x"}, fetch=fetch, force=True))["teams"]["ok"]
+
+
+def test_routes_filter_and_unknown_things_are_refused(tmp_path):
+    env = {"SLACK_WEBHOOK_URL": "https://hooks.slack.com/services/x", "DISCORD_WEBHOOK_URL": "https://discord.com/api/webhooks/1/x", "PHOENIX_DATA_DIR": str(tmp_path)}
+    notify.set_routes(env, {"slack": {"events": ["upgrade-blocked"]}, "discord": {"min": "error"}})
+    sent = []
+
+    async def fetch(m, u, h, b):
+        sent.append(u)
+        return 200, "{}"
+    asyncio.run(notify.send("run-result", "r1", "r1", env, fetch=fetch))
+    assert sent == []                                              # slack wants only blocked upgrades; discord only errors
+    asyncio.run(notify.send("upgrade-blocked", "r2", "r2", env, fetch=fetch))
+    assert len(sent) == 1 and "slack" in sent[0]
+    asyncio.run(notify.send("upgrade-rolled-back", "r3", "r3", env, fetch=fetch))
+    assert any("discord" in u for u in sent)
+    for bad in ({"fax": {}}, {"slack": {"events": ["nope"]}}, {"slack": {"min": "loud"}}, "x"):
+        with pytest.raises(ValueError):
+            notify.set_routes(env, bad)
+
+
+def test_twilio_whatsapp_and_people_from_the_microsoft_directory(tmp_path):
+    sent = []
+
+    async def fetch(m, url, h, body):
+        sent.append((m, url, h, body))
+        if "login.microsoftonline.com" in url:
+            return 200, '{"access_token": "TOK"}'
+        if "graph.microsoft.com/v1.0/users/" in url and m == "GET":
+            return 200, json.dumps({"displayName": "Ann", "mail": "ann@ytl.com", "mobilePhone": "+6591234567", "userPrincipalName": "ann@ytl.com"})
+        return 200, "{}"
+    env = {"PHOENIX_DATA_DIR": str(tmp_path), "WHATSAPP_PROVIDER": "twilio", "TWILIO_ACCOUNT_SID": "ACx", "TWILIO_AUTH_TOKEN": "tk", "TWILIO_WHATSAPP_FROM": "+14155238886", "WHATSAPP_TO": "+6590000000",
+           "MS_TENANT_ID": "t", "MS_CLIENT_ID": "c", "MS_CLIENT_SECRET": "s", "MS_MAIL_SENDER": "phoenix@ytl.com"}
+    assert notify.channels(env)["whatsapp"]["provider"] == "twilio"
+    r = asyncio.run(notify.send("test", "T3", "B3", env, fetch=fetch, force=True, only=["whatsapp"]))
+    tw = next(x for x in sent if "api.twilio.com" in x[1])
+    assert r["whatsapp"]["ok"] and "From=whatsapp%3A%2B14155238886" in tw[3] and "To=whatsapp%3A%2B6590000000" in tw[3] and tw[2]["Authorization"].startswith("Basic ")
+    # a person: email by Graph always; WhatsApp only after they opt in, to the number the directory holds
+    sent.clear()
+    r = asyncio.run(notify.send("needs-you", "T4", "B4", env, fetch=fetch, force=True, only=["none"], to=["ann@ytl.com"]))
+    assert r["email:ann@ytl.com"]["ok"] and "whatsapp:ann@ytl.com" not in r and any("/sendMail" in x[1] for x in sent)
+    notify.set_prefs(env, "Ann@ytl.com", {"whatsapp": True})
+    sent.clear()
+    r = asyncio.run(notify.send("needs-you", "T5", "B5", env, fetch=fetch, force=True, only=["none"], to=["ann@ytl.com"]))
+    assert r["whatsapp:ann@ytl.com"]["ok"] and "To=whatsapp%3A%2B6591234567" in next(x for x in sent if "twilio" in x[1])[3]
+    notify.set_prefs(env, "ann@ytl.com", {"off": True})
+    assert "turned notifications off" in asyncio.run(notify.send("needs-you", "T6", "B6", env, fetch=fetch, force=True, only=["none"], to=["ann@ytl.com"]))["person:ann@ytl.com"]["detail"]
+    for bad in ({"whatsappNumber": "call me"},):
+        with pytest.raises(ValueError):
+            notify.set_prefs(env, "ann@ytl.com", bad)
+    with pytest.raises(ValueError):
+        notify.set_prefs(env, "not-an-address", {})

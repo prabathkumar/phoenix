@@ -1,10 +1,15 @@
 """ClickHouse holds the AI telemetry: every model call, every DeepEval score, every stage outcome.
 CLICKHOUSE_URL=http://host:8123 (+ CLICKHOUSE_USER, CLICKHOUSE_PASSWORD, CLICKHOUSE_DB=phoenix).
 Without it, rows are kept in memory for this process only and the dashboard says so: nothing is faked as stored.
-Rows never hold prompt text, answers, test data or secrets: names, ids, counts, timings and scores only."""
+The telemetry tables never hold prompt text, answers, test data or secrets: names, ids, counts, timings and scores only.
+The log tables (agent_events, mcp_calls, user_actions, release_results) hold masked, short detail. training_examples is the only table with prompt and answer text,
+it is written only when PHOENIX_TRAIN_CAPTURE=1, and everything in it is masked first (logmask.py).
+Writes are batched (one insert per second or per 1000 rows) so a model call never waits on a log; if ClickHouse is down the batch is spooled to disk and replayed."""
+import json
 import os
 import statistics
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 
@@ -13,12 +18,26 @@ TABLES = {
     "ai_eval": "at DateTime64(3), run String, turn UInt32, metric String, score Float32, passed UInt8",
     "stage_events": "at DateTime64(3), run String, stage String, status String, ms UInt32",
     "executions": "at DateTime64(3), run String, case_id String, result String, who String, ms UInt32",
+    "agent_events": "at DateTime64(3), project LowCardinality(String), run String, agent LowCardinality(String), event LowCardinality(String), status LowCardinality(String), ms UInt32, detail String",
+    "mcp_calls": "at DateTime64(3), project LowCardinality(String), who String, tool LowCardinality(String), status LowCardinality(String), ms UInt32, args String",
+    "user_actions": "at DateTime64(3), project LowCardinality(String), who String, action LowCardinality(String), subject String, status LowCardinality(String)",
+    "release_results": "at DateTime64(3), project LowCardinality(String), run String, case_id String, verdict LowCardinality(String), flaky UInt8, seconds UInt32, failed_step String, reason String",
+    "training_examples": "at DateTime64(3), project LowCardinality(String), source LowCardinality(String), prompt String, response String, outcome LowCardinality(String), preferred String, split LowCardinality(String)",
 }
+PARTITIONED = {"agent_events", "mcp_calls", "user_actions", "release_results", "training_examples"}  # new tables: monthly partitions, project first in the key
 COLS = {t: [c.split()[0] for c in d.split(", ") if not c.startswith("Array")] for t, d in TABLES.items()}
 
 
 def _cols(table):
     return [c.strip().split(" ")[0] for c in TABLES[table].split(", ")]
+
+
+def _types(table):
+    return {c.strip().split(" ", 1)[0]: c.strip().split(" ", 1)[1] for c in TABLES[table].split(", ")}
+
+
+def _default_for(type_):
+    return [] if type_.startswith("Array") else ("" if "String" in type_ else 0)
 
 
 class Analytics:
@@ -29,6 +48,13 @@ class Analytics:
         self.client = client
         self.error = None
         self.url = env.get("CLICKHOUSE_URL", "")
+        self.buf = {t: [] for t in TABLES}
+        self.batch_rows = int(env.get("PHOENIX_LOG_BATCH_ROWS", "1000"))
+        self.flush_every = float(env.get("PHOENIX_LOG_FLUSH_SECONDS", "1"))
+        self.spool_dir = env.get("PHOENIX_LOG_SPOOL_DIR", os.path.join(env.get("PHOENIX_DATA_DIR", "."), "log-spool"))
+        self.written = 0
+        self._stop = threading.Event()
+        self._thread = None
         if client is None and self.url:
             try:
                 import clickhouse_connect
@@ -43,10 +69,81 @@ class Analytics:
         if self.client is not None:
             try:
                 for t, d in TABLES.items():
-                    self.client.command(f"CREATE TABLE IF NOT EXISTS {t} ({d}) ENGINE = MergeTree ORDER BY (at)")
+                    extra = f" PARTITION BY toYYYYMM(at) ORDER BY (project, at)" if t in PARTITIONED else " ORDER BY (at)"
+                    self.client.command(f"CREATE TABLE IF NOT EXISTS {t} ({d}) ENGINE = MergeTree{extra}")
             except Exception as e:
                 self.error = str(e)[:200]
                 self.client = None
+
+    def _ensure_flusher(self):
+        if self._thread is None and self.client is not None:
+            self._thread = threading.Thread(target=self._loop, daemon=True, name="phoenix-log-flush")
+            self._thread.start()
+
+    def _loop(self):
+        while not self._stop.wait(self.flush_every):
+            try:
+                self.flush()
+            except Exception as e:  # noqa: BLE001 - logging never stops the platform
+                self.error = str(e)[:200]
+
+    def close(self):
+        self._stop.set()
+        self.flush()
+
+    def flush(self):
+        """Write every buffered row, one insert per table. A failed insert is spooled to disk and replayed on the next good flush."""
+        if self.client is None:
+            return 0
+        n = 0
+        self._replay_spool()
+        for t in list(TABLES):
+            with self.lock:
+                rows, self.buf[t] = self.buf[t], []
+            if not rows:
+                continue
+            try:
+                self._write(t, rows)
+                n += len(rows)
+            except Exception as e:  # noqa: BLE001
+                self.error = str(e)[:200]
+                self._spool(t, rows)
+        self.written += n
+        return n
+
+    def _write(self, table, rows):
+        cols, ty = _cols(table), _types(table)
+        self.client.insert(table, [[r.get(c, _default_for(ty[c])) for c in cols] for r in rows], column_names=cols)
+
+    def _spool(self, table, rows):
+        try:
+            os.makedirs(self.spool_dir, exist_ok=True)
+            with open(os.path.join(self.spool_dir, f"{table}.jsonl"), "a", encoding="utf8") as f:
+                for r in rows:
+                    f.write(json.dumps({**r, "at": r["at"].isoformat()}, default=str) + "\n")
+        except OSError:
+            with self.lock:
+                self.buf[table][:0] = rows  # nowhere to spool: keep in memory rather than lose it
+
+    def _replay_spool(self):
+        if not os.path.isdir(self.spool_dir):
+            return
+        for t in TABLES:
+            path = os.path.join(self.spool_dir, f"{t}.jsonl")
+            if not os.path.exists(path):
+                continue
+            try:
+                rows = []
+                for line in open(path, encoding="utf8"):
+                    r = json.loads(line)
+                    r["at"] = datetime.fromisoformat(r["at"])
+                    rows.append(r)
+                if rows:
+                    self._write(t, rows)
+                os.remove(path)
+            except Exception as e:  # noqa: BLE001 - still down: leave the spool for next time
+                self.error = str(e)[:200]
+                return
 
     @property
     def backend(self):
@@ -59,12 +156,13 @@ class Analytics:
         row = dict(row)
         row.setdefault("at", datetime.now(timezone.utc))
         if self.client is not None:
-            try:
-                cols = _cols(table)
-                self.client.insert(table, [[row.get(c, [] if c == "hits" else ("" if c in ("run", "tool", "name", "prompt", "model", "status", "stage", "case_id", "result", "who", "metric") else 0)) for c in cols]], column_names=cols)
-                return
-            except Exception as e:
-                self.error = str(e)[:200]  # never fail a run over telemetry
+            with self.lock:
+                self.buf[table].append(row)
+                full = len(self.buf[table]) >= self.batch_rows
+            self._ensure_flusher()
+            if full:
+                self.flush()
+            return
         with self.lock:
             self.mem[table].append(row)
             del self.mem[table][:-20000]

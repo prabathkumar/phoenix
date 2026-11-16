@@ -3,6 +3,7 @@ API functional tests -> repo link -> unit tests -> PR -> deployment check -> DAS
 Autonomy: ask-everything | ask-when-matters (default) | run-everything. A live security scan (dast) and anything aimed at production always wait for approval.
 A handler is `async (ctx) -> {ok, detail, data?, unavailable?}`. 'not-built' is stated plainly; nothing is faked as passed."""
 import asyncio
+import os
 import subprocess
 import time
 
@@ -73,6 +74,15 @@ def _default_run(cmd, **kw):
 def builtins(run=_default_run):
     def scan(cmd, args, label, parse=None):
         async def h(ctx):
+            env = ctx.get("env") if isinstance(ctx.get("env"), dict) else os.environ
+            if env.get("PHOENIX_TOOL_MODE") == "container" and _has("docker", run):   # the tool runs in its own pinned container, never on this machine
+                from . import toolhub
+                d = os.path.realpath(ctx.get("dir") or ".")
+                argv = toolhub.docker_argv(toolhub.image_ref(cmd, env), ([cmd] if cmd == "semgrep" else []) + args("/src", ctx), mount=d)
+                r = await asyncio.to_thread(run, argv)
+                out = r.stdout or ""
+                return {"ok": r.returncode == 0, "detail": f"{label} (container): no findings" if r.returncode == 0 else f"{label} (container): findings or error (exit {r.returncode})",
+                        "data": {"stdout": out[:4000], **(parse(out) if parse else {})}}
             if not _has(cmd, run):
                 return {"unavailable": True, "detail": f"{cmd} is not installed on this machine"}
             r = await asyncio.to_thread(run, [cmd, *args(ctx.get("dir") or ".", ctx)])

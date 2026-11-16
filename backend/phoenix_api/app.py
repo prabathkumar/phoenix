@@ -320,6 +320,38 @@ def create_app(deps: Deps | None = None) -> FastAPI:
         from . import test_connectors
         return {"languages": test_connectors.availability(), "kinds": list(test_connectors.KINDS)}
 
+    # ---- open source tools as separate containers: status, gated upgrade; and the phone
+    @app.get("/api/tools")
+    def tools_status():
+        from . import toolhub
+        return {"tools": toolhub.status(D.env), "mode": D.env.get("PHOENIX_TOOL_MODE", "local")}
+
+    @app.post("/api/tools/{tool_id}/upgrade")
+    async def tools_upgrade(tool_id: str, x_user: str = Header(default="")):
+        """Pull the newest release aside, scan it (the VA), promote only if clean, roll back if it does not start, and tell the phone. Slow: it pulls and scans."""
+        from . import toolhub
+        if not x_user.strip():
+            raise HTTPException(401, "Say who you are (X-User) before upgrading a tool.")
+        try:
+            r = await toolhub.upgrade(tool_id, D.env, x_user)
+        except ValueError as e:
+            raise HTTPException(404, str(e))
+        logstore.record("user_action", {"project": "", "who": x_user, "action": "upgrade-tool", "subject": tool_id, "status": r["outcome"]}, D.env)
+        return r
+
+    @app.get("/api/notify/channels")
+    def notify_channels():
+        from . import notify
+        return {"channels": notify.channels(D.env)}
+
+    @app.post("/api/notify/test")
+    async def notify_test(x_user: str = Header(default="")):
+        from . import notify
+        if not x_user.strip():
+            raise HTTPException(401, "Say who you are (X-User).")
+        r = await notify.send("test", "Phoenix test message", f"Sent by {x_user}. If you can read this on your phone, notifications work.", D.env)
+        return {"sent": r, "detail": "no channel is set up" if not r else "sent"}
+
     @app.post("/api/live/start")
     async def live_start(body: dict = Body(...), x_user: str = Header(default="")):
         """Open a browser the tester can see and type into (Chromium on the engine, or BrowserStack). Returns the port of its live view; the page connects to it.

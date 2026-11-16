@@ -152,6 +152,14 @@ async def run_pipeline_request(body, deps: Deps):
         run_record.save(rec, url)
     except Exception:
         pass  # a full disk never fails a run
+    try:  # a finished (or waiting) run goes to the phone: the TestOps mobile app and WhatsApp, when they are set up
+        from . import notify
+        if notify.channels(env):
+            sm = out["summary"]
+            await notify.send("needs-you" if out["needsYou"] else "run-result", f"Run {'needs you' if out['needsYou'] else 'passed' if out['ok'] else 'failed'}: {str(body['goal'])[:60]}",
+                              f"{sm['passed']} passed, {sm['failed']} failed" + (f", waiting on {', '.join(out['needsYou'])}" if out["needsYou"] else ""), env, project or "")
+    except Exception:  # noqa: BLE001  a phone that is off never fails a run
+        pass
     clean = [{k: v for k, v in s.items() if k != "data"} for s in out["stages"]]
     return 200, {"ok": out["ok"], "runId": run_id, "retest": retest, "requirement": {**source, "notes": notes, "characters": len(requirement)} if source else None,
                  "plan": {"source": out["plan"]["source"], "platforms": out["plan"]["platforms"], "reason": out["plan"].get("reason")}, "stages": clean, "summary": out["summary"], "needsYou": out["needsYou"]}

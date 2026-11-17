@@ -349,6 +349,25 @@ def create_app(deps: Deps | None = None) -> FastAPI:
         from . import notify
         return {"deliveries": notify.recent(100)}
 
+    @app.get("/api/plugins")
+    def plugins_catalog():
+        """Product plugins (SAP, Salesforce, Dynamics 365, SuiteCRM, OTOBO, OTRS): what each covers and whether its server settings are in place."""
+        from . import product_plugins
+        return {"plugins": product_plugins.catalog(D.env)}
+
+    @app.post("/api/plugins/{plugin_id}/run")
+    async def plugins_run(plugin_id: str, body: dict = Body(default={}), x_user: str = Header(default="")):
+        """{mode: plan|functional|readback|security|perf, allowWrites?}. Credentials come from the server's environment, never from the request. Writes need allowWrites."""
+        from . import product_plugins
+        if not x_user.strip():
+            raise HTTPException(401, "Say who you are (X-User).")
+        if plugin_id not in product_plugins.PLUGINS:
+            raise HTTPException(404, "no such plugin")
+        mode = body.get("mode", "plan")
+        r = await product_plugins.run(plugin_id, D.env, getattr(D, "plugin_fetch", None) or H._http.fetch, mode, bool(body.get("allowWrites")))
+        logstore.record("user_action", {"project": "", "who": x_user, "action": f"plugin-{mode}", "subject": plugin_id, "status": "unavailable" if r.get("unavailable") else ("ok" if r.get("ok") else "failed")}, D.env)
+        return r
+
     @app.get("/api/notify/settings")
     def notify_settings_get(x_user: str = Header(default="")):
         """The settings screen's content. Secrets are never returned, only whether they are set."""

@@ -347,6 +347,8 @@ Backend (`backend/phoenix_api`, FastAPI) runs one guided pipeline in this order:
    People are reached by sign-in identity (Microsoft Entra: name and work email only, no phone numbers read); personal numbers are off unless NOTIFY_PERSONAL_PHONE=allow.
 ```
 
+**Plugin layer for testing industry products** ([`PLUGIN_LAYER.md`](PLUGIN_LAYER.md)): a specialised agent per product (SAP, Salesforce, Dynamics 365, Odoo, SuiteCRM, OTOBO, OTRS) calls that product's plugin, which holds its sign-in, objects, test data and version range. Every run reads the product's version and marks results stale when the product has moved past the plugin, so the plugin is upgraded with the product.
+
 Details: [`TOOLS_AND_NOTIFICATIONS.md`](TOOLS_AND_NOTIFICATIONS.md) and [`PIPELINE.md`](PIPELINE.md).
 
 ## 6. Key design decisions

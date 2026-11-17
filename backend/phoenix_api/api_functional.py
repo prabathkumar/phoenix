@@ -102,14 +102,14 @@ def _status_ok(expect, status):
     return 400 <= status < 500 if expect == "4xx" else False
 
 
-async def run_cases(base, cases, fetch, allow_writes=False, token="", pause=None):
+async def run_cases(base, cases, fetch, allow_writes=False, token="", pause=None, headers=None):
     """Fire each case at base. Returns [{name, call, status, ok, ms, detail}] ; a case that would write is 'skipped' unless allow_writes."""
     out, base = [], str(base).rstrip("/")
     for c in cases:
         if c["writes"] and c["method"] in WRITE and not allow_writes:
             out.append({"name": c["name"], "call": c["call"], "status": None, "result": "skipped", "ms": 0, "detail": "writes are off (allowWrites=false)"})
             continue
-        h = {"Accept": "application/json", **({"Content-Type": "application/json"} if c["body"] is not None else {}), **({"Authorization": f"Bearer {token}"} if token else {})}
+        h = {"Accept": "application/json", **(headers or {}), **({"Content-Type": "application/json"} if c["body"] is not None else {}), **({"Authorization": f"Bearer {token}"} if token else {})}
         t0 = time.time()
         try:
             status, text = await fetch(c["method"], base + c["path"], h, json.dumps(c["body"]) if c["body"] is not None else None)

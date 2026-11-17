@@ -44,6 +44,16 @@ def _https(url, platform=None):
 NO_PHONE_CHANNELS = {"sms", "voice", "call", "calls", "phone", "text"}      # Phoenix never sends SMS or calls, through any provider
 
 
+def resolve(env):
+    """The environment plus what was saved on the Settings screen (the screen wins). Cheap: one small file."""
+    try:
+        from . import notify_settings
+        saved = notify_settings.load(env)
+    except Exception:  # noqa: BLE001
+        saved = {}
+    return {**env, **saved} if saved else env
+
+
 def _via_courier(env):
     """Courier is the ONLY sender only when NOTIFY_VIA=courier-only. Otherwise it is one more channel next to the others."""
     return env.get("NOTIFY_VIA") == "courier-only" and bool(env.get("COURIER_AUTH_TOKEN"))
@@ -51,6 +61,7 @@ def _via_courier(env):
 
 def channels(env):
     """{channel: {ready, ...}} for every channel that is fully set up. Never shows a secret. With NOTIFY_VIA=courier, Courier is the ONLY sender (it fans out to WhatsApp, Slack, Teams, email and push)."""
+    env = resolve(env)
     if _via_courier(env):
         return {"courier": {"ready": True, "to": bool(env.get("COURIER_TO")), "channels": [x for x in env.get("COURIER_CHANNELS", "").split(",") if x.strip()] or "its own routing"}}
     c = {}
@@ -551,7 +562,7 @@ def collect(kind, project, detail, env, start=True):
         b["n"] += 1
         if len(b["samples"]) < 5 and detail:
             b["samples"].append(logmask.mask(str(detail), 80))
-    if start and not _flusher["started"] and channels(env):
+    if start and not _flusher["started"] and channels(resolve(env)):
         _flusher["started"] = True
         threading.Thread(target=_loop, args=(env,), daemon=True).start()
     return True
@@ -594,6 +605,7 @@ def recent(n=50):
 
 async def send(event, title, body, env, project="", link="", fetch=_http.fetch, severity=None, only=None, sleep=asyncio.sleep, force=False, to=None):
     """-> {channel: {ok, detail}} for the channels that were tried. `only` limits to some channels (used by the test button). `force` skips routing and the 60 s repeat guard."""
+    env = resolve(env)
     sev = severity if severity in SEVERITY else EVENTS.get(event, "info")
     title, body = logmask.mask(str(title), 120), logmask.mask(str(body), 900)
     link = str(link or "")[:300] if _https(link) else ""

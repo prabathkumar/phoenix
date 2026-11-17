@@ -342,12 +342,37 @@ def create_app(deps: Deps | None = None) -> FastAPI:
     @app.get("/api/notify/channels")
     def notify_channels():
         from . import notify
-        return {"channels": notify.channels(D.env), "available": list(notify.ALL), "routes": notify.routes(D.env), "directory": bool(all(D.env.get(k) for k in ("MS_TENANT_ID", "MS_CLIENT_ID", "MS_CLIENT_SECRET")))}
+        return {"channels": notify.channels(notify.resolve(D.env)), "available": list(notify.ALL), "routes": notify.routes(D.env), "directory": bool(all(notify.resolve(D.env).get(k) for k in ("MS_TENANT_ID", "MS_CLIENT_ID", "MS_CLIENT_SECRET")))}
 
     @app.get("/api/notify/log")
     def notify_log():
         from . import notify
         return {"deliveries": notify.recent(100)}
+
+    @app.get("/api/notify/settings")
+    def notify_settings_get(x_user: str = Header(default="")):
+        """The settings screen's content. Secrets are never returned, only whether they are set."""
+        from . import notify_settings
+        v = notify_settings.view(D.env)
+        v["canEdit"] = notify_settings.is_admin(D.env, x_user)
+        from . import notify
+        v["events"] = list(notify.EVENTS)
+        return v
+
+    @app.put("/api/notify/settings")
+    def notify_settings_put(body: dict = Body(...), x_user: str = Header(default="")):
+        """{values: {KEY: text}}. Administrators only. "" keeps the current value, "clear" removes it."""
+        from . import notify_settings
+        if not x_user.strip():
+            raise HTTPException(401, "Say who you are (X-User).")
+        try:
+            r = notify_settings.save(D.env, x_user, body.get("values", {}))
+        except PermissionError as e:
+            raise HTTPException(403, str(e))
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        logstore.record("user_action", {"project": "", "who": x_user, "action": "set-notify-settings", "subject": ",".join(r["changed"]), "status": "ok"}, D.env)
+        return r
 
     @app.put("/api/notify/routes")
     def notify_routes(body: dict = Body(...), x_user: str = Header(default="")):

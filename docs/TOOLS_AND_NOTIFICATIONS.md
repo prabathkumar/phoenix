@@ -74,3 +74,11 @@ Not legal advice: have your DPO confirm.
 4. **Publish:** Teams admin center > Teams apps > Manage apps > Upload new app > `teams-app/phoenix-teams-app.zip`. Then Teams apps > Setup policies > add Phoenix under *Installed apps* so it is installed for your people: an alert can only reach someone who has the app. Changes can take a few hours to reach every user.
 5. **Check:** `POST /api/notify/test {"me": true}` as yourself; the alert should appear in the Teams activity feed on your phone and desktop.
 The manifest follows Teams schema v1.17 from memory of its fields; Teams rejects a package it dislikes with a reason in the upload dialog, so send me that text if it does.
+
+## Notification settings screen (TestOps → Notifications)
+Everything above can be set from the screen instead of the server's environment file. Values saved there override the environment.
+- Server needs `PHOENIX_SETTINGS_KEY` (16+ characters): tokens, webhook addresses and passwords are encrypted with it. Without it only non-secret values can be saved.
+- `PHOENIX_ADMINS` (comma list of work addresses) says who may change settings. Anyone signed in can look; nobody can change if it is empty.
+- Secrets are never shown again, only "set". Leave a box blank to keep it; press Clear to remove it (the environment value, if any, applies again).
+- Each value is checked before saving (right host for Slack/Teams/Discord/Google Chat, https, numbers in range); SMS and call services are refused. Changes are written to the audit log (who and which settings, never the values).
+- Per channel: a Test button; a routes table (which events, from which level); digest minutes; the personal-phone switch; "Erase my data".

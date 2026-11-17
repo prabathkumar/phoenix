@@ -16,6 +16,7 @@ import UnitTests from "./pages/UnitTests.jsx";
 import Logs from "./pages/Logs.jsx";
 import Training from "./pages/Training.jsx";
 import LiveBrowser from "./pages/LiveBrowser.jsx";
+import Notifications from "./pages/Notifications.jsx";
 import Runs from "./pages/Runs.jsx";
 import Agents from "./pages/Agents.jsx";
 import Avatar from "./pages/Avatar.jsx";
@@ -38,6 +39,7 @@ export const MENU = [
   ["Unit Tests", "/unit-tests", "M6 5L3 8l3 3M10 5l3 3-3 3M9 3.5L7 12.5"],
   ["Quality and TMMI", "/quality", "M3 13V8M7 13V4M11 13V6M14 13H2"],
   ["Logs", "/logs", "M3 3.5h10M3 7h10M3 10.5h6M3 14h8"],
+  ["Notifications", "/notifications", "M8 2a4 4 0 0 0-4 4v3l-1 2h10l-1-2V6a4 4 0 0 0-4-4zM6.5 13a1.5 1.5 0 0 0 3 0"],
   ["Live browser", "/live", "M2 3h12v8H2zM6 14h4M8 11v3"],
   ["Model Training", "/training", "M8 2v4M8 10v4M2 8h4M10 8h4M4.5 4.5l2 2M9.5 9.5l2 2"],
   ["AI Gateway", "/gateway", "M3 5h10M3 11h10M6 3v4M10 9v4"],
@@ -91,6 +93,7 @@ export default function App() {
           <Route path="/unit-tests" element={<UnitTests />} />
           <Route path="/quality" element={<Quality />} />
           <Route path="/logs" element={<Logs />} />
+          <Route path="/notifications" element={<Notifications />} />
           <Route path="/live" element={<LiveBrowser />} />
           <Route path="/training" element={<Training />} />
           <Route path="*" element={<div className="page"><h1>Not found</h1></div>} />

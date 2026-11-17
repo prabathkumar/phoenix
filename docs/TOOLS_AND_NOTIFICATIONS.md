@@ -6,6 +6,23 @@ Every open source tool (Semgrep, Gitleaks, Trivy, Locust, ZAP) has its own pinne
 - `PHOENIX_TOOL_MODE=container` makes the secrets and SAST stages run Gitleaks and Semgrep as throw-away containers (no network, read-only mount, all capabilities dropped, never privileged).
 - **Needs Docker on the machine that runs the API.** The API container is NOT given the Docker socket (that would be root on the host). Run the API on a host with Docker, or leave the mode at `local`.
 
+## Tools listing (each runs as its own container)
+
+| Tool | Used for | Image | Pinned version |
+|---|---|---|---|
+| semgrep | SAST (source code) | `semgrep/semgrep` | 1.97.0 |
+| gitleaks | Secrets scan | `zricethezav/gitleaks` | v8.21.2 |
+| trivy | VA: vulnerabilities in images | `aquasec/trivy` | 0.57.0 |
+| locust | Performance | `locustio/locust` | 2.32.0 |
+| zap | DAST (running app) | `zaproxy/zap-stable` | stable |
+| apprise | Notifications (self-hosted: WhatsApp, Slack, Teams, email, Telegram...) | `caronc/apprise` | latest |
+| Playwright / Chromium | Web recording, live browser, web runs | in the engine image or local | engine's own |
+| Appium | Mobile recording and runs (local or BrowserStack) | host or BrowserStack | see SETUP.md |
+| DeepEval | AI answer quality (chatbot conversations) | not containerised yet; needs a judge model | not installed |
+| Courier / Twilio / Meta WhatsApp | Optional notification services (third party) | hosted | n/a |
+
+Versions come from `tools/tools.json` and `tools/tools.lock`; an upgrade is promoted only after the image and source scans pass. Pinned versions, and the Apprise image name, have not been checked against the registries.
+
 ## The upgrade gate (the VA)
 `POST /api/tools/<id>/upgrade` (a named person, `X-User`) does this, and never touches the live version until the end:
 1. finds the newest release on GitHub; same as live: stop ("current");

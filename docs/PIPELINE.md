@@ -13,6 +13,8 @@ Every stage reports `passed`, `failed`, `needs-you`, `skipped`, `not-built` or `
 | Secrets, SAST | Runs `gitleaks` / `semgrep` when installed on the machine, else `unavailable` |
 | Execution | Handler is injected by the caller (English run, test-case runner) |
 | Scenarios, cases, HAR, performance, DAST, feedback | Built in `engine/core/handlers.js`; each says `unavailable` when its model or tool is missing |
+| API functional tests, repo link, re-validation, deployment check, evidence, confirm | Built in the Python backend (`backend/phoenix_api`); see below |
+| Secrets, SAST, performance, DAST (container mode) | With `PHOENIX_TOOL_MODE=container`, run Gitleaks, Semgrep, Locust and ZAP as separate containers; list in [TOOLS_AND_NOTIFICATIONS.md](TOOLS_AND_NOTIFICATIONS.md) |
 | Defects (Jira) | Built: `defectsHandler` in `engine/core/jira.js` (see below); asks first at the default level |
 
 ## Order in the Python backend (`backend/phoenix_api/pipeline.py`)

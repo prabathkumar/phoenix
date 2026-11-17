@@ -15,6 +15,10 @@ Every stage reports `passed`, `failed`, `needs-you`, `skipped`, `not-built` or `
 | Scenarios, cases, HAR, performance, DAST, feedback | Built in `engine/core/handlers.js`; each says `unavailable` when its model or tool is missing |
 | Defects (Jira) | Built: `defectsHandler` in `engine/core/jira.js` (see below); asks first at the default level |
 
+## Order in the Python backend (`backend/phoenix_api/pipeline.py`)
+
+Scenarios, cases, test data, API functional tests, execution, HAR, performance; then repo link, secrets, SAST, DeepEval, traceability, unit tests written, unit tests run, re-validation (flaky/functional/negative), tests pull request; then deployment check and the security test (ZAP); defects; evidence archive; and `confirm`, which lists every stage that did not pass as not working. See [ARCHITECTURE.md](ARCHITECTURE.md) section 5d.
+
 ## How much the AI asks
 
 `autonomy`: `ask-everything`, `ask-when-matters` (default: asks before logging defects in Jira), `run-everything`.

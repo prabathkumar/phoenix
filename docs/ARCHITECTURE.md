@@ -314,6 +314,41 @@ the planned second one. `api` steps (`engine/core/api-step.js`) work in any flow
 
 Everything for one requirement is tied together by its key (for example PROJ-123): the test case, the unit and integration tests that carry it in their names, the executions, the defects and the sign-off. See `docs/MEASUREMENT.md`.
 
+## 5d. Pipeline order, evidence, tool containers and notifications (added)
+
+Backend (`backend/phoenix_api`, FastAPI) runs one guided pipeline in this order:
+
+1. **The AI writes tests and asks per layer:** scenarios, cases, test data, API functional tests, web/mobile execution (local or BrowserStack), HAR, performance (Locust).
+2. **Code repo linked:** languages and API calls found (`api_layer.py`), then secrets (Gitleaks), SAST (Semgrep), AI answer quality (DeepEval), traceability, unit and API integration tests written by the AI with schema-driven test data, run per language, and a pull/merge request with the tests.
+3. **Re-validation:** flaky, functional and negative checks repeated by agents on AI-written tests with synthetic data (`api_functional.py`).
+4. **After deployment:** the app answers, then the security test (ZAP). Then defects to Jira, evidence, and `confirm`, which counts only stages that passed and names the rest as not working.
+
+```
+ stage output / logs / test data / reports / screenshots
+        |  masked, then compressed (tar.gz + manifest + sha256), validated (images, JSON/HAR, no secret leakage)
+        v
+   evidence.py --> digest to the AI via agent_event  (training example only if PHOENIX_TRAIN_CAPTURE=1)
+
+ tester ---- Live browser page (LiveBrowser.jsx) ---- WebSocket ---- engine live view (local Chromium or BrowserStack)
+             typed secrets are sent to the page, never written into steps, test data or scripts
+
+ open-source tools = separate containers (tools/tools.json pins versions; docker-compose profile "tools")
+   upgrade (toolhub.py): pull aside -> Trivy image scan -> Semgrep + Gitleaks on the tool source -> gate
+                         -> promote -> health check -> rollback on failure -> notify. A blocked upgrade is not promoted.
+
+ events (defect raised, execution failed, scan finding, upgrade result, run result)
+        v
+   notify.py: routes (event x channel x minimum level) -> dedupe, retry, delivery log; defects/failures batched into one digest
+        +--> WhatsApp (Twilio or Meta; company-owned numbers)   +--> Teams (webhook, activity feed via Graph)
+        +--> Slack, Telegram, Discord, Google Chat, ntfy, own webhook, email   +--> TestOps mobile app push
+        +--> optional ready-made platforms: Courier (third party) or Apprise (self-hosted container)
+   SMS and voice are never sent, in any channel or platform route.
+   Settings: Notifications page -> notify_settings.py (Fernet-encrypted secrets, PHOENIX_ADMINS only, validated) -> override the environment.
+   People are reached by sign-in identity (Microsoft Entra: name and work email only, no phone numbers read); personal numbers are off unless NOTIFY_PERSONAL_PHONE=allow.
+```
+
+Details: [`TOOLS_AND_NOTIFICATIONS.md`](TOOLS_AND_NOTIFICATIONS.md) and [`PIPELINE.md`](PIPELINE.md).
+
 ## 6. Key design decisions
 
 | Decision | Why |
@@ -327,6 +362,8 @@ Everything for one requirement is tied together by its key (for example PROJ-123
 | Drop scrolls and repeated clicks from web output | Playwright scrolls into view itself; repeats are testers poking at a control. |
 | Assert only stable copy | Prices, addresses and FAQ text change without the feature breaking; a brittle assertion is worse than none. |
 | Local Chromium for the web recorder | No device cost or latency; the recorder needs a real browser, which the Docker image deliberately omits. |
+| Tools as pinned containers behind a scan gate | Upgrades are one image change; code that fails the scan is never promoted. |
+| Notifications minimise personal data (PDPA) | No phone numbers collected; reach people by sign-in identity; WhatsApp to company numbers; digest instead of floods. Not legal advice. |
 | One result contract | TestOps shows one pass/fail shape whatever the platform. |
 
 ## 7. Deployment
@@ -350,5 +387,7 @@ Everything for one requirement is tied together by its key (for example PROJ-123
   confirm pass/fail; BrowserStack latency makes recording slow (local emulator
   recording is the proposed fix); Flutter UIs are not identifiable.
 - TestOps write API and frothAI contract are not built.
+- Not yet proven against real services: Docker tool runs, Twilio/WhatsApp, Slack, Teams, Graph, Courier and Apprise calls, the Teams app upload. The TestOps mobile app's push receiver does not exist in this repo, and the FrothTestOps Flutter-to-React-Native rebuild has not started.
+- No real login or roles: the `X-User` header is trusted, so `PHOENIX_ADMINS` is only as strong as that header.
 
 See also: [RUN_TARGETS.md](RUN_TARGETS.md) for where a recording or run happens (Local or BrowserStack) and how it is reported.

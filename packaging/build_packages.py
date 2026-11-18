@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Builds the two packages testers install (see docs/LAPTOP_RUNNER.md):
   phoenix-runner-<version>.zip         laptop runner for Mac and Windows: unzip, double-click Install, then Start. Brings its own Node and browser; needs no admin rights.
-  phoenix-runner-chrome-<version>.zip  the Chrome extension (upload to the Chrome Web Store as a private/unlisted item, or push it by company policy).
+  phoenix-runner-chrome-<version>.zip  the stand-alone Chrome extension (upload to the Chrome Web Store as a private/unlisted item, or push it by company policy).
+  phoenix-runner-tab-kit-<version>.zip two scripts + instructions to add Phoenix Runner as another tab inside an existing extension (the FrothTestOps recorder).
   python3 packaging/build_packages.py --server https://phoenix.yourcompany.com --out dist
 --server is written into the package so testers only type their pairing code. Nothing secret goes into either zip."""
 import argparse
@@ -73,11 +74,24 @@ def build_extension(out):
     return os.path.join(out, name)
 
 
+def build_tab_kit(out):
+    """Two scripts + instructions for adding Phoenix Runner as another tab in an existing extension (FrothTestOps' TestOps Recorder)."""
+    src = os.path.join(ROOT, "extension", "phoenix-runner")
+    kit = os.path.join(ROOT, "packaging", "tab-kit")
+    name = f"phoenix-runner-tab-kit-{version()}.zip"
+    with zipfile.ZipFile(os.path.join(out, name), "w") as z:
+        for f in ("phoenix-runner-core.js", "phoenix-runner-tab.js"):
+            _add(z, f, path=os.path.join(src, f))
+        for f in sorted(os.listdir(kit)):
+            _add(z, f, path=os.path.join(kit, f))
+    return os.path.join(out, name)
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--server", default="")
     ap.add_argument("--out", default=os.path.join(ROOT, "dist"))
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
-    for p in (build_runner(a.out, a.server), build_extension(a.out)):
+    for p in (build_runner(a.out, a.server), build_extension(a.out), build_tab_kit(a.out)):
         print(p, os.path.getsize(p) // 1024, "KB")

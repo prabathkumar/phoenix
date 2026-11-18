@@ -11,7 +11,7 @@ const j = (p, b, m = "POST") => fetch(HUB + p, { method: m, headers: H, body: b 
   const ctx = await chromium.launchPersistentContext(process.env.PROFILE || "/tmp/phoenix-ext-profile", { executablePath: process.env.CHROME_PATH, headless: true, args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`] });
   let [sw] = ctx.serviceWorkers(); if (!sw) sw = await ctx.waitForEvent("serviceworker", { timeout: 15000 });
   console.log("extension loaded:", sw.url().split("/")[2].slice(0, 8) + "…");
-  await sw.evaluate((c) => chrome.storage.local.set({ server: c.server, token: c.token, runnerId: c.runnerId, allow: c.allow, enabled: true }), { server: HUB, ...reg });
+  await sw.evaluate((c) => chrome.storage.local.set({ phoenixRunner: { server: c.server, token: c.token, runnerId: c.runnerId, allow: c.allow, enabled: true } }), { server: HUB, ...reg });
   
   for (let i = 0; i < 20; i++) { if ((await j("/api/runners", null, "GET"))[1].runners[0].online) break; await new Promise((r) => setTimeout(r, 500)); }
   const list = (await j("/api/runners", null, "GET"))[1].runners; console.log("runner online:", list[0].online);

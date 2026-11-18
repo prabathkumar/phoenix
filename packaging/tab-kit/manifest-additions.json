@@ -1,0 +1,6 @@
+{
+  "add_to_permissions": ["debugger", "tabs", "storage", "alarms"],
+  "add_to_optional_host_permissions": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"],
+  "minimum_chrome_version": "116 (or higher: keep yours if it is higher)",
+  "note": "Merge into your existing manifest.json; do not replace your own entries."
+}

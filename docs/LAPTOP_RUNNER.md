@@ -38,3 +38,8 @@ TestOps (Phoenix) in AWS cannot reach an app that is only on a company intranet 
 - The pipeline's English-step `execution` stage does not run on a laptop yet; use Live browser or the `web-case` job.
 - Chrome profile / SSO: the runner uses a fresh browser each time, so an SSO login is typed in the live session (as a secret) each time.
 - Runners are listed per signed-in address, and Phoenix still trusts the `X-User` header (no real login yet).
+
+
+## Adding it as a tab in an existing extension (FrothTestOps recorder)
+
+`phoenix-runner-tab-kit-<version>.zip` holds two scripts (`phoenix-runner-core.js` for the background, `phoenix-runner-tab.js` for the tab) plus `INTEGRATION.md` and `manifest-additions.json`. Everything uses the single storage key `phoenixRunner`, so it does not touch the host extension's data. The stand-alone Chrome zip uses the same two files.

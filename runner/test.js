@@ -1,0 +1,11 @@
+const assert = require("assert"); const { allowed, badPattern, urlsInSteps } = require("./allowlist");
+const A = ["*.corp.example.com", "intranet.local", "10.20.0.0/16"];
+assert(allowed("https://crm.corp.example.com/x", A)); assert(!allowed("https://corp.example.com", A), "wildcard is subdomains only");
+assert(allowed("http://intranet.local:8080/a", A)); assert(allowed("http://10.20.5.9/", A)); assert(!allowed("http://10.21.0.1/", A));
+assert(!allowed("https://evil.com", A)); assert(!allowed("https://x.corp.example.com.evil.com", A)); assert(!allowed("https://a.corp.example.com", []));
+assert(!allowed("file:///etc/passwd", A)); assert(!allowed("https://u:p@crm.corp.example.com", A));
+assert(!allowed("http://169.254.169.254/latest", ["169.254.0.0/16", "169.254.169.254"]), "metadata is denied even if listed");
+for (const bad of ["*", "*.com", "0.0.0.0/0", "10.0.0.0/4", "", "a b", "*.corp"]) assert(badPattern(bad), "should refuse " + bad);
+for (const good of ["*.corp.example.com", "intranet.local", "10.20.0.0/16", "localhost"]) assert(!badPattern(good), "should accept " + good);
+assert.deepStrictEqual(urlsInSteps([{ instruction: "Open https://a.corp.example.com/x now" }, { url: "https://b.example.org" }], "https://base.corp.example.com").sort(), ["https://a.corp.example.com/x", "https://b.example.org", "https://base.corp.example.com"]);
+console.log("runner allowlist: ok");

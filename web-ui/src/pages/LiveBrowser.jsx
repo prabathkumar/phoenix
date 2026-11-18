@@ -9,15 +9,22 @@ export default function LiveBrowser() {
   const [state, setState] = useState("idle"), [err, setErr] = useState(null), [frame, setFrame] = useState(null), [page, setPage] = useState({ url: "", title: "" });
   const [steps, setSteps] = useState([]), [ai, setAi] = useState([]), [done, setDone] = useState(null), [msg, setMsg] = useState("");
   const [text, setText] = useState(""), [field, setField] = useState(""), [secret, setSecret] = useState(false), [goal, setGoal] = useState(""), [nav, setNav] = useState("");
+  const [runners, setRunners] = useState([]), [runnerId, setRunnerId] = useState("");
   const ws = useRef(null), img = useRef(null);
+  useEffect(() => { api.runners().then((d) => { setRunners(d.runners || []); }).catch(() => {}); }, []);
   const send = (m) => { if (ws.current && ws.current.readyState === 1) ws.current.send(JSON.stringify(m)); };
   useEffect(() => () => { try { ws.current && ws.current.close(); } catch { /* closed */ } }, []);
 
   async function start() {
     setErr(null); setState("starting"); setSteps([]); setAi([]); setDone(null); setMsg("");
     try {
-      const { port } = await api.liveStart({ url: f.url, runOn: f.runOn });
-      const sock = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.hostname}:${port}`);
+      const scheme = location.protocol === "https:" ? "wss" : "ws";
+      let target, port;
+      if (f.runOn === "laptop") {   // the browser is on the tester's own computer, reached through Phoenix (no inbound port on the laptop)
+        const j = await api.runnerJob(runnerId, { kind: "live", url: f.url, name: "live session" });
+        target = `${scheme}://${location.host}/api/runners/jobs/${j.jobId}/view?ticket=${encodeURIComponent(j.viewTicket)}`;
+      } else { ({ port } = await api.liveStart({ url: f.url, runOn: f.runOn })); target = `${scheme}://${location.hostname}:${port}`; }
+      const sock = new WebSocket(target);
       ws.current = sock;
       sock.onmessage = (e) => {
         let m; try { m = JSON.parse(e.data); } catch { return; }
@@ -26,6 +33,7 @@ export default function LiveBrowser() {
         else if (m.type === "step-recorded") setSteps((s) => [...s.slice(0, m.stepIndex), { kind: m.kind, text: m.instruction }, ...s.slice(m.stepIndex + 1)]);
         else if (m.type === "text-entered") setMsg("Entry recorded.");
         else if (m.type === "step-undone") setSteps((s) => s.slice(0, m.stepCount));
+        else if (m.type === "runner-closed") { setMsg(m.message || "The laptop session ended."); setState("idle"); }
         else if (m.type === "ai-progress") setAi((a) => [...a, m.message]);
         else if (m.type === "ai-finished") { setMsg(`AI finished: ${m.message || (m.success ? "done" : "stopped")} (${m.stepsAdded} step(s) added)`); }
         else if (["action-error", "type-error", "busy"].includes(m.type)) setMsg(m.message);
@@ -33,7 +41,7 @@ export default function LiveBrowser() {
       };
       sock.onopen = () => setState("live");
       sock.onclose = () => setState((s) => (s === "live" ? "idle" : s));
-      sock.onerror = () => { setErr(new Error(`Could not reach the live view on port ${port}. Is that port open to this computer?`)); setState("idle"); };
+      sock.onerror = () => { setErr(new Error(f.runOn === "laptop" ? "The laptop session could not be opened. Is the runner still running on your laptop?" : `Could not reach the live view on port ${port}. Is that port open to this computer?`)); setState("idle"); };
     } catch (e) { setErr(e); setState("idle"); }
   }
   function tap(e) {
@@ -53,9 +61,10 @@ export default function LiveBrowser() {
       <Card>
         <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))" }}>
           <input placeholder="https://… (the site to test)" value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })} disabled={live} />
-          <select value={f.runOn} onChange={(e) => setF({ ...f, runOn: e.target.value })} disabled={live}><option value="local">Browser on this server</option><option value="browserstack">BrowserStack (uses minutes)</option></select>
+          <select value={f.runOn} onChange={(e) => setF({ ...f, runOn: e.target.value })} disabled={live}><option value="local">Browser on this server</option><option value="browserstack">BrowserStack (uses minutes)</option><option value="laptop">My laptop (intranet / VPN apps)</option></select>
+          {f.runOn === "laptop" ? <select value={runnerId} onChange={(e) => setRunnerId(e.target.value)} disabled={live}><option value="">Pick your laptop runner…</option>{runners.map((r) => <option key={r.id} value={r.id} disabled={!r.online}>{r.name}{r.online ? "" : " (offline)"}</option>)}</select> : null}
         </div>
-        <div className="row"><Btn pri onClick={start} disabled={live || state === "starting" || !f.url || !getUser()}>{state === "starting" ? "Opening…" : "Open browser"}</Btn>
+        <div className="row"><Btn pri onClick={start} disabled={live || state === "starting" || !f.url || !getUser() || (f.runOn === "laptop" && !runnerId)}>{state === "starting" ? "Opening…" : "Open browser"}</Btn>
           {live ? <Btn onClick={() => send({ type: "stop" })}>Stop and make the test</Btn> : null}{live ? <Chip kind="ok">live</Chip> : null}</div>
       </Card>
       {live || frame ? (

@@ -76,7 +76,7 @@ async function defaultAiLoop({ goal, page, recorder, send, announce }) {
  * @param {{port:number, startUrl?:string, name?:string, browser?:Object, headless?:boolean, aiLoop?:Function}} opts
  * @returns {Promise<{wss:Object, port:number, recorder:Object, page:Object, close:Function}>}
  */
-async function startWebLiveView({ port, startUrl, name, browser, headless, aiLoop = defaultAiLoop, runOn, target } = {}) {
+async function startWebLiveView({ port, host, startUrl, name, browser, headless, aiLoop = defaultAiLoop, runOn, target } = {}) {
   const ownsBrowser = !browser;
   // Chromium on this machine (default) or a BrowserStack browser, chosen per recording.
   let where;
@@ -88,7 +88,7 @@ async function startWebLiveView({ port, startUrl, name, browser, headless, aiLoo
   const context = await b.newContext({ viewport: VIEWPORT });
   const page = await context.newPage();
   const recorder = new WebRecorder(page);
-  const wss = new WebSocketServer({ port });
+  const wss = new WebSocketServer({ port, ...(host ? { host } : {}) });   // host: the laptop runner binds 127.0.0.1 only
   await new Promise((resolve) => wss.once("listening", resolve));
 
   let busy = false;

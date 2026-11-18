@@ -16,6 +16,7 @@ import UnitTests from "./pages/UnitTests.jsx";
 import Logs from "./pages/Logs.jsx";
 import Training from "./pages/Training.jsx";
 import LiveBrowser from "./pages/LiveBrowser.jsx";
+import Runners from "./pages/Runners.jsx";
 import PluginLayer from "./pages/PluginLayer.jsx";
 import Notifications from "./pages/Notifications.jsx";
 import Runs from "./pages/Runs.jsx";
@@ -40,6 +41,7 @@ export const MENU = [
   ["Unit Tests", "/unit-tests", "M6 5L3 8l3 3M10 5l3 3-3 3M9 3.5L7 12.5"],
   ["Quality and TMMI", "/quality", "M3 13V8M7 13V4M11 13V6M14 13H2"],
   ["Logs", "/logs", "M3 3.5h10M3 7h10M3 10.5h6M3 14h8"],
+  ["Laptop runners", "/runners", "M2 4h12v7H2zM1 13h14"],
   ["Plugin layer", "/plugins", "M3 3h4v4H3zM9 3h4v4H9zM3 9h4v4H3zM11 9v4M9 11h4"],
   ["Notifications", "/notifications", "M8 2a4 4 0 0 0-4 4v3l-1 2h10l-1-2V6a4 4 0 0 0-4-4zM6.5 13a1.5 1.5 0 0 0 3 0"],
   ["Live browser", "/live", "M2 3h12v8H2zM6 14h4M8 11v3"],
@@ -95,6 +97,7 @@ export default function App() {
           <Route path="/unit-tests" element={<UnitTests />} />
           <Route path="/quality" element={<Quality />} />
           <Route path="/logs" element={<Logs />} />
+          <Route path="/runners" element={<Runners />} />
           <Route path="/plugins" element={<PluginLayer />} />
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/live" element={<LiveBrowser />} />

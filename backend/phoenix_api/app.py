@@ -625,4 +625,6 @@ def create_app(deps: Deps | None = None) -> FastAPI:
             f = os.path.join(ui, path)
             return FileResponse(f if path and os.path.isfile(f) else os.path.join(ui, "index.html"))
 
+    from . import runner_hub
+    runner_hub.mount(app, D, lambda action, who, subject: logstore.record("user_action", {"project": "", "who": who, "action": action, "subject": subject, "status": "ok"}, D.env))
     return app

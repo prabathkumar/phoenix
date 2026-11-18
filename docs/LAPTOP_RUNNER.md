@@ -1,0 +1,33 @@
+# Laptop runner: testing intranet and VPN apps from TestOps in AWS
+
+TestOps (Phoenix) in AWS cannot reach an app that is only on a company intranet or VPN. The laptop runner fixes that without opening anything into your network: a small program on the tester's laptop connects **out** to Phoenix (WSS, port 443). Phoenix then sends it work, and the browser runs on the laptop, where the VPN is.
+
+```
+ tester's browser (Phoenix UI) <-- wss --> Phoenix hub (AWS) <-- wss (laptop dials out) --> runner on the laptop --> Chromium --> intranet app
+```
+
+## Set up (once per laptop)
+1. Phoenix UI > **Laptop runners** > list the addresses this laptop may open (`*.corp.example.com`, `intranet.corp.example.com`, `10.20.0.0/16`) > **Get a pairing code**.
+2. On the laptop, in the Phoenix folder (Node 20+): `cd web && npm install && npx playwright install chromium`, then `cd ..`.
+3. `node runner/phoenix-runner.js pair https://<your-phoenix-address> <code>` then `node runner/phoenix-runner.js start`. Leave it running.
+4. Phoenix UI > **Live browser** > **My laptop** > pick the laptop > address > **Open browser**. A real browser opens on the laptop, is mirrored in the UI, and you click and type into it. Typed secrets stay on the laptop.
+
+`node runner/phoenix-runner.js forget` removes the pairing from the laptop; **Revoke** in the UI cancels it on the server (and disconnects the runner).
+
+## What it does
+- **Live session:** same live view as the server browser (click, type, undo, ask the AI, make a test), shown through Phoenix with a one-time view ticket.
+- **Test-case run:** `POST /api/runners/{id}/jobs {kind:"web-case", steps, baseUrl, testData}` runs recorded web steps on the laptop with the existing web runner and returns the result in `GET /api/runners/jobs/{id}`.
+
+## Safeguards
+- Outbound only; the laptop's live view binds to `127.0.0.1`; nothing listens on the network.
+- Pairing code is single use and lasts 10 minutes. The runner token is stored on the server as a hash only, and in `~/.phoenix-runner.json` (mode 600) on the laptop.
+- **Allowlist, default deny,** enforced on the server when a job is created and again on the laptop; cloud metadata and link-local ranges are always refused; wildcards like `*` or `*.com` and ranges wider than /8 cannot be registered. In a live session, navigations to hosts outside the list are blocked.
+- A runner only serves its owner; one job at a time; jobs and live sessions are written to the audit log.
+- Typed passwords and codes (the live view's "secret" box) are never written into steps, test data or scripts.
+
+## Limits (be aware)
+- **Not run end to end on a real laptop with a real browser and VPN.** Tested: the hub (pairing, allowlist, relay, revoke) with fake runners; the real Node runner against a live hub with a stand-in browser; the allowlist in both languages. The live-view relay through the AWS load balancer needs WebSocket support (an ALB has it; check idle timeouts).
+- Test-case runs check the URLs written in the steps and the base URL; a click that navigates somewhere else is blocked only in live sessions.
+- The pipeline's English-step `execution` stage does not run on a laptop yet; use Live browser or the `web-case` job.
+- Chrome profile / SSO: the runner uses a fresh browser each time, so an SSO login is typed in the live session (as a secret) each time.
+- Runners are listed per signed-in address, and Phoenix still trusts the `X-User` header (no real login yet).

@@ -36,6 +36,10 @@ A release is one API call keyed by project ID (`POST /api/releases`), with a liv
 | [`docs/TESTOPS_WORKFLOW_UX.md`](docs/TESTOPS_WORKFLOW_UX.md) | TestOps dev team — UI/UX | The screen-by-screen flow (library → cycle → app → run) to build TestOps's own UI against `test-case` mode |
 | [`docs/TESTOPS_INTEGRATION_GUIDE.md`](docs/TESTOPS_INTEGRATION_GUIDE.md) | TestOps dev team — backend integration | The data model/fields their UI needs, frothAI (Ollama) wiring, server installation |
 | [`docs/TESTOPS_MOBILE_DOCKER.md`](docs/TESTOPS_MOBILE_DOCKER.md) | TestOps dev team — getting the code running | Building/exporting the "TestOps ai-automate" Docker image and pulling the source into their own GitHub org |
+| [`docs/LAPTOP_RUNNER.md`](docs/LAPTOP_RUNNER.md) | Testers, infra, security | Running tests in a tester's own browser for intranet/VPN apps: outbound-only runner, pairing code, allowlist, Mac/Windows installer, Chrome extension and the tab kit for the FrothTestOps recorder |
+| [`docs/PLUGIN_LAYER.md`](docs/PLUGIN_LAYER.md) | Engineering, QA leads | Plugin layer for testing industry products (SAP, Salesforce, Dynamics 365, SuiteCRM, OTOBO, OTRS, Odoo): versioned plugins, plan/functional/readback/security/performance modes, credentials from server env only |
+| [`docs/TOOLS_AND_NOTIFICATIONS.md`](docs/TOOLS_AND_NOTIFICATIONS.md) | Admins | Tools listing and the Notification settings screen (encrypted store, admin-only edits) |
+| [`downloads/`](downloads/README.md) | Testers, developers | Ready-built installer zip, Chrome extension zip and the tab kit |
 | [`docs/RELEASING.md`](docs/RELEASING.md) | Cutting a release | The `vX.Y.Z` version-tag scheme and the automated `ghcr.io` build+push workflow — implemented, unverified until the first real tag push |
 | [`docs/COMPETITIVE_LANDSCAPE.md`](docs/COMPETITIVE_LANDSCAPE.md) | Evaluating TestOps ai-automate against alternatives | Full comparison vs. Appium-MCP and other AI-agent test tooling |
 | [`mcp/README.md`](mcp/README.md) | Connecting an external MCP client (e.g. TestOps's own MCP) | The `mcp/server.js` connector — tools exposed, setup, the real-run safety gate |

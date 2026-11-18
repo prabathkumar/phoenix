@@ -1,5 +1,8 @@
 # Developer onboarding — end-to-end test checklist, block by block
 
+> Latest additions: [`LAPTOP_RUNNER.md`](LAPTOP_RUNNER.md), [`PLUGIN_LAYER.md`](PLUGIN_LAYER.md), [`TOOLS_AND_NOTIFICATIONS.md`](TOOLS_AND_NOTIFICATIONS.md) and the ready-built [`downloads/`](../downloads/README.md). Current status is in [`STATUS.md`](STATUS.md).
+
+
 For the team starting on this codebase Wednesday. This maps directly onto
 the architecture diagram (`docs/diagrams/architecture.png`): one section per
 block, each with (1) the automated tests that already exist and how to run

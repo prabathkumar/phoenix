@@ -43,8 +43,21 @@ def test_pairing_is_signed_in_single_use_and_refuses_wide_patterns(c):
 def test_a_bad_token_cannot_connect(c):
     paired(c)
     with pytest.raises(WebSocketDisconnect):
-        with c.websocket_connect("/api/runners/connect", headers={"Authorization": "Bearer nope"}):
-            pass
+        with c.websocket_connect("/api/runners/connect", headers={"Authorization": "Bearer nope"}) as w:
+            w.send_text(json.dumps({"type": "auth", "token": "nope"}))
+            w.receive_text()
+
+
+def test_first_message_auth_for_browser_extensions(c):
+    r = paired(c)
+    with c.websocket_connect("/api/runners/connect") as w:
+        w.send_text(json.dumps({"type": "auth", "token": r["token"]}))
+        w.send_text(json.dumps({"type": "ping"}))
+        assert c.get("/api/runners", headers=U).json()["runners"][0]["online"] is True
+    with pytest.raises(WebSocketDisconnect):
+        with c.websocket_connect("/api/runners/connect") as w:
+            w.send_text(json.dumps({"type": "hello"}))      # no auth message: refused
+            w.receive_text()
 
 
 def test_job_round_trip_and_ownership_and_allowlist(c):
@@ -97,5 +110,6 @@ def test_revoke_disconnects_and_blocks(c):
         assert c.delete(f"/api/runners/{r['runnerId']}", headers=U).status_code == 200
         assert json.loads(rw.receive_text())["type"] == "revoked"
     with pytest.raises(WebSocketDisconnect):
-        with c.websocket_connect("/api/runners/connect", headers={"Authorization": "Bearer " + r["token"]}):
-            pass
+        with c.websocket_connect("/api/runners/connect", headers={"Authorization": "Bearer " + r["token"]}) as w:
+            w.send_text(json.dumps({"type": "auth", "token": r["token"]}))
+            w.receive_text()

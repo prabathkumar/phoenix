@@ -200,10 +200,16 @@ class Hub:
     async def runner_socket(self, ws: WebSocket):
         auth = ws.headers.get("authorization", "")
         rid = self.authenticate(auth[7:] if auth.lower().startswith("bearer ") else "")
-        if not rid:
-            await ws.close(code=4401)
-            return
         await ws.accept()
+        if not rid:                       # a browser extension cannot set headers: it sends {"type":"auth","token":...} as its first message
+            try:
+                first = json.loads(await asyncio.wait_for(ws.receive_text(), 10))
+                rid = self.authenticate(first.get("token")) if first.get("type") == "auth" else None
+            except Exception:  # noqa: BLE001
+                rid = None
+            if not rid:
+                await ws.close(code=4401)
+                return
         old = self.conns.get(rid)
         self.conns[rid] = ws
         if old:

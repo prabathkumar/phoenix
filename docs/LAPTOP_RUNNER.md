@@ -6,7 +6,12 @@ TestOps (Phoenix) in AWS cannot reach an app that is only on a company intranet 
  tester's browser (Phoenix UI) <-- wss --> Phoenix hub (AWS) <-- wss (laptop dials out) --> runner on the laptop --> Chromium --> intranet app
 ```
 
-## Set up (once per laptop)
+## Two ways to install (both built)
+**A. Installer zip (full runner: live sessions AND recorded test cases).** Build: `python3 packaging/build_packages.py --server https://<your-phoenix-address> --out dist` gives `dist/phoenix-runner-0.1.0.zip`. A tester unzips it, double-clicks **Install.command** (Mac) or **Install.bat** (Windows), then **Start.command** / **Start.bat**. The installer downloads Node 22 (checked against nodejs.org's published checksum) and Playwright's Chromium into the folder; no admin rights. The Phoenix address is baked in, so testers only type the pairing code. Plain-English steps are in the zip's `README-FIRST.txt`.
+
+**B. Chrome extension (live sessions only).** `dist/phoenix-runner-chrome-0.1.0.zip` (from the same command). It drives the tester's own Chrome (VPN and SSO already there) through Chrome's debugging interface. Install: load unpacked for a try-out (`chrome://extensions` > Developer mode > Load unpacked > the `extension/phoenix-runner` folder), or upload the zip to the Chrome Web Store as a **private/unlisted** item, or have IT push it by policy (`ExtensionInstallForcelist`). Pair in the extension's settings page (Phoenix address + code). Chrome shows a "being debugged" bar on the tab while a session runs. Not supported in the extension: recorded test-case runs, step recording, undo and the AI goal; use package A for those. Permissions asked: debugger, tabs, storage, alarms, and (optional, at pairing) access to your Phoenix address only.
+
+## Set up the developer way (once per laptop)
 1. Phoenix UI > **Laptop runners** > list the addresses this laptop may open (`*.corp.example.com`, `intranet.corp.example.com`, `10.20.0.0/16`) > **Get a pairing code**.
 2. On the laptop, in the Phoenix folder (Node 20+): `cd web && npm install && npx playwright install chromium`, then `cd ..`.
 3. `node runner/phoenix-runner.js pair https://<your-phoenix-address> <code>` then `node runner/phoenix-runner.js start`. Leave it running.
@@ -26,8 +31,10 @@ TestOps (Phoenix) in AWS cannot reach an app that is only on a company intranet 
 - Typed passwords and codes (the live view's "secret" box) are never written into steps, test data or scripts.
 
 ## Limits (be aware)
+- **Tested here:** the unzipped package (fresh `npm install`, real Playwright browser, real hub) ran a 4-step web job and refused an address outside the allowlist; the Chrome extension, loaded in a real Chromium, connected, mirrored a page, clicked, typed, blocked a disallowed address and stopped (`extension/test/smoke.js`). **Not tested:** the Mac and Windows installer scripts themselves (the Windows ones were not run at all; the Mac shell scripts were only syntax-checked), the extension's settings page (Chrome's permission prompt needs a person), a Chrome Web Store upload, and a real VPN or SSO app.
 - **Not run end to end on a real laptop with a real browser and VPN.** Tested: the hub (pairing, allowlist, relay, revoke) with fake runners; the real Node runner against a live hub with a stand-in browser; the allowlist in both languages. The live-view relay through the AWS load balancer needs WebSocket support (an ALB has it; check idle timeouts).
 - Test-case runs check the URLs written in the steps and the base URL; a click that navigates somewhere else is blocked only in live sessions.
+- Unsigned installers: Mac shows "cannot be opened" (right-click > Open) and Windows shows "protected your PC" (More info > Run anyway) until the files are signed with your company certificates.
 - The pipeline's English-step `execution` stage does not run on a laptop yet; use Live browser or the `web-case` job.
 - Chrome profile / SSO: the runner uses a fresh browser each time, so an SSO login is typed in the live session (as a secret) each time.
 - Runners are listed per signed-in address, and Phoenix still trusts the `X-User` header (no real login yet).

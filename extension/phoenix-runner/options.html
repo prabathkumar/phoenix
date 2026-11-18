@@ -1,0 +1,11 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Phoenix Runner settings</title>
+<style>body{font:15px/1.5 system-ui,sans-serif;max-width:560px;margin:32px auto;padding:0 16px;color:#1a1a1a}input,button{font:inherit;padding:8px 10px;margin:4px 0}input{width:100%;box-sizing:border-box}button{cursor:pointer}.ok{color:#0a7a2f}.bad{color:#b00020}small{color:#555}</style></head>
+<body><h1>Phoenix Runner</h1>
+<p>Lets Phoenix use <b>this Chrome</b> for live test sessions on intranet and VPN apps. This Chrome connects out to Phoenix; nothing is opened into your network.</p>
+<div id="paired" hidden><p>Status: <b id="status">…</b></p><p>It may open: <span id="allow"></span></p><button id="off">Switch off</button> <button id="forget">Forget this pairing</button></div>
+<div id="form"><h2>Pair this Chrome</h2>
+<label>Phoenix address<br><input id="server" placeholder="https://phoenix.yourcompany.com"></label>
+<label>Pairing code (from Phoenix &gt; Laptop runners)<br><input id="code" placeholder="3E5C-92E1" autocomplete="off"></label>
+<button id="pair">Pair</button> <p id="msg" role="status"></p>
+<small>Chrome will ask to let this extension talk to your Phoenix address. That is the only site access it asks for.</small></div>
+<script src="options.js" type="module"></script></body></html>

@@ -21,7 +21,15 @@ async def model(p):
 LEAD = "phx_lead-key"
 
 
+def seed():
+    db.doc_put("project", "shop", {"id": "shop", "name": "Shop", "jiraProjectKey": "SHP", "createdBy": "t", "createdAt": "x"})
+    db.doc_put("project", "pay", {"id": "pay", "name": "Payments", "jiraProjectKey": "PAY", "createdBy": "t", "createdAt": "x"})
+    for n, pr, jk, st in (("1", "shop", None, "open"), ("R2026.11.3", "shop", "SHP-12", "open"), ("OLD", "shop", None, "closed"), ("P1", "pay", None, "open")):
+        db.doc_put("release-reg", n, {"number": n, "project": pr, "jiraKey": jk, "status": st, "createdBy": "t", "createdAt": "x"})
+
+
 def app(keys=True, **kw):
+    seed()
     env = {"DATABASE_URL": db.engine_for().url.render_as_string(hide_password=False), **({"PHOENIX_API_KEYS": f"ilmu-code:{sha(KEY)},ci:{sha(KEY2)},lead:{sha(LEAD)}:approve"} if keys else {}), **kw.pop("env", {})}
     return TestClient(create_app(Deps(env=env, call_json=model, **kw)))
 
@@ -58,7 +66,7 @@ def test_every_action_stage_belongs_to_that_agent_in_the_roster():
 
 
 @pytest.mark.parametrize("body,msg", [({"agent": "nobody", "action": "run", "release": "1"}, "Unknown agent"), ({"agent": "forge", "action": "execute", "release": "1"}, "does not do"), ({"agent": "team", "action": "run", "release": "1"}, "only does"),
-                                      ({"agent": "scout", "action": "run"}, "release number"), ({"agent": "scout", "action": "run", "release": "1"}, "something to work from"),
+                                      ({"agent": "scout", "action": "run"}, "registered release"), ({"agent": "scout", "action": "run", "release": "1"}, "something to work from"),
                                       ({"agent": "scout", "action": "run", "release": "1", "requirement": "x", "callbackUrl": "http://x.example.com"}, "https")])
 def test_bad_events_are_refused_in_plain_words(body, msg):
     with app() as c:
@@ -223,3 +231,53 @@ def test_testops_names_are_the_action_names_and_scan_runs_both_checks():
     assert RE.plan("warden", "secrets") == [("warden", ["secrets"])] and RE.plan("warden", "sast") == [("warden", ["sast"])]
     assert RE.plan("warden", "scan") == [("warden", ["secrets", "sast"])]          # code quality / security (Semgrep) and leaks (Gitleaks) together
     assert RE.plan("prowler", "dast") == [("prowler", ["deployed", "dast"])]
+
+
+QA = {"X-User": "head.qa@example.com"}
+
+
+def reg_app(**kw):
+    return app(env={"PHOENIX_QA_HEADS": "head.qa@example.com", "PHOENIX_ADMINS": "admin@example.com"}, **kw)
+
+
+def test_only_the_head_of_qa_creates_releases_and_projects_need_a_jira_key():
+    with reg_app() as c:
+        mk = {"number": "R9.9", "project": "shop", "jiraKey": "SHP-99"}
+        assert c.post("/api/registry/releases", json=mk, headers={"X-User": "dev@example.com"}).status_code == 403
+        assert c.post("/api/registry/releases", json=mk, headers={"X-User": "admin@example.com"}).status_code == 403        # an administrator registers projects, not releases
+        assert c.post("/api/registry/releases", json={**mk, "jiraKey": "PAY-1"}, headers=QA).status_code == 400            # the Jira issue must belong to the project's Jira project
+        r = c.post("/api/registry/releases", json={**mk, "number": "R9." + str(int(time.time()))}, headers=QA)
+        assert r.status_code == 200 and r.json()["status"] == "open" and r.json()["createdBy"] == "head.qa@example.com"
+        assert c.post("/api/registry/projects", json={"id": "x1", "name": "X One", "jiraProjectKey": "bad key"}, headers=QA).status_code == 400
+        assert c.post("/api/registry/projects", json={"id": "x1", "name": "X One", "jiraProjectKey": "XO"}, headers={"X-User": "dev@example.com"}).status_code == 403
+    with app() as c:                                                            # nobody named: nobody can (fail-closed)
+        assert c.post("/api/registry/releases", json={"number": "Z1", "project": "shop"}, headers=QA).status_code == 403
+
+
+def test_events_must_name_a_registered_open_release_or_a_registered_project():
+    with app() as c:
+        ev = lambda **k: c.post("/api/v1/events", json={"agent": "scout", "action": "run", "requirement": "x", **k}, headers=H())  # noqa: E731
+        assert ev(release="NOPE").status_code == 404 and ev(project="nope").status_code == 404 and ev().status_code == 400
+        assert ev(release="OLD").status_code == 409 and "closed" in ev(release="OLD").json()["detail"]
+        assert ev(release="P1", project="shop").status_code == 400                                                      # that release belongs to another project
+        a = ev(release="1"); b = ev(project="Shop"); d = ev(project="pay")                                                # release alone, project by name, project by id
+        assert (a.status_code, b.status_code, d.status_code) == (202, 202, 202)
+        assert a.json()["project"] == "shop" and a.json()["jiraProject"] == "SHP" and b.json()["release"] == "" and d.json()["jiraProject"] == "PAY"
+        for r in (a, b, d):
+            wait(c, r.json()["id"])
+
+
+def test_the_jira_key_must_belong_to_the_projects_jira_project_and_a_release_can_carry_one():
+    with app() as c:
+        base = {"agent": "scout", "action": "run", "release": "1"}
+        assert c.post("/api/v1/events", json={**base, "jiraKey": "PAY-5"}, headers=H()).status_code == 400
+        ok = c.post("/api/v1/events", json={**base, "jiraKey": "shp-5", "requirement": "x"}, headers=H())
+        assert ok.status_code == 202
+        wait(c, ok.json()["id"])
+        # a release made by the Head of QA carries a Jira key, which then stands in for the requirement that unit tests need
+        class Live:
+            async def default_branch(self): return "main"
+            async def list_files(self, ref): return []
+        r = c.post("/api/v1/events", json={"agent": "forge", "action": "write-unit-tests", "release": "R2026.11.3", "repo": {"provider": "github", "project": "org/app"}}, headers=H())
+        assert r.status_code in (202, 422), r.text            # not refused for a missing requirement: the release's Jira key supplies it
+        assert "requirement" not in r.text if r.status_code == 422 else True

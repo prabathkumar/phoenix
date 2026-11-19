@@ -32,7 +32,7 @@ Returns `202 {id, status:"queued", statusUrl, artifactsUrl}` at once.
 
 **One agent, several agents, or the team: the caller chooses.** One: `agent` + `action`. Several, in your order: `"steps": [{"agent":"scout","action":"write-scenarios"},{"agent":"forge","action":"write-unit-tests"}]` (up to 13, no repeats). Everything: `agent:"team"`, `action:"release"`.
 
-Body fields: `release` (required) and `agent`+`action` or `steps`; one of `requirement`, `requirementUrl`, `jiraKey`, `scenarios`, `cases`, `repo`; optional `appUrl`, `testData`, `task`, `approvals`, `callbackUrl`.
+Body fields: `release` or `project` (one is required; see below) and `agent`+`action` or `steps`; one of `requirement`, `requirementUrl`, `jiraKey`, `scenarios`, `cases`, `repo`; optional `appUrl`, `testData`, `task`, `approvals`, `callbackUrl`.
 
 ## Agents and actions
 `agent: "team"` + `action: "release"` runs the roster in order: scout, scribe, mint, forge, runner, tracer, pacer, warden, prowler, judge, herald, mentor, measure. One agent: `run` (all its stages) or one of
@@ -52,6 +52,13 @@ When an event finishes or stops at needs-you, Phoenix POSTs `{eventId, release, 
 - Approvals: only a key written `name:<hash>:approve` may send `approvals` or call `/approve`, so an AI caller cannot approve its own live security scan or Jira defects. The approver is recorded (`approvedBy`).
 
 **On what the agents create** (before it is stored or returned): secrets are redacted, strings and lists are capped, items that are not in the expected shape are dropped, and any address outside the allowed targets is flagged. All of it appears in `flags` on the status and artifacts. Test-data values are never returned, only the field names. The existing gates still apply on top: guardrails on model calls, review of generated tests, sign-off.
+
+## Projects, releases and Jira
+Every event must name a **registered release** (its project comes with it) or a **registered project** (id or name). Unknown: 404. A closed release: 409. A release and project that do not belong together: 400.
+- **Project** = a Phoenix project linked to a Jira project key (`POST /api/registry/projects {id, name, jiraProjectKey}`). Registered by the Head of QA or an administrator; if Jira is connected the key is checked against Jira.
+- **Release number** = created by the **Head of QA only** (`POST /api/registry/releases {number, project, jiraKey?}`, `POST /api/registry/releases/{number}/status {status: open|closed}`). A release may carry a Jira issue (an epic or requirement); it then stands in for the requirement when the call gives none, so unit tests can be linked to it.
+- **Jira linking:** a `jiraKey` on a call must be an issue of the project's Jira project (`SHP-12` for project key `SHP`), and defects and requirement reads for that event go to that Jira project. Runs, unit-test results and defects are filed under the project and the release.
+- **Who is the Head of QA:** `PHOENIX_QA_HEADS` (work addresses, comma list; empty means nobody, fail-closed). Administrators (`PHOENIX_ADMINS`) can register projects but not create releases. The person is read from the `X-User` header, which the platform does not yet verify: put it behind your SSO proxy until real login is built. Every create, close and reopen is written to the audit log.
 
 ## Code repo, scans and unit tests
 - **Pass the repo on the call:** `"repo": {"provider":"github|gitlab","project":"org/app","base":"R2026.10","head":"R2026.11.3"}`. Before the event is accepted, Phoenix connects to it with the server's repo token and lists the files; if that fails the call returns 422 with the reason. No repo, no scan: `secrets` and `sast` say "no code repo linked" and never scan the server's own folder.

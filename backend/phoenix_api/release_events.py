@@ -16,7 +16,9 @@ from urllib.parse import urlparse
 import httpx
 from fastapi import Body, Header, HTTPException
 
-from . import agents, api_keys, db, release_checks, requirements_loader, run_record, signoff
+import copy
+
+from . import agents, api_keys, db, registry, release_checks, requirements_loader, run_record, signoff
 from .service import run_pipeline_request
 
 KIND = "event"
@@ -128,7 +130,7 @@ def _save(rec, url):
 
 
 def _summary(rec):
-    return {k: rec[k] for k in ("id", "release", "agent", "action", "caller", "status", "createdAt", "finishedAt", "steps", "needsYou", "callback", "detail", "flags", "warnings") if k in rec}
+    return {k: rec[k] for k in ("id", "release", "project", "jiraProject", "agent", "action", "caller", "status", "createdAt", "finishedAt", "steps", "needsYou", "callback", "detail", "flags", "warnings") if k in rec}
 
 
 async def _execute(rec, steps, deps, inp, start=0):
@@ -150,7 +152,7 @@ async def _execute(rec, steps, deps, inp, start=0):
             if handoff and not req.get("cases") and not req.get("scenarios"):
                 req["scenarios"] = handoff
             req.pop("_platform", None)
-            req.update({"release": rec["release"], "_run_id": st.get("runId") or run_record.new_id(), "_artifacts": True, "onBehalfOf": rec["caller"]})
+            req.update({"release": rec["release"] or None, "_run_id": st.get("runId") or run_record.new_id(), "_artifacts": True, "onBehalfOf": rec["caller"]})
             st.update(status="running", runId=req["_run_id"])
             _save(rec, url)
             try:
@@ -180,6 +182,15 @@ async def _execute(rec, steps, deps, inp, start=0):
     if rec.get("callbackUrl"):
         rec["callback"] = await _deliver(rec["callbackUrl"], {"eventId": rec["id"], "release": rec["release"], "status": rec["status"], "needsYou": rec.get("needsYou", []), "steps": [{k: v for k, v in s.items() if k != "artifacts"} for s in rec["steps"]]}, deps.env, deps.allow_private)
         _save(rec, url)
+
+
+def _deps_for(D, jira_project):
+    """The event's own copy of the settings, with Jira pointed at the project's Jira project, so defects and requirements go to the right place."""
+    d = copy.copy(D)
+    d.jira = copy.copy(D.jira)
+    if jira_project:
+        d.jira.project = jira_project
+    return d
 
 
 def _spawn(coro):
@@ -218,9 +229,19 @@ def mount(app, D):
     @app.post("/api/v1/events", status_code=202)
     async def event(body: dict = Body(...), authorization: str = Header(default=""), x_api_key: str = Header(default="")):
         c = who(authorization, x_api_key)
-        release = str(body.get("release") or "").strip()
-        if not re.fullmatch(r"[\w.\-+/ ]{1,60}", release):
-            raise HTTPException(400, "Give the release number or name (up to 60 letters, digits, . - _ +).")
+        try:
+            reg = registry.resolve(str(body.get("release") or "").strip() or None, body.get("project"), url)
+        except LookupError as e:
+            raise HTTPException(404, str(e))
+        except PermissionError as e:
+            raise HTTPException(409, str(e))
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        release = reg["release"]["number"] if reg["release"] else ""
+        jk = str(body.get("jiraKey") or "").upper()
+        if jk and not jk.startswith(reg["project"]["jiraProjectKey"] + "-"):
+            raise HTTPException(400, f"jiraKey must be an issue of this project's Jira project ({reg['project']['jiraProjectKey']}-nnn).")
+        body = {**body, "project": reg["project"]["id"], **({"jiraKey": jk} if jk else ({"jiraKey": reg["jiraKey"]} if reg["jiraKey"] and not (body.get("requirement") or body.get("requirementUrl")) else {}))}
         try:
             steps = plan_many(body["steps"]) if "steps" in body else plan(body.get("agent"), body.get("action"), url)
             warnings = release_checks.check_input(body, D.env)
@@ -243,10 +264,10 @@ def mount(app, D):
         if not (body.get("requirement") or body.get("requirementUrl") or body.get("jiraKey") or body.get("scenarios") or body.get("cases") or body.get("repo")):
             raise HTTPException(400, "Give something to work from: requirement, requirementUrl, jiraKey, scenarios, cases or repo.")
         eid = f"evt-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{secrets.token_hex(3)}"
-        rec = {"id": eid, "release": release, "agent": "custom" if "steps" in body else str(body["agent"]).lower(), "action": "steps" if "steps" in body else str(body["action"]).lower(), "caller": c, "warnings": warnings, "status": "queued", "createdAt": _now(),
+        rec = {"id": eid, "release": release, "project": reg["project"]["id"], "jiraProject": reg["project"]["jiraProjectKey"], "agent": "custom" if "steps" in body else str(body["agent"]).lower(), "action": "steps" if "steps" in body else str(body["action"]).lower(), "caller": c, "warnings": warnings, "status": "queued", "createdAt": _now(),
                "callbackUrl": body.get("callbackUrl") or None, "steps": [{"agent": a, "stages": s, "status": "waiting"} for a, s in steps]}
         _save(rec, url)
-        _spawn(_execute(rec, steps, D, {k: body[k] for k in INPUT if k in body}))
+        _spawn(_execute(rec, steps, _deps_for(D, rec["jiraProject"]), {k: body[k] for k in INPUT if k in body}))
         return {**_summary(rec), "statusUrl": f"/api/v1/events/{eid}", "artifactsUrl": f"/api/v1/events/{eid}/artifacts"}
 
     @app.get("/api/v1/events/{eid}")
@@ -273,5 +294,5 @@ def mount(app, D):
         steps = [(s["agent"], s.get("stages")) for s in rec["steps"]]
         rec.update(status="queued")
         _save(rec, url)
-        _spawn(_execute(rec, steps, D, {"approvals": ap, **{k: v for k, v in (body.get("input") or {}).items() if k in INPUT}}, rec.get("resumeAt", 0)))
+        _spawn(_execute(rec, steps, _deps_for(D, rec.get("jiraProject")), {"approvals": ap, **{k: v for k, v in (body.get("input") or {}).items() if k in INPUT}}, rec.get("resumeAt", 0)))
         return _summary(rec)

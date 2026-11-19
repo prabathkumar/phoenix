@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 
 import httpx
 from fastapi import Body, Header, HTTPException
+from fastapi.responses import JSONResponse
 
 import copy
 
@@ -40,7 +41,7 @@ ACTIONS = {
     "measure": {"measure": ["measure"], "confirm": ["confirm"]},
 }
 TEAM = ["scout", "scribe", "mint", "forge", "runner", "tracer", "pacer", "warden", "prowler", "judge", "herald", "mentor", "measure"]
-INPUT = ("requirement", "requirementUrl", "jiraKey", "jira", "web", "mobile", "testData", "cases", "scenarios", "allowPartial", "repo", "evaluate", "ruleset", "approvals", "task", "appUrl", "project", "retest")
+INPUT = ("requirement", "requirementUrl", "jiraKey", "jira", "web", "mobile", "testData", "cases", "scenarios", "allowPartial", "repo", "evaluate", "ruleset", "approvals", "task", "appUrl", "project", "retest", "defectMode")
 _tasks, _sem = set(), {}
 
 
@@ -142,8 +143,12 @@ async def _execute(rec, steps, deps, inp, start=0):
         for n in range(start, len(steps)):
             name, stages = steps[n]
             st = rec["steps"][n]
+            given = {k: inp[k] for k in INPUT if k in inp}
+            given.setdefault("defectMode", "single")                                                 # one bug for all findings unless the caller asks for each
+            if str(deps.env.get("PHOENIX_API_AUTO_DEFECTS", "true")).lower() != "false":   # the owner's setting, not the caller's: defects found by an event go to Jira without a person clicking
+                given["approvals"] = {**(given.get("approvals") or {}), "defects": True}
             try:
-                req = agents.request_for(name, {k: inp[k] for k in INPUT if k in inp}, url)
+                req = agents.request_for(name, given, url)
             except agents.AgentError as e:
                 st.update(status="skipped", detail=str(e))  # a switched-off agent is skipped, never switched on from here
                 continue
@@ -229,19 +234,35 @@ def mount(app, D):
     @app.post("/api/v1/events", status_code=202)
     async def event(body: dict = Body(...), authorization: str = Header(default=""), x_api_key: str = Header(default="")):
         c = who(authorization, x_api_key)
+        def ask(code, msg):
+            """The caller is told what to do next, with what exists, so an AI caller can fix the call itself."""
+            ps = [{"id": p["id"], "name": p["name"], "jiraProjectKey": p["jiraProjectKey"]} for p in sorted(db.doc_list(registry.PROJECT, url), key=lambda p: p["id"])][:50]
+            rs = [{"number": r["number"], "project": r["project"]} for r in db.doc_list(registry.RELEASE, url) if r["status"] == "open"][:50]
+            return JSONResponse(status_code=code, content={"detail": msg, "next": ["Give an existing release number (release), or the project id or name (project).", "Or ask the Head of QA to generate the release number in Phoenix, then send it.", "Do not invent a release number: it must be registered."], "projects": ps, "openReleases": rs})
+        note = await registry.sync_from_testops(body.get("project"), D.env, url)
+        if note:
+            return ask(422, note)
         try:
             reg = registry.resolve(str(body.get("release") or "").strip() or None, body.get("project"), url)
         except LookupError as e:
-            raise HTTPException(404, str(e))
+            return ask(404, str(e))
         except PermissionError as e:
-            raise HTTPException(409, str(e))
+            return ask(409, str(e))
         except ValueError as e:
-            raise HTTPException(400, str(e))
+            return ask(400, str(e))
+        if str(D.env.get("PHOENIX_API_REQUIRE_JIRA", "true")).lower() != "false" and not (body.get("jiraKey") or reg["jiraKey"]):
+            return ask(400, f"This project is linked to Jira ({reg['project']['jiraProjectKey']}): give the Jira id of the requirement or story as jiraKey, like {reg['project']['jiraProjectKey']}-123.")
+        if (body.get("jiraKey") or reg["jiraKey"]) and not D.jira.missing:  # Jira is connected: the issue must exist
+            key = body.get("jiraKey") or reg["jiraKey"]
+            try:
+                await D.jira.call("GET", f"/rest/api/3/issue/{key}?fields=summary")
+            except Exception as e:  # noqa: BLE001
+                return ask(422, f"Jira does not have {key}: {str(e)[:120]}")
         release = reg["release"]["number"] if reg["release"] else ""
         jk = str(body.get("jiraKey") or "").upper()
         if jk and not jk.startswith(reg["project"]["jiraProjectKey"] + "-"):
             raise HTTPException(400, f"jiraKey must be an issue of this project's Jira project ({reg['project']['jiraProjectKey']}-nnn).")
-        body = {**body, "project": reg["project"]["id"], **({"jiraKey": jk} if jk else ({"jiraKey": reg["jiraKey"]} if reg["jiraKey"] and not (body.get("requirement") or body.get("requirementUrl")) else {}))}
+        body = {**body, "project": reg["project"]["id"], **({"jiraKey": jk} if jk else ({"jiraKey": reg["jiraKey"]} if reg["jiraKey"] else {}))}
         try:
             steps = plan_many(body["steps"]) if "steps" in body else plan(body.get("agent"), body.get("action"), url)
             warnings = release_checks.check_input(body, D.env)

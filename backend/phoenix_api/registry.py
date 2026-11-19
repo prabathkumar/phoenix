@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 
 from fastapi import Body, Header, HTTPException
 
+import httpx
+
 from . import db
 
 PROJECT, RELEASE = "project", "release-reg"
@@ -40,6 +42,51 @@ def find_project(ref, url=None):
         return None
     p = db.doc_get(PROJECT, ref, url)
     return p or next((x for x in db.doc_list(PROJECT, url) if x["name"].lower() == ref), None)
+
+
+async def _get(url, headers):
+    async with httpx.AsyncClient(timeout=10, follow_redirects=False) as c:
+        r = await c.get(url, headers=headers)
+        return r.status_code, (r.json() if r.status_code == 200 else None)
+
+
+def _jira_key(p):
+    for k in ("jiraProjectKey", "jira_project_key", "jiraKey", "jira_key", "jiraProject"):
+        if isinstance(p.get(k), str) and JKEY.match(p[k].upper()):
+            return p[k].upper()
+    j = p.get("jira")
+    if isinstance(j, dict):
+        for k in ("projectKey", "key", "project_key"):
+            if isinstance(j.get(k), str) and JKEY.match(j[k].upper()):
+                return j[k].upper()
+    return None
+
+
+async def sync_from_testops(ref, env, url=None, get=None):
+    """A project created in TestOps does not have to be typed in again: when the caller names a project Phoenix does not know, ask TestOps
+    (TESTOPS_API_URL, TESTOPS_API_TOKEN; list path TESTOPS_PROJECTS_PATH, default /api/projects) and, if it is there and linked to Jira, keep a copy.
+    Returns a note for the caller when TestOps knows the project but it cannot be used (no Jira link), else None. TestOps being down is never an error here."""
+    ref = str(ref or "").strip()
+    base, token = str(env.get("TESTOPS_API_URL", "")).rstrip("/"), env.get("TESTOPS_API_TOKEN", "")
+    if not ref or not base or not token or find_project(ref, url):
+        return None
+    get = get or _get
+    try:
+        status, data = await get(base + (env.get("TESTOPS_PROJECTS_PATH") or "/api/projects") + "?limit=100", {"Authorization": f"Bearer {token}", "Accept": "application/json"})
+    except Exception:  # noqa: BLE001
+        return None
+    rows = data if isinstance(data, list) else (data or {}).get("projects") or (data or {}).get("items") or (data or {}).get("data") or [] if isinstance(data, (dict, list)) else []
+    hit = next((p for p in rows if isinstance(p, dict) and (str(p.get("id")).lower() == ref.lower() or str(p.get("name", "")).lower() == ref.lower())), None)
+    if not hit:
+        return None
+    jk = _jira_key(hit)
+    if not jk:
+        return f'Project "{ref}" exists in TestOps but is not linked to a Jira project there. Link it in TestOps, then send the call again.'
+    pid = re.sub(r"[^a-z0-9-]+", "-", str(hit.get("name") or hit["id"]).lower()).strip("-")[:40]
+    if not PID.match(pid):
+        pid = f"testops-{hit['id']}"
+    db.doc_put(PROJECT, pid, {"id": pid, "name": str(hit.get("name") or pid)[:80], "jiraProjectKey": jk, "jiraVerified": None, "source": "testops", "testopsId": hit.get("id"), "createdBy": "testops", "createdAt": _now()}, url)
+    return None
 
 
 def resolve(release, project, url=None):

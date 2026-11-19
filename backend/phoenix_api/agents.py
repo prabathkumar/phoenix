@@ -153,7 +153,7 @@ def request_for(name, inp, url=None):
     if not a["enabled"]:
         raise AgentError(f'Agent "{a["name"]}" is switched off. A person has to enable it first.')
     inp = inp if isinstance(inp, dict) else {}
-    allowed = ("requirement", "requirementUrl", "requirementFile", "jira", "jiraKey", "web", "mobile", "testData", "cases", "scenarios", "allowPartial", "repo", "evaluate", "ruleset", "production", "approvals", "retest")
+    allowed = ("requirement", "requirementUrl", "requirementFile", "jira", "jiraKey", "web", "mobile", "testData", "cases", "scenarios", "allowPartial", "repo", "evaluate", "ruleset", "production", "approvals", "retest", "defectMode")
     body = {k: inp[k] for k in allowed if k in inp}
     body["_platform"] = a["platform"]
     body.update({"goal": (a["goal"] + (f"\n\nThis run: {inp['task']}" if str(inp.get("task") or "").strip() else ""))[:6000], "stages": a["stages"], "autonomy": a["autonomy"],

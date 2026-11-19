@@ -30,7 +30,7 @@ def seed():
 
 def app(keys=True, **kw):
     seed()
-    env = {"DATABASE_URL": db.engine_for().url.render_as_string(hide_password=False), **({"PHOENIX_API_KEYS": f"ilmu-code:{sha(KEY)},ci:{sha(KEY2)},lead:{sha(LEAD)}:approve"} if keys else {}), **kw.pop("env", {})}
+    env = {"PHOENIX_API_REQUIRE_JIRA": "false", "DATABASE_URL": db.engine_for().url.render_as_string(hide_password=False), **({"PHOENIX_API_KEYS": f"ilmu-code:{sha(KEY)},ci:{sha(KEY2)},lead:{sha(LEAD)}:approve"} if keys else {}), **kw.pop("env", {})}
     return TestClient(create_app(Deps(env=env, call_json=model, **kw)))
 
 
@@ -281,3 +281,143 @@ def test_the_jira_key_must_belong_to_the_projects_jira_project_and_a_release_can
         r = c.post("/api/v1/events", json={"agent": "forge", "action": "write-unit-tests", "release": "R2026.11.3", "repo": {"provider": "github", "project": "org/app"}}, headers=H())
         assert r.status_code in (202, 422), r.text            # not refused for a missing requirement: the release's Jira key supplies it
         assert "requirement" not in r.text if r.status_code == 422 else True
+
+
+def test_without_a_release_or_project_the_api_says_what_to_do_and_lists_the_options():
+    with app() as c:
+        r = c.post("/api/v1/events", json={"agent": "scout", "action": "run", "requirement": "x"}, headers=H())
+        j = r.json()
+        assert r.status_code == 400 and "registered release" in j["detail"] and any("Head of QA" in n for n in j["next"])
+        assert {"id": "shop", "name": "Shop", "jiraProjectKey": "SHP"} in j["projects"] and {"number": "1", "project": "shop"} in j["openReleases"]
+        assert all(x["number"] != "OLD" for x in j["openReleases"])                   # closed releases are not offered
+        u = c.post("/api/v1/events", json={"agent": "scout", "action": "run", "requirement": "x", "release": "MADE-UP"}, headers=H())
+        assert u.status_code == 404 and u.json()["projects"]
+
+
+def test_a_project_created_in_testops_is_picked_up_without_typing_it_again(monkeypatch):
+    from phoenix_api import registry
+    calls = []
+
+    async def fake_get(url, headers):
+        calls.append((url, headers["Authorization"]))
+        return 200, {"projects": [{"id": 77, "name": "Loyalty App", "jira": {"projectKey": "LOY"}}, {"id": 78, "name": "No Jira", "jira": None}]}
+    monkeypatch.setattr(registry, "_get", fake_get)
+    env = {"TESTOPS_API_URL": "https://testops.example.com", "TESTOPS_API_TOKEN": "tok"}
+    with app(env=env) as c:
+        ev = lambda p: c.post("/api/v1/events", json={"agent": "scout", "action": "run", "requirement": "x", "project": p}, headers=H())  # noqa: E731
+        r = ev("Loyalty App")
+        assert r.status_code == 202 and r.json()["project"] == "loyalty-app" and r.json()["jiraProject"] == "LOY"
+        assert calls[0][0].startswith("https://testops.example.com/api/projects") and calls[0][1] == "Bearer tok"
+        wait(c, r.json()["id"])
+        n = len(calls)
+        assert ev("loyalty-app").status_code == 202 and len(calls) == n          # already known: TestOps is not asked again
+        r = ev("78")
+        assert r.status_code == 422 and "not linked to a Jira project" in r.json()["detail"]
+        assert ev("ghost").status_code == 404
+    with app() as c:                                                              # TestOps not configured: nothing is fetched
+        assert c.post("/api/v1/events", json={"agent": "scout", "action": "run", "requirement": "x", "project": "Loyalty App2"}, headers=H()).status_code == 404
+
+
+def test_the_jira_id_is_mandatory_for_a_project_linked_to_jira_and_must_exist_when_jira_is_connected():
+    class FakeJira:
+        missing = []
+        project = ""
+
+        async def call(self, method, path, body=None):
+            if "SHP-404" in path:
+                raise RuntimeError("404 Issue does not exist")
+            return {"key": "SHP-1"}
+    on = {"PHOENIX_API_REQUIRE_JIRA": "true"}
+    base = {"agent": "scout", "action": "run", "release": "1", "requirement": "x"}
+    with app(env=on) as c:
+        r = c.post("/api/v1/events", json=base, headers=H())
+        assert r.status_code == 400 and "jiraKey" in r.json()["detail"] and "SHP-123" in r.json()["detail"]
+        ok = c.post("/api/v1/events", json={**base, "jiraKey": "SHP-1"}, headers=H())
+        assert ok.status_code == 202
+        wait(c, ok.json()["id"])
+        # a release made by the Head of QA with a Jira issue supplies it
+        rel = c.post("/api/v1/events", json={**base, "release": "R2026.11.3"}, headers=H())
+        assert rel.status_code == 202
+        wait(c, rel.json()["id"])
+    with app(env=on, jira=FakeJira()) as c:
+        assert c.post("/api/v1/events", json={**base, "jiraKey": "SHP-404"}, headers=H()).status_code == 422
+        good = c.post("/api/v1/events", json={**base, "jiraKey": "SHP-1"}, headers=H())
+        assert good.status_code == 202
+        wait(c, good.json()["id"])
+
+
+def test_failed_unit_tests_and_scan_findings_become_jira_defects_without_copying_secrets():
+    from phoenix_api.service import findings_as_defects
+    res = [{"id": "unitrun", "status": "failed", "data": {"failures": [{"language": "python", "kind": "unit", "name": "test_login", "requirement": "SHP-1"}]}},
+           {"id": "sast", "status": "failed", "data": {"findings": {"app/db.py": ["sql-injection: string built from input (line 4)"]}}},
+           {"id": "secrets", "status": "failed", "data": {"stdout": "Secret: AKIAABCDEFGHIJKLMNOP"}},
+           {"id": "dast", "status": "failed", "detail": "ZAP alerts: 2 high", "data": {"alerts": {"high": 2}}}]
+    d = findings_as_defects(res)
+    assert [x["id"][:5] for x in d] == ["unit-", "sast-", "secre", "dast-"]
+    assert "SHP-1" in str(d[0]) and "sql-injection" in d[1]["error"] and "AKIA" not in str(d)
+    assert findings_as_defects(res) == d                                   # stable ids: the same finding is the same defect next run
+    assert findings_as_defects([{"id": "sast", "status": "passed", "data": {"findings": {"a.py": ["x"]}}}, {"id": "secrets", "status": "unavailable"}]) == []
+
+
+def test_a_run_through_the_api_raises_the_defects_in_the_projects_jira_project():
+    import types
+    from phoenix_api.service import run_pipeline_request
+    made = []
+
+    class FakeJira:
+        missing, project, defect_type = [], "SHP", "Bug"
+
+        async def call(self, method, path, body=None):
+            if method == "GET" and "search" in path:
+                return {"issues": []}
+            made.append(body["fields"]["summary"])
+            return {"key": f"SHP-{100 + len(made)}"}
+
+    def fake_run(argv, *a, **k):
+        out = '{"results":[{"path":"app/db.py","check_id":"x.sqli","extra":{"message":"bad query"},"start":{"line":4}}]}' if "--json" in argv else ""
+        return types.SimpleNamespace(returncode=1 if "--json" in argv else 0, stdout=out, stderr="")
+
+    class Repo:
+        async def default_branch(self): return "main"
+        async def list_files(self, ref): return ["app/db.py"]
+        async def read_file(self, f, ref): return "q = 'select ' + x"
+    d = Deps(env={"DATABASE_URL": db.engine_for().url.render_as_string(hide_password=False)}, run=fake_run, jira=FakeJira(), connect_repo=lambda rq: Repo())
+    code, out = asyncio.run(run_pipeline_request({"goal": "g", "stages": ["sast", "defects"], "autonomy": "ask-when-matters", "repo": {"provider": "github", "project": "org/app"}, "approvals": {"defects": True}}, d))
+    st = {s["id"]: s for s in out["stages"]}
+    assert st["sast"]["status"] == "failed" and st["defects"]["status"] == "passed" and len(made) == 1 and "Semgrep finding in app/db.py" in made[0], (st["defects"], made)
+
+
+def test_one_bug_for_everything_and_unit_tests_go_to_testops_first_then_jira():
+    import types
+    from phoenix_api import signoff
+    from phoenix_api.service import consolidate, run_pipeline_request
+    c1 = consolidate([{"id": "a", "name": "Login fails", "error": "500"}, {"id": "b", "name": "Semgrep finding in x.py", "error": "sqli"}], "R1", "run-20261119000000-abcdef")
+    assert c1["name"] == "Phoenix found 2 problem(s) in R1" and len(c1["steps"]) == 2 and c1["id"] == consolidate([{"id": "z", "name": "n"}], "R1")["id"]   # same release, same bug
+    made = []
+
+    class FakeJira:
+        missing, project = [], "SHP"
+        async def call(self, method, path, body=None):
+            if method == "GET":
+                return {"issues": []}
+            made.append((path, body))
+            return {"key": f"SHP-{200 + len(made)}"}
+
+    class Repo:
+        async def default_branch(self): return "main"
+        async def list_files(self, ref): return ["app.py"]
+        async def read_file(self, f, ref): return "def add(a, b):\n    return a + b\n"
+
+    async def model(p): return {"code": "def test_add():\n    assert 1 + 1 == 2\n"}
+    for allowed, expect in ((False, 0), (True, 1)):
+        made.clear()
+        d = Deps(env={"DATABASE_URL": db.engine_for().url.render_as_string(hide_password=False)}, call_json=model, jira=FakeJira(), connect_repo=lambda rq: Repo())
+        code, out = asyncio.run(run_pipeline_request({"goal": "g", "stages": ["unittests"], "requirement": "Add numbers", "jiraKey": "SHP-1", "project": "shop", "_artifacts": True,
+                                                      "approvals": {"defects": allowed}, "repo": {"provider": "github", "project": "org/app"}}, d))
+        u = next(s for s in out["stages"] if s["id"] == "unittests")
+        reg = out["artifacts"].get("unitCases") if out.get("artifacts") else None
+        cases = signoff.list_cases(project="shop")
+        assert u["status"] == "passed", u
+        assert any(x["title"].startswith("Unit tests: ") and x["requirement"] == "SHP-1" for x in cases)          # in TestOps either way
+        assert len([m for m in made if m[0].endswith("/issue")]) == expect                                                # in Jira only with approval
+        assert (reg or [{}])[0].get("jira", "") == ("SHP-201" if allowed else "")

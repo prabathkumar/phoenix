@@ -6,6 +6,7 @@ import json
 import os
 
 from . import pipeline as pipeline_mod
+from . import unit_cases
 from . import ai_pipeline, analytics, exec_client, gateway, handlers as H, jira as J, prompt_store, repo as R, requirements_loader, run_record, signoff, testdata
 from . import llm as _llm
 
@@ -128,7 +129,10 @@ async def run_pipeline_request(body, deps: Deps):
         return await H.har_handler()({**ctx, "harPath": state.get("harPath")})
 
     async def defects_h(ctx):
-        r = await J.defects_handler(deps.jira, jira_key, list(values.values()))({**ctx, "failedCases": failed_cases})
+        items = failed_cases + findings_as_defects(ctx.get("results", []))
+        if body.get("defectMode") == "single" and items:  # one bug for everything this run found; the next run comments on it instead of opening another
+            items = [consolidate(items, str(body.get("release") or project or jira_key or run_id), run_id)]
+        r = await J.defects_handler(deps.jira, jira_key, list(values.values()))({**ctx, "failedCases": items})
         try:  # each defect the run found goes to the defect log (found in the system test phase), for leakage and detection numbers
             from . import logstore
             from . import notify as _n
@@ -182,6 +186,17 @@ async def run_pipeline_request(body, deps: Deps):
         "defects": defects_h, "signoff": H.signoff_handler(run_id, url, str(body.get("onBehalfOf") or "Phoenix AI")), "feedback": H.feedback_handler(env.get("PHOENIX_REPORTS_DIR", "logs/reports"), project or "", run_id), "measure": H.measure_handler(project or "", url, env),
         "apitests": H.apifunc_handler(deps.connect_repo, env=env), "repolink": H.repolink_handler(deps.connect_repo), "deployed": H.deployed_handler(), "evidence": H.evidence_handler(project or "", run_id, env), "revalidate": H.revalidate_handler(deps.connect_repo, env=env),
     }
+    unit_inner = hs["unittests"]
+
+    async def unittests_h(ctx):
+        r = await unit_inner(ctx)
+        tests = ((r or {}).get("data") or {}).get("tests") or []
+        if r and r.get("ok") and tests:  # created in TestOps first, then pushed to Jira (a Jira write: needs the same approval as defects)
+            allowed = bool((body.get("approvals") or {}).get("defects"))
+            r["data"]["registered"] = await unit_cases.register([{k: t.get(k) for k in ("path", "language", "flagged")} for t in tests], project or "", jira_key or "", deps.jira, allowed, url, env)
+            r["detail"] += f"; {len(r['data']['registered'])} created in TestOps" + (f", {sum(1 for x in r['data']['registered'] if x.get('jira'))} in Jira" if allowed else "")
+        return r
+    hs["unittests"] = unittests_h
     ev = body.get("evaluate") if isinstance(body.get("evaluate"), dict) else None
     out = await ai_pipeline.run_ai_pipeline(
         body["goal"], requirement, {"steps": steps, "baseUrl": base_url, "appUrl": body.get("appUrl"), "requirement": requirement, "requirementKey": jira_key, "goal": body["goal"], "ruleset": body.get("ruleset"), "project": project or "", "apiBaseUrl": body.get("apiBaseUrl") or base_url, "run": run_id,
@@ -213,11 +228,39 @@ async def run_pipeline_request(body, deps: Deps):
                  "plan": {"source": out["plan"]["source"], "platforms": out["plan"]["platforms"], "reason": out["plan"].get("reason")}, "stages": clean, "summary": out["summary"], "needsYou": out["needsYou"], **({"artifacts": _artifacts(out["stages"])} if body.get("_artifacts") else {})}
 
 
+def findings_as_defects(results):
+    """Failed unit tests, Semgrep findings, a leak found by the secrets scan and high ZAP alerts, written as defect drafts for Jira. Each has a stable id, so a
+    run that finds the same problem again comments on the open defect instead of making a second one. Secret values are never copied: the scan redacts them
+    and only the fact and the files go into the defect."""
+    import hashlib
+    st = {r["id"]: r for r in results}
+    d = lambda i: (st.get(i) or {}).get("data") or {}  # noqa: E731
+    safe = lambda t: hashlib.sha1(str(t).encode()).hexdigest()[:10]  # noqa: E731
+    out = []
+    for f in d("unitrun").get("failures", []):
+        out.append({"id": f"unit-{safe(f['language'] + f['name'])}", "name": f"Unit test failed: {f['name'][:150]}", "error": f"{f['language']} {f['kind']} test failed", "steps": [f"Requirement: {f['requirement']}"] if f.get("requirement") else []})
+    if (st.get("sast") or {}).get("status") == "failed":
+        for file, msgs in list((d("sast").get("findings") or {}).items())[:20]:
+            out.append({"id": f"sast-{safe(file)}", "name": f"Semgrep finding in {file}", "error": "; ".join(msgs[:3])[:600], "steps": []})
+    if (st.get("secrets") or {}).get("status") == "failed":
+        out.append({"id": "secrets-found", "name": "Secrets or keys found in the code", "error": "The secrets scan (Gitleaks) reported leaks in the repo. Values are redacted; see the scan report on the Phoenix server and rotate anything real.", "steps": []})
+    hi = ((st.get("dast") or {}).get("data") or {}).get("alerts") or {}
+    if (st.get("dast") or {}).get("status") == "failed" and hi.get("high"):
+        out.append({"id": "dast-high-alerts", "name": f"Security test found {hi['high']} high alert(s)", "error": (st["dast"].get("detail") or "")[:300], "steps": []})
+    return out
+
+
+def consolidate(items, label, run_id=""):
+    import hashlib
+    lines = [f"{x.get('name') or x.get('id')}: {x.get('error') or x.get('step') or ''}".strip(": ")[:300] for x in items][:60]
+    return {"id": "release-" + hashlib.sha1(str(label).encode()).hexdigest()[:10], "name": f"Phoenix found {len(items)} problem(s) in {label}", "error": f"{len(items)} problem(s) found (run {run_id[-6:]}). One bug for all of them.", "steps": lines}
+
+
 def _artifacts(stages, cap=200_000):
     """What a run created, for the caller: scenarios, cases, the NAMES of test data fields (never values), unit-test and API-test files. Cut at `cap` characters."""
     d = lambda i: next((s for s in stages if s["id"] == i), {}).get("data") or {}  # noqa: E731
     a = {"scenarios": d("scenarios").get("items", []), "cases": d("cases").get("items", []), "testDataFields": d("testdata").get("names", []),
-         "unitTests": d("unittests").get("tests", []), "apiCases": d("apitests").get("cases", []), "pullRequest": d("testspr").get("pr") or d("testspr").get("url")}
+         "unitTests": d("unittests").get("tests", []), "unitCases": d("unittests").get("registered", []), "apiCases": d("apitests").get("cases", []), "pullRequest": d("testspr").get("pr") or d("testspr").get("url")}
     a = {k: v for k, v in a.items() if v}
     if len(json.dumps(a, default=str)) > cap:
         a = {**{k: v for k, v in a.items() if k not in ("unitTests",)}, "unitTests": [{k: v for k, v in t.items() if k != "content"} for t in a.get("unitTests", []) if isinstance(t, dict)], "truncated": True}

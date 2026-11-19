@@ -1035,3 +1035,5 @@ New page `/english` with independent Web and Mobile cards; per-step results and 
 - **Still open**: real login and roles (the `X-User` header is trusted), the pipeline `execution` stage on a laptop, DeepEval needs a judge model, committed `page-memory.db` files, the Flutter-to-React-Native rebuild.
 
 - **Release API** (`backend/phoenix_api/release_events.py`, `api_keys.py`): `POST /api/v1/events` with an agent + action, API-key auth (hashes only), async status, artifacts, signed callback, approve/resume. Built on the saved agents. See `docs/RELEASE_API.md`. Tested with a fake model; not yet run from a real ILMU Code.
+
+- **Release API, Jira side**: projects linked to Jira, Head of QA creates releases, Jira id mandatory, one bug for all findings (unit tests, Semgrep, secrets, DAST), unit tests created in the TestOps case library then pushed to Jira. Tested with a fake Jira; not yet run against a real Jira or the real TestOps project list (the TestOps field names are assumed).

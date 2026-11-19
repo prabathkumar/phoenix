@@ -58,6 +58,8 @@ def check_input(body, env):
     for c in body.get("cases") or []:
         if not isinstance(c, dict) or not isinstance(c.get("id"), str):
             raise ValueError("Each case in cases needs an id.")
+    if body.get("defectMode") not in (None, "single", "each"):
+        raise ValueError('defectMode is "single" (one bug for everything) or "each".')
     allow = targets(env)
     for k in TARGET_KEYS:
         v = body.get(k)

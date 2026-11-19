@@ -443,7 +443,8 @@ def unitrun_handler(project="", run_id="", env=None, run=None, which=None):
         passed = sum(r["summary"]["passed"] for r in ran)
         missing = [f"{r['language']} {r['kind']}: {r['detail']}" for r in results if not r["tests"]]
         return {"ok": bool(ran) and failed == 0, "detail": f"{passed} passed, {failed} failed across {len(ran)} run(s)" + (f"; no result for {len(missing)}: {missing[0]}" if missing else ""),
-                "data": {"runs": [{k: r[k] for k in ("language", "kind", "ok", "available", "detail", "summary")} for r in results]}}
+                "data": {"runs": [{k: r[k] for k in ("language", "kind", "ok", "available", "detail", "summary")} for r in results],
+                         "failures": [{"language": r["language"], "kind": r["kind"], "name": str(t["name"])[:200], "requirement": t.get("requirement")} for r in ran for t in r["tests"] if t["status"] == "failed"][:50]}}
     return h
 
 

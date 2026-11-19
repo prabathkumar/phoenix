@@ -5,6 +5,7 @@ Needs-you stages come back with their id; send the same request again with appro
 import json
 import os
 
+from . import pipeline as pipeline_mod
 from . import ai_pipeline, analytics, exec_client, gateway, handlers as H, jira as J, prompt_store, repo as R, requirements_loader, run_record, signoff, testdata
 from . import llm as _llm
 
@@ -138,9 +139,44 @@ async def run_pipeline_request(body, deps: Deps):
             pass
         return r
 
+    def scan_repo(stage):
+        """Secrets and SAST need the code. Without a linked repo they say so (they never scan the server's own folder); with one, the files are
+        fetched through the repo API into a private temporary folder, scanned there, and the folder is deleted."""
+        inner = pipeline_mod.builtins(deps.run or pipeline_mod._default_run)[stage]
+
+        async def h(ctx):
+            rq = ctx.get("repoRequest")
+            if not rq or not rq.get("project"):
+                return {"unavailable": True, "detail": "no code repo linked: give repo {provider, project} to scan the code"}
+            try:
+                repo = deps.connect_repo(rq)
+            except Exception as e:  # noqa: BLE001
+                return {"unavailable": True, "detail": str(e)}
+            import shutil
+            import tempfile
+            tmp = tempfile.mkdtemp(prefix="phoenix-scan-")
+            try:
+                ref = rq.get("head") or rq.get("ref") or await repo.default_branch()
+                total = 0
+                for f in (await repo.list_files(ref))[:2000]:
+                    if f.startswith("/") or ".." in f.split("/"):
+                        continue
+                    text = await repo.read_file(f, ref)
+                    if not isinstance(text, str) or len(text) > 1_000_000 or total + len(text) > 50_000_000:
+                        continue
+                    total += len(text)
+                    dest = os.path.join(tmp, f)
+                    os.makedirs(os.path.dirname(dest), exist_ok=True)
+                    with open(dest, "w", encoding="utf-8") as fh:
+                        fh.write(text)
+                return await inner({**ctx, "dir": tmp})
+            finally:
+                shutil.rmtree(tmp, ignore_errors=True)
+        return h
+
     hs = {
         "scenarios": H.scenarios_handler(call_json, get_prompt), "cases": H.cases_handler(call_json, get_prompt, project, jira_key or "", run_id, url, str(body.get("goal") or "")[:120]),
-        "testdata": testdata_h, "execution": execution_h, "har": har_h, "performance": H.performance_handler(**run_kw), "dast": H.dast_handler(env=env, **run_kw),
+        "secrets": scan_repo("secrets"), "sast": scan_repo("sast"), "testdata": testdata_h, "execution": execution_h, "har": har_h, "performance": H.performance_handler(**run_kw), "dast": H.dast_handler(env=env, **run_kw),
         "traceability": H.traceability_handler(call_json, deps.connect_repo), "aieval": H.aieval_handler(env=env, run_id=run_id, **run_kw),
         "unittests": H.unittests_handler(call_json, get_prompt, deps.connect_repo), "unitrun": H.unitrun_handler(project, run_id, env), "testspr": H.testspr_handler(deps.connect_repo),
         "defects": defects_h, "signoff": H.signoff_handler(run_id, url, str(body.get("onBehalfOf") or "Phoenix AI")), "feedback": H.feedback_handler(env.get("PHOENIX_REPORTS_DIR", "logs/reports"), project or "", run_id), "measure": H.measure_handler(project or "", url, env),

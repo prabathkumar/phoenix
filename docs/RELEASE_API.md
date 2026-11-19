@@ -53,5 +53,11 @@ When an event finishes or stops at needs-you, Phoenix POSTs `{eventId, release, 
 
 **On what the agents create** (before it is stored or returned): secrets are redacted, strings and lists are capped, items that are not in the expected shape are dropped, and any address outside the allowed targets is flagged. All of it appears in `flags` on the status and artifacts. Test-data values are never returned, only the field names. The existing gates still apply on top: guardrails on model calls, review of generated tests, sign-off.
 
+## Code repo, scans and unit tests
+- **Pass the repo on the call:** `"repo": {"provider":"github|gitlab","project":"org/app","base":"R2026.10","head":"R2026.11.3"}`. Before the event is accepted, Phoenix connects to it with the server's repo token and lists the files; if that fails the call returns 422 with the reason. No repo, no scan: `secrets` and `sast` say "no code repo linked" and never scan the server's own folder.
+- **Semgrep and Gitleaks:** the files are fetched through the repo API into a private temporary folder, scanned there and the folder is deleted. Paths that try to leave the folder are skipped.
+- **Who defines the unit tests:** the forge agent's AI model writes them, from two inputs: the **requirement** (text, link or Jira key) and the **code changes** (with `base` and `head`, only the changed source files; otherwise up to 5 source files, those Semgrep flagged first). The requirement is mandatory for `write-unit-tests`, `open-tests-pr` and `run-unit-tests`; the call is refused without it. Tests are not trusted just because the AI wrote them: they go out as a pull request for a person to review (`open-tests-pr`), and each test result is logged against the requirement key.
+- **Running them:** `run-unit-tests` runs the repo's own toolchain per language through the test connectors. Because that runs the repo's code, it only runs in folders under `PHOENIX_UNIT_ROOT` or clones from hosts in `PHOENIX_UNIT_CLONE_HOSTS`; with neither set it says unavailable.
+
 ## Limits
 Events run inside the API process: a restart marks running events `interrupted` (send again). Progress is per agent, not per stage. A caller sees only its own events. Not yet run against a real ILMU Code, Jira, GitHub or a customer system; tested with a fake model.

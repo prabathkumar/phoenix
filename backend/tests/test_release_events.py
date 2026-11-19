@@ -157,3 +157,63 @@ def test_generated_output_is_cleaned_before_it_leaves():
         {"unitTests": [{"path": "t.py", "content": "key='AKIAABCDEFGHIJKLMNOP'\nrequests.get('https://evil.com/x')"}], "scenarios": ["not a dict"], "cases": [{"id": "c1", "steps": ["open https://a.staging.example.com"]}]}, env)
     assert "AKIA" not in str(art) and "scenarios" not in art and art["cases"][0]["id"] == "c1"
     assert any("secret redacted" in f for f in flags) and any("evil.com" in f for f in flags) and not any("a.staging" in f for f in flags) and any("scenarios" in f for f in flags)
+
+
+def test_scans_without_a_linked_repo_say_so_and_never_scan_the_servers_own_folder():
+    from phoenix_api.service import run_pipeline_request
+    seen = []
+
+    def fake_run(argv, *a, **k):
+        seen.append(argv)
+        import types
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+    d = Deps(env={"DATABASE_URL": db.engine_for().url.render_as_string(hide_password=False)}, run=fake_run)
+    code, out = asyncio.run(run_pipeline_request({"goal": "scan", "stages": ["secrets", "sast"], "autonomy": "run-everything"}, d))
+    st = {s["id"]: s for s in out["stages"]}
+    assert st["secrets"]["status"] == "unavailable" and "no code repo linked" in st["secrets"]["detail"] and st["sast"]["status"] == "unavailable"
+    assert not [a for a in seen if a and a[0] in ("semgrep", "gitleaks")]
+
+
+def test_scans_with_a_linked_repo_run_on_a_temporary_copy_that_is_deleted():
+    import os
+    from phoenix_api.service import run_pipeline_request
+    seen = []
+
+    class Repo:
+        async def default_branch(self): return "main"
+        async def list_files(self, ref): return ["app.py", "../evil", "/etc/passwd", "src/a.py"]
+        async def read_file(self, f, ref): return "print(1)"
+
+    def fake_run(argv, *a, **k):
+        import types
+        if argv and argv[0] in ("semgrep", "gitleaks"):
+            seen.append((argv[0], [x for x in argv if os.path.isdir(str(x))][:1]))
+            if seen[-1][1]:
+                assert os.path.isfile(os.path.join(seen[-1][1][0], "src", "a.py")) and not os.path.exists(os.path.join(seen[-1][1][0], "..", "evil"))
+        return types.SimpleNamespace(returncode=0, stdout="[]", stderr="")
+    d = Deps(env={"DATABASE_URL": db.engine_for().url.render_as_string(hide_password=False)}, run=fake_run, connect_repo=lambda rq: Repo())
+    code, out = asyncio.run(run_pipeline_request({"goal": "scan", "stages": ["sast"], "autonomy": "run-everything", "repo": {"provider": "github", "project": "org/app"}}, d))
+    scans = [x for x in seen if x[1]]
+    assert scans and scans[0][0] == "semgrep" and "phoenix-scan-" in scans[0][1][0] and not os.path.exists(scans[0][1][0])
+
+
+def test_unit_tests_need_the_requirement_first():
+    with app() as c:
+        for act in ("write-unit-tests", "run-unit-tests", "open-tests-pr"):
+            r = c.post("/api/v1/events", json={"agent": "forge", "action": act, "release": "1", "repo": {"provider": "github", "project": "org/app"}}, headers=H())
+            assert r.status_code == 400 and "requirement" in r.json()["detail"], act
+
+
+def test_the_repo_is_checked_for_connectivity_before_the_event_is_accepted():
+    class Dead:
+        async def default_branch(self): raise RuntimeError("404 Not Found")
+
+    class Live:
+        async def default_branch(self): return "main"
+        async def list_files(self, ref): return ["a.py"]
+    body = {"agent": "forge", "action": "write-unit-tests", "release": "1", "requirement": "x", "repo": {"provider": "github", "project": "org/app"}}
+    with app(connect_repo=lambda rq: Dead()) as c:
+        r = c.post("/api/v1/events", json=body, headers=H())
+        assert r.status_code == 422 and "Could not reach the repo org/app" in r.json()["detail"]
+    with app(connect_repo=lambda rq: Live()) as c:
+        assert c.post("/api/v1/events", json=body, headers=H()).status_code == 202

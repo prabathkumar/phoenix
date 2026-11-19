@@ -78,6 +78,13 @@ def plan_many(items):
     return out
 
 
+def _agent_stages(name, url):
+    try:
+        return agents.get(name, url)["stages"]
+    except agents.AgentError:
+        return []
+
+
 def catalog():
     return {"agents": {a: ["run"] + list(m) for a, m in ACTIONS.items()}, "team": {"release": TEAM}}
 
@@ -221,6 +228,16 @@ def mount(app, D):
                 _safe_callback(body["callbackUrl"], D.allow_private)
         except ValueError as e:
             raise HTTPException(400, str(e))
+        wanted = {st for a, ss in steps for st in (ss or _agent_stages(a, url))}
+        if wanted & {"unittests", "testspr", "unitrun"} and not (body.get("requirement") or body.get("requirementUrl") or body.get("jiraKey")):
+            raise HTTPException(400, "Unit tests are written from the requirement and the code changes, so give requirement, requirementUrl or jiraKey with them.")
+        if body.get("repo") and wanted & {"repolink", "secrets", "sast", "unittests", "testspr", "unitrun", "apitests", "traceability", "revalidate"}:
+            try:
+                repo = D.connect_repo(body["repo"])
+                ref = body["repo"].get("head") or body["repo"].get("ref") or await asyncio.wait_for(repo.default_branch(), 15)
+                await asyncio.wait_for(repo.list_files(ref), 30)
+            except Exception as e:  # noqa: BLE001
+                raise HTTPException(422, f"Could not reach the repo {body['repo'].get('project')}: {str(e)[:160]}. Check the project name, the branch and the server's repo token.")
         if body.get("approvals") and not api_keys.can_approve(D.env, c):
             raise HTTPException(403, "This key may not approve gated steps. A person with an approving key sends the approval.")
         if not (body.get("requirement") or body.get("requirementUrl") or body.get("jiraKey") or body.get("scenarios") or body.get("cases") or body.get("repo")):

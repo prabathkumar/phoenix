@@ -217,3 +217,9 @@ def test_the_repo_is_checked_for_connectivity_before_the_event_is_accepted():
         assert r.status_code == 422 and "Could not reach the repo org/app" in r.json()["detail"]
     with app(connect_repo=lambda rq: Live()) as c:
         assert c.post("/api/v1/events", json=body, headers=H()).status_code == 202
+
+
+def test_testops_names_are_the_action_names_and_scan_runs_both_checks():
+    assert RE.plan("warden", "secrets") == [("warden", ["secrets"])] and RE.plan("warden", "sast") == [("warden", ["sast"])]
+    assert RE.plan("warden", "scan") == [("warden", ["secrets", "sast"])]          # code quality / security (Semgrep) and leaks (Gitleaks) together
+    assert RE.plan("prowler", "dast") == [("prowler", ["deployed", "dast"])]

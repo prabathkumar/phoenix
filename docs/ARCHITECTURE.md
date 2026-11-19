@@ -395,3 +395,22 @@ Details: [`TOOLS_AND_NOTIFICATIONS.md`](TOOLS_AND_NOTIFICATIONS.md) and [`PIPELI
 - No real login or roles: the `X-User` header is trusted, so `PHOENIX_ADMINS` is only as strong as that header.
 
 See also: [RUN_TARGETS.md](RUN_TARGETS.md) for where a recording or run happens (Local or BrowserStack) and how it is reported.
+
+
+## 5e. Release API: callers send events (agent + action)
+
+```mermaid
+flowchart LR
+  C["Caller: ILMU Code / CI<br/>API key"] -->|"POST /api/v1/events<br/>agent+action or steps, release|project, jiraKey, repo"| IN
+  subgraph Phoenix
+    IN["Input checks<br/>size, secrets, targets allowlist,<br/>repo shape, test data, approvals right"] --> REG["Registry<br/>release (Head of QA) or project<br/>linked to Jira; TestOps project sync"]
+    REG --> RC["Repo reachable? Jira issue exists?"]
+    RC --> Q["Background run (202 at once)"]
+    Q --> AG["Saved agents (scout, scribe, mint, forge, runner, warden, prowler, herald ...)<br/>same pipeline, gates, sign-off"]
+    AG --> OUT["Output checks<br/>redact secrets, cap, shape, flag addresses"]
+    AG --> J["Jira: one bug per release for all findings;<br/>unit tests: TestOps case first, then Jira test issue"]
+  end
+  OUT --> S["GET status / artifacts; signed callback"]
+```
+
+Code: `release_events.py` (events, plan, background run, callback), `release_checks.py` (input and output checks), `api_keys.py` (hashed keys; approve right), `registry.py` (projects, releases, TestOps sync), `unit_cases.py` (TestOps case then Jira test issue), `service.py` (`findings_as_defects`, `consolidate`, repo scans on a temporary copy). Detail, settings and limits: [`RELEASE_API.md`](RELEASE_API.md).

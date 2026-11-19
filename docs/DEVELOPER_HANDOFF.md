@@ -1,6 +1,6 @@
 # TestOps ai-automate — developer handoff
 
-> Latest additions: [`LAPTOP_RUNNER.md`](LAPTOP_RUNNER.md), [`PLUGIN_LAYER.md`](PLUGIN_LAYER.md), [`TOOLS_AND_NOTIFICATIONS.md`](TOOLS_AND_NOTIFICATIONS.md) and the ready-built [`downloads/`](../downloads/README.md). Current status is in [`STATUS.md`](STATUS.md).
+> Latest additions: [`RELEASE_API.md`](RELEASE_API.md), [`LAPTOP_RUNNER.md`](LAPTOP_RUNNER.md), [`PLUGIN_LAYER.md`](PLUGIN_LAYER.md), [`TOOLS_AND_NOTIFICATIONS.md`](TOOLS_AND_NOTIFICATIONS.md) and the ready-built [`downloads/`](../downloads/README.md). Current status is in [`STATUS.md`](STATUS.md).
 
 
 One framework runs the same test-case JSON on **Android, iOS (Appium / BrowserStack) and web (Playwright)** and reports every run through **one pass/fail contract**. This page is the starting point; deeper history is in `docs/STATUS.md`.

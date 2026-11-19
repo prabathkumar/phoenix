@@ -6,7 +6,7 @@ from fastapi import Request, Body, FastAPI, Header, HTTPException, Query
 from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import agents, ai_eval, avatars, analytics, dashboard, db, gateway, guardrails, handlers as H, kpi, lifecycle, logstore, mcp_registry, pipeline, training, prompt_store, run_record, signoff
+from . import agents, release_events, ai_eval, avatars, analytics, dashboard, db, gateway, guardrails, handlers as H, kpi, lifecycle, logstore, mcp_registry, pipeline, training, prompt_store, run_record, signoff
 from .service import Deps, run_chain, run_pipeline_request
 
 
@@ -626,5 +626,6 @@ def create_app(deps: Deps | None = None) -> FastAPI:
             return FileResponse(f if path and os.path.isfile(f) else os.path.join(ui, "index.html"))
 
     from . import runner_hub
+    release_events.mount(app, D)
     runner_hub.mount(app, D, lambda action, who, subject: logstore.record("user_action", {"project": "", "who": who, "action": action, "subject": subject, "status": "ok"}, D.env))
     return app

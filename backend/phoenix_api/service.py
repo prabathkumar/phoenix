@@ -2,6 +2,7 @@
 {goal, requirement? | requirementUrl? | requirementFile? | jiraKey?, project?, steps?, web?, mobile?, baseUrl?, appUrl?, testData?, repo?, evaluate?,
  stages?, autonomy?, approvals?, production?} -> {ok, runId, retest, requirement, plan, stages (no data), summary, needsYou}
 Needs-you stages come back with their id; send the same request again with approvals:{id:true} to let them run."""
+import json
 import os
 
 from . import ai_pipeline, analytics, exec_client, gateway, handlers as H, jira as J, prompt_store, repo as R, requirements_loader, run_record, signoff, testdata
@@ -43,7 +44,7 @@ async def run_pipeline_request(body, deps: Deps):
             source = {"kind": "jira", "name": str(jira_key)}
         except Exception as e:
             return 400, {"error": str(e)}
-    run_id = run_record.new_id()
+    run_id = body.get("_run_id") if run_record.ok_id(body.get("_run_id")) else run_record.new_id()
     prior = run_record.prior_for(jira_key, url=url)
     retest = []
     if prior and not deps.jira.missing:
@@ -154,6 +155,8 @@ async def run_pipeline_request(body, deps: Deps):
     rec = run_record.link(out["stages"], jira_key, body["goal"], out["plan"], run_id, retest, source, project)
     if body.get("agent"):
         rec["agent"] = str(body["agent"])[:40]  # which saved agent ran this
+    if body.get("release"):
+        rec["release"] = str(body["release"])[:60]
     if body.get("avatar"):
         rec["avatar"] = str(body["avatar"])[:60]
     try:
@@ -171,7 +174,18 @@ async def run_pipeline_request(body, deps: Deps):
         pass
     clean = [{k: v for k, v in s.items() if k != "data"} for s in out["stages"]]
     return 200, {"ok": out["ok"], "runId": run_id, "retest": retest, "requirement": {**source, "notes": notes, "characters": len(requirement)} if source else None,
-                 "plan": {"source": out["plan"]["source"], "platforms": out["plan"]["platforms"], "reason": out["plan"].get("reason")}, "stages": clean, "summary": out["summary"], "needsYou": out["needsYou"]}
+                 "plan": {"source": out["plan"]["source"], "platforms": out["plan"]["platforms"], "reason": out["plan"].get("reason")}, "stages": clean, "summary": out["summary"], "needsYou": out["needsYou"], **({"artifacts": _artifacts(out["stages"])} if body.get("_artifacts") else {})}
+
+
+def _artifacts(stages, cap=200_000):
+    """What a run created, for the caller: scenarios, cases, the NAMES of test data fields (never values), unit-test and API-test files. Cut at `cap` characters."""
+    d = lambda i: next((s for s in stages if s["id"] == i), {}).get("data") or {}  # noqa: E731
+    a = {"scenarios": d("scenarios").get("items", []), "cases": d("cases").get("items", []), "testDataFields": d("testdata").get("names", []),
+         "unitTests": d("unittests").get("tests", []), "apiCases": d("apitests").get("cases", []), "pullRequest": d("testspr").get("pr") or d("testspr").get("url")}
+    a = {k: v for k, v in a.items() if v}
+    if len(json.dumps(a, default=str)) > cap:
+        a = {**{k: v for k, v in a.items() if k not in ("unitTests",)}, "unitTests": [{k: v for k, v in t.items() if k != "content"} for t in a.get("unitTests", []) if isinstance(t, dict)], "truncated": True}
+    return a
 
 
 async def run_chain(steps, deps: Deps):

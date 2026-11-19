@@ -18,8 +18,11 @@ async def model(p):
     return {"scenarios": [{"title": "Login works", "steps": ["open the page"]}]}
 
 
+LEAD = "phx_lead-key"
+
+
 def app(keys=True, **kw):
-    env = {"DATABASE_URL": db.engine_for().url.render_as_string(hide_password=False), **({"PHOENIX_API_KEYS": f"ilmu-code:{sha(KEY)},ci:{sha(KEY2)}"} if keys else {}), **kw.pop("env", {})}
+    env = {"DATABASE_URL": db.engine_for().url.render_as_string(hide_password=False), **({"PHOENIX_API_KEYS": f"ilmu-code:{sha(KEY)},ci:{sha(KEY2)},lead:{sha(LEAD)}:approve"} if keys else {}), **kw.pop("env", {})}
     return TestClient(create_app(Deps(env=env, call_json=model, **kw)))
 
 
@@ -102,3 +105,55 @@ def test_a_caller_cannot_read_another_callers_event():
 def test_callback_needs_a_secret_and_never_goes_to_a_private_address():
     assert "not set" in asyncio.run(RE._deliver("https://hooks.example.com/x", {"status": "passed"}, {}, False))
     assert "private" in asyncio.run(RE._deliver("https://127.0.0.1/x", {"status": "passed"}, {"PHOENIX_WEBHOOK_SECRET": "s"}, False))
+
+
+BASE = {"agent": "scout", "action": "run", "release": "1", "requirement": "Users can log in."}
+
+
+@pytest.mark.parametrize("extra,msg", [
+    ({"requirement": "x" * 60001}, "at most"), ({"requirement": "use password=hunter2hunter2 and AKIAABCDEFGHIJKLMNOP"}, "secret"), ({"production": True}, "production"),
+    ({"appUrl": "https://app.example.com"}, "no allowed targets"), ({"appUrl": "https://u:p@app.example.com"}, "without a username"), ({"appUrl": "ftp://x"}, "http(s)"),
+    ({"repo": {"provider": "svn", "project": "a/b"}}, "repo needs"), ({"repo": {"provider": "github", "project": "org/app", "head": "x; rm -rf /"}}, "not a valid"),
+    ({"testData": {"bad name": "x"}}, "testData"), ({"testData": {"a": {"nested": 1}}}, "testData"), ({"cases": [{"name": "no id"}]}, "needs an id"), ({"scenarios": ["a"] * 201}, "200")])
+def test_input_checks(extra, msg):
+    with app() as c:
+        r = c.post("/api/v1/events", json={**BASE, **extra}, headers=H())
+        assert r.status_code == 400 and msg in r.json()["detail"], r.text
+
+
+def test_targets_must_be_on_the_servers_allowlist():
+    with app(env={"PHOENIX_API_TARGETS": "*.staging.example.com,10.1.0.0/16"}) as c:
+        ok = c.post("/api/v1/events", json={**BASE, "appUrl": "https://shop.staging.example.com"}, headers=H())
+        assert ok.status_code == 202
+        for bad in ("https://example.com", "https://evil.com", "https://staging.example.com.evil.com", "http://10.2.0.1"):
+            r = c.post("/api/v1/events", json={**BASE, "appUrl": bad}, headers=H())
+            assert r.status_code == 400 and "not on the server's list" in r.json()["detail"], bad
+        assert c.post("/api/v1/events", json={**BASE, "appUrl": "http://10.1.4.4"}, headers=H()).status_code == 202
+        wait(c, ok.json()["id"])
+
+
+def test_an_ai_caller_cannot_approve_its_own_gates():
+    with app() as c:
+        assert c.post("/api/v1/events", json={**BASE, "approvals": {"dast": True}}, headers=H()).status_code == 403
+        assert c.post("/api/v1/events", json={**BASE, "approvals": {"dast": True}}, headers=H(LEAD)).status_code == 202
+        eid = c.post("/api/v1/events", json=BASE, headers=H()).json()["id"]
+        assert c.post(f"/api/v1/events/{eid}/approve", json={"approvals": {"dast": True}}, headers=H()).status_code == 403
+        wait(c, eid)
+
+
+def test_agents_can_be_called_together_in_the_callers_order():
+    with app() as c:
+        r = c.post("/api/v1/events", json={"release": "1", "requirement": "x", "steps": [{"agent": "scout", "action": "write-scenarios"}, {"agent": "scribe", "action": "write-cases"}]}, headers=H())
+        assert r.status_code == 202 and [s["agent"] for s in r.json()["steps"]] == ["scout", "scribe"]
+        done = wait(c, r.json()["id"])
+        assert done["agent"] == "custom" and [s["agent"] for s in done["steps"]] == ["scout", "scribe"]
+        for bad in ([], [{"agent": "scout"}] * 2, [{"agent": "nobody"}], ["scout"], [{"agent": "scout"}] * 14):
+            assert c.post("/api/v1/events", json={"release": "1", "requirement": "x", "steps": bad}, headers=H()).status_code == 400
+
+
+def test_generated_output_is_cleaned_before_it_leaves():
+    env = {"PHOENIX_API_TARGETS": "*.staging.example.com"}
+    art, flags = __import__("phoenix_api.release_checks", fromlist=["x"]).check_output(
+        {"unitTests": [{"path": "t.py", "content": "key='AKIAABCDEFGHIJKLMNOP'\nrequests.get('https://evil.com/x')"}], "scenarios": ["not a dict"], "cases": [{"id": "c1", "steps": ["open https://a.staging.example.com"]}]}, env)
+    assert "AKIA" not in str(art) and "scenarios" not in art and art["cases"][0]["id"] == "c1"
+    assert any("secret redacted" in f for f in flags) and any("evil.com" in f for f in flags) and not any("a.staging" in f for f in flags) and any("scenarios" in f for f in flags)

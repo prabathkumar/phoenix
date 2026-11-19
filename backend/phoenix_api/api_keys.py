@@ -1,5 +1,5 @@
 """API keys for outside callers (an AI coding agent such as ILMU Code, a CI job).
-PHOENIX_API_KEYS="ilmu-code:<sha256 of the key>,ci:<sha256>" -- only hashes are kept on the server. The caller sends the key as
+PHOENIX_API_KEYS="ilmu-code:<sha256 of the key>,lead:<sha256>:approve" -- only hashes are kept on the server. The caller sends the key as
 `Authorization: Bearer <key>` or `X-API-Key`. With no keys configured the outside API is closed (fail-closed). Make a pair with: python -m phoenix_api.api_keys NAME"""
 import hashlib
 import hmac
@@ -7,13 +7,21 @@ import secrets
 import sys
 
 
-def parse(env):
-    out = {}
+def _items(env):
     for item in str((env or {}).get("PHOENIX_API_KEYS", "")).split(","):
-        name, _, h = item.strip().partition(":")
+        name, _, rest = item.strip().partition(":")
+        h, _, flag = rest.partition(":")
         if name and len(h) == 64:
-            out[name.lower()] = h.lower()
-    return out
+            yield name.lower(), h.lower(), flag.strip().lower()
+
+
+def parse(env):
+    return {n: h for n, h, _ in _items(env)}
+
+
+def can_approve(env, name):
+    """Only a key written NAME:<hash>:approve may approve gated stages (a live security scan, Jira defects). Others cannot, so an AI caller cannot approve itself."""
+    return any(n == name and f == "approve" for n, _, f in _items(env))
 
 
 def caller(env, authorization="", x_api_key=""):

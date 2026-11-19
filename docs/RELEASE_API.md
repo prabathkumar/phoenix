@@ -7,6 +7,7 @@ An outside caller (ILMU Code, a CI job) sends an **event**: which saved agent, w
 python -m phoenix_api.api_keys ilmu-code          # prints the key (give it to the caller) and the line for PHOENIX_API_KEYS
 PHOENIX_API_KEYS=ilmu-code:<sha256>,ci:<sha256>   # only hashes are stored
 PHOENIX_WEBHOOK_SECRET=<long random>              # signs callbacks; without it no callback is sent
+PHOENIX_API_TARGETS=*.staging.example.com,10.1.0.0/16   # the only addresses a caller may aim tests and scans at (none set = no targets allowed)
 PHOENIX_API_MAX_RUNS=2                            # events running at once (default 2)
 ```
 With no keys set the API is closed (503).
@@ -29,7 +30,9 @@ Returns `202 {id, status:"queued", statusUrl, artifactsUrl}` at once.
 | `GET /api/v1/events/{id}/artifacts` | what was created: scenarios, cases, test-data field names (never values), unit-test files, API cases, pull request |
 | `POST /api/v1/events/{id}/approve` | `{"approvals": {"dast": true}}` continues an event that stopped at needs-you |
 
-Body fields: `agent`, `action`, `release` (required); one of `requirement`, `requirementUrl`, `jiraKey`, `scenarios`, `cases`, `repo`; optional `appUrl`, `testData`, `task`, `approvals`, `callbackUrl`.
+**One agent, several agents, or the team: the caller chooses.** One: `agent` + `action`. Several, in your order: `"steps": [{"agent":"scout","action":"write-scenarios"},{"agent":"forge","action":"write-unit-tests"}]` (up to 13, no repeats). Everything: `agent:"team"`, `action:"release"`.
+
+Body fields: `release` (required) and `agent`+`action` or `steps`; one of `requirement`, `requirementUrl`, `jiraKey`, `scenarios`, `cases`, `repo`; optional `appUrl`, `testData`, `task`, `approvals`, `callbackUrl`.
 
 ## Agents and actions
 `agent: "team"` + `action: "release"` runs the roster in order: scout, scribe, mint, forge, runner, tracer, pacer, warden, prowler, judge, herald, mentor, measure. One agent: `run` (all its stages) or one of
@@ -39,6 +42,16 @@ Each agent's scenarios are handed to the next, so the runner runs the whole batc
 
 ## Callback
 When an event finishes or stops at needs-you, Phoenix POSTs `{eventId, release, status, needsYou, steps}` to `callbackUrl` with `X-Phoenix-Signature: sha256=<HMAC-SHA256 of the body with PHOENIX_WEBHOOK_SECRET>`. https and public addresses only, no redirects, three tries. Fetch `/artifacts` for the content.
+
+## Checks and balances
+**On what comes in** (a bad request is refused with a plain reason; `warnings` lists things allowed but worth knowing):
+- Size: body up to 1 MB, requirement up to 60,000 characters, task 4,000, at most 200 scenarios or cases.
+- No secrets or passwords in requirement or task text; credentials go in `testData`, which must be up to 50 short name: value pairs.
+- `appUrl`, `baseUrl`, `apiBaseUrl` must be http(s), without a username, and on `PHOENIX_API_TARGETS`. With none set, no target is allowed, so a caller cannot aim a scan or load at an arbitrary site.
+- `repo` must be github or gitlab with an `org/app` project and valid refs. `production` can never be set from the outside. Text that looks like an instruction to the AI is kept as data and flagged.
+- Approvals: only a key written `name:<hash>:approve` may send `approvals` or call `/approve`, so an AI caller cannot approve its own live security scan or Jira defects. The approver is recorded (`approvedBy`).
+
+**On what the agents create** (before it is stored or returned): secrets are redacted, strings and lists are capped, items that are not in the expected shape are dropped, and any address outside the allowed targets is flagged. All of it appears in `flags` on the status and artifacts. Test-data values are never returned, only the field names. The existing gates still apply on top: guardrails on model calls, review of generated tests, sign-off.
 
 ## Limits
 Events run inside the API process: a restart marks running events `interrupted` (send again). Progress is per agent, not per stage. A caller sees only its own events. Not yet run against a real ILMU Code, Jira, GitHub or a customer system; tested with a fake model.

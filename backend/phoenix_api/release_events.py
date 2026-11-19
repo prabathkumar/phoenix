@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 import httpx
 from fastapi import Body, Header, HTTPException
 
-from . import agents, api_keys, db, requirements_loader, run_record, signoff
+from . import agents, api_keys, db, release_checks, requirements_loader, run_record, signoff
 from .service import run_pipeline_request
 
 KIND = "event"
@@ -62,6 +62,22 @@ def plan(agent, action, url=None):
     return [(agent, ACTIONS[agent][action])]
 
 
+def plan_many(items):
+    """Several agents together, in the caller's order: [{agent, action}]. Up to 13, no repeats."""
+    if not isinstance(items, list) or not items or len(items) > len(TEAM):
+        raise ValueError(f"steps is a list of 1 to {len(TEAM)} items like {{agent, action}}.")
+    out, seen = [], set()
+    for it in items:
+        if not isinstance(it, dict):
+            raise ValueError("Each step is {agent, action}.")
+        for a, st in plan(it.get("agent"), it.get("action") or "run"):
+            if (a, tuple(st or ())) in seen:
+                raise ValueError(f"{a} appears twice with the same action.")
+            seen.add((a, tuple(st or ())))
+            out.append((a, st))
+    return out
+
+
 def catalog():
     return {"agents": {a: ["run"] + list(m) for a, m in ACTIONS.items()}, "team": {"release": TEAM}}
 
@@ -105,7 +121,7 @@ def _save(rec, url):
 
 
 def _summary(rec):
-    return {k: rec[k] for k in ("id", "release", "agent", "action", "caller", "status", "createdAt", "finishedAt", "steps", "needsYou", "callback", "detail") if k in rec}
+    return {k: rec[k] for k in ("id", "release", "agent", "action", "caller", "status", "createdAt", "finishedAt", "steps", "needsYou", "callback", "detail", "flags", "warnings") if k in rec}
 
 
 async def _execute(rec, steps, deps, inp, start=0):
@@ -138,7 +154,10 @@ async def _execute(rec, steps, deps, inp, start=0):
             if code != 200:
                 st.update(status="failed", detail=str(out.get("error"))[:200])
                 continue
-            st.update(status="needs-you" if out["needsYou"] else "passed" if out["ok"] else "failed", needsYou=out["needsYou"], summary=out["summary"], artifacts=out.get("artifacts", {}),
+            art, flags = release_checks.check_output(out.get("artifacts", {}), deps.env)
+            if flags:
+                rec["flags"] = list(dict.fromkeys(rec.get("flags", []) + [f"{name}: {f}" for f in flags]))[:50]
+            st.update(status="needs-you" if out["needsYou"] else "passed" if out["ok"] else "failed", needsYou=out["needsYou"], summary=out["summary"], artifacts=art, flags=flags,
                       detail=", ".join(f"{s['id']}={s['status']}" for s in out["stages"] if s["status"] != "skipped")[:300])
             handoff = signoff.scenarios_of_run(req["_run_id"], url) or handoff
             if out["needsYou"]:  # a person has to decide: stop here, resume later with approvals
@@ -177,7 +196,7 @@ def mount(app, D):
         if not ID.match(eid):
             raise HTTPException(404, "No such event.")
         rec = db.doc_get(KIND, eid, url)
-        if not rec or rec["caller"] != c:
+        if not rec or (rec["caller"] != c and not api_keys.can_approve(D.env, c)):
             raise HTTPException(404, "No such event.")
         if rec["status"] in ("queued", "running") and not any(not t.done() for t in _tasks):
             rec.update(status="interrupted", detail="the server restarted while this ran; send the event again")
@@ -196,15 +215,18 @@ def mount(app, D):
         if not re.fullmatch(r"[\w.\-+/ ]{1,60}", release):
             raise HTTPException(400, "Give the release number or name (up to 60 letters, digits, . - _ +).")
         try:
-            steps = plan(body.get("agent"), body.get("action"), url)
+            steps = plan_many(body["steps"]) if "steps" in body else plan(body.get("agent"), body.get("action"), url)
+            warnings = release_checks.check_input(body, D.env)
             if body.get("callbackUrl"):
                 _safe_callback(body["callbackUrl"], D.allow_private)
         except ValueError as e:
             raise HTTPException(400, str(e))
+        if body.get("approvals") and not api_keys.can_approve(D.env, c):
+            raise HTTPException(403, "This key may not approve gated steps. A person with an approving key sends the approval.")
         if not (body.get("requirement") or body.get("requirementUrl") or body.get("jiraKey") or body.get("scenarios") or body.get("cases") or body.get("repo")):
             raise HTTPException(400, "Give something to work from: requirement, requirementUrl, jiraKey, scenarios, cases or repo.")
         eid = f"evt-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{secrets.token_hex(3)}"
-        rec = {"id": eid, "release": release, "agent": str(body["agent"]).lower(), "action": str(body["action"]).lower(), "caller": c, "status": "queued", "createdAt": _now(),
+        rec = {"id": eid, "release": release, "agent": "custom" if "steps" in body else str(body["agent"]).lower(), "action": "steps" if "steps" in body else str(body["action"]).lower(), "caller": c, "warnings": warnings, "status": "queued", "createdAt": _now(),
                "callbackUrl": body.get("callbackUrl") or None, "steps": [{"agent": a, "stages": s, "status": "waiting"} for a, s in steps]}
         _save(rec, url)
         _spawn(_execute(rec, steps, D, {k: body[k] for k in INPUT if k in body}))
@@ -217,13 +239,17 @@ def mount(app, D):
     @app.get("/api/v1/events/{eid}/artifacts")
     def artifacts(eid: str, authorization: str = Header(default=""), x_api_key: str = Header(default="")):
         rec = mine(eid, who(authorization, x_api_key))
-        return {"id": eid, "release": rec["release"], "status": rec["status"], "agents": {s["agent"]: s.get("artifacts", {}) for s in rec["steps"]}}
+        return {"id": eid, "release": rec["release"], "status": rec["status"], "flags": rec.get("flags", []), "agents": {s["agent"]: s.get("artifacts", {}) for s in rec["steps"]}}
 
     @app.post("/api/v1/events/{eid}/approve", status_code=202)
     async def approve(eid: str, body: dict = Body(default={}), authorization: str = Header(default=""), x_api_key: str = Header(default="")):
-        rec = mine(eid, who(authorization, x_api_key))
+        c = who(authorization, x_api_key)
+        if not api_keys.can_approve(D.env, c):
+            raise HTTPException(403, "This key may not approve gated steps.")
+        rec = mine(eid, c)
         if rec["status"] != "needs-you":
             raise HTTPException(409, "This event is not waiting for approval.")
+        rec["approvedBy"] = c
         ap = body.get("approvals")
         if not isinstance(ap, dict) or not ap:
             raise HTTPException(400, 'Send approvals like {"dast": true}.')

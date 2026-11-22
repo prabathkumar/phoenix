@@ -58,3 +58,24 @@ def test_model_picks_flaky_failure_it_is_rerun_and_the_pair_is_stored_as_a_train
     st = {t["name"]: t for t in res[0]["tests"]}
     assert st["a"]["status"] == "passed" and st["a"]["flaky"] and st["b"]["status"] == "failed"
     assert runs == [False] and [k for k, _ in stored] == ["training_example"] and stored[0][1]["outcome"] == "verified"
+
+
+@pytest.mark.skipif(not shutil.which("cargo"), reason="cargo missing")
+def test_rust_unit_leaves_out_integration_files_and_integration_runs_only_them():
+    u = T.run_tests("rust", "unit", os.path.join(FX, "rust"), retry=False)
+    i = T.run_tests("rust", "integration", os.path.join(FX, "rust"), retry=False)
+    assert [t["name"] for t in u["tests"]] == ["tests::add_unit"] and [t["name"] for t in i["tests"]] == ["add_integration"]
+
+
+@pytest.mark.skipif(not (shutil.which("prove") and shutil.which("perl")), reason="perl missing")
+def test_perl_unit_and_integration_are_separate():
+    u = T.run_tests("perl", "unit", os.path.join(FX, "perl"), retry=False)
+    i = T.run_tests("perl", "integration", os.path.join(FX, "perl"), retry=False)
+    assert [t["name"] for t in u["tests"]] == ["add unit"] and [t["name"] for t in i["tests"]] == ["add integration"]
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="node missing")
+def test_node_unit_leaves_out_integration_files():
+    u = T.run_tests("javascript", "unit", os.path.join(FX, "js"), retry=False)
+    i = T.run_tests("javascript", "integration", os.path.join(FX, "js"), retry=False)
+    assert [t["name"] for t in u["tests"]] == ["test add unit"] and [t["name"] for t in i["tests"]] == ["test add integration"]

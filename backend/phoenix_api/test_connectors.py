@@ -134,14 +134,24 @@ def command(lang, kind, out, root=None):
     if lang == "python":
         return ["python3", "-m", "pytest", "-q", "-m", "integration" if kind == "integration" else "not integration", f"--junitxml={out}"], out, "junit"
     if lang == "javascript":
-        pat = "**/*.integration.test.js" if kind == "integration" else "**/*.test.js"
         args = ["node", "--test", "--test-reporter=junit", f"--test-reporter-destination={out}"]
-        return args + ([pat] if kind == "integration" else [pat, "--test-skip-pattern=__none__"]), out, "junit"
+        if kind == "integration":
+            return args + ["**/*.integration.test.js"], out, "junit"
+        files = []
+        for d, ds, fs in os.walk(root or "."):
+            ds[:] = [x for x in ds if x not in ("node_modules", ".git")]
+            files += [os.path.relpath(os.path.join(d, f), root or ".") for f in fs if f.endswith(".test.js") and not f.endswith(".integration.test.js")]
+        return args + (sorted(files) or ["**/*.test.js"]), out, "junit"
     if lang == "rust":
         if kind == "integration":
             return ["cargo", "test", "--test", "integration_*"], None, "cargo"
         has_unit = bool(root) and bool(glob.glob(os.path.join(root, "tests", "unit_*.rs")))
-        return (["cargo", "test", "--lib", "--bins", "--test", "unit_*"] if has_unit else ["cargo", "test"]), None, "cargo"
+        if has_unit:
+            return ["cargo", "test", "--lib", "--bins", "--test", "unit_*"], None, "cargo"
+        others = sorted(os.path.splitext(os.path.basename(f))[0] for f in glob.glob(os.path.join(root or ".", "tests", "*.rs"))) if root else []
+        if any(o.startswith("integration_") for o in others):  # integration files exist: unit = in-source tests + every other test file
+            return ["cargo", "test", "--lib", "--bins", *[x for o in others if not o.startswith("integration_") for x in ("--test", o)]], None, "cargo"
+        return ["cargo", "test"], None, "cargo"
     if lang == "perl":
         return ["prove", "-l", "-v", *(["-r", "t/integration"] if kind == "integration" else ["t"])], None, "tap"
     if lang == "typescript" and root and _ts_framework(root) in ("nestjs", "angular-jest"):

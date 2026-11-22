@@ -37,6 +37,7 @@ def detect_languages(root):
     found = [lang for lang, files in MARKERS.items() if any(os.path.exists(os.path.join(root, f)) for f in files)]
     if "javascript" in found and any(os.path.exists(os.path.join(root, f)) for f in ("tsconfig.json",)):
         found.append("typescript")
+        found.remove("javascript")  # a TypeScript project is run once, as TypeScript
     for dp, dn, fn in os.walk(root):
         dn[:] = [d for d in dn if d not in ("node_modules", ".git", "vendor", "target", "bin", "obj")]
         if any(f.endswith(".csproj") or f.endswith(".sln") for f in fn):
@@ -59,7 +60,7 @@ def _ts_framework(root):
         return None
     d = {**(j.get("dependencies") or {}), **(j.get("devDependencies") or {})}
     if "@nestjs/core" in d:
-        return "nestjs"
+        return None if ("vitest" in d and "jest" not in d) else "nestjs"  # newer NestJS starters use Vitest
     if "@angular/core" in d:
         return "angular-jest" if ("jest" in d or "jest-preset-angular" in d) else "angular"
     return None

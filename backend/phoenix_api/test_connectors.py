@@ -7,6 +7,7 @@ Kinds: unit | integration. How a test is told apart is a convention per language
 A test is tied to a requirement when its name (or class) carries a requirement key such as PROJ-123 or REQ-7; that is how a requirement is followed from
 the case down to the code that proves it (lifecycle.py). Nothing here installs a toolchain: a missing one is reported as unavailable, never as a pass."""
 import json
+import glob
 import os
 import re
 import shutil
@@ -97,7 +98,10 @@ def command(lang, kind, out, root=None):
         args = ["node", "--test", "--test-reporter=junit", f"--test-reporter-destination={out}"]
         return args + ([pat] if kind == "integration" else [pat, "--test-skip-pattern=__none__"]), out, "junit"
     if lang == "rust":
-        return (["cargo", "test", "--test", "integration_*"] if kind == "integration" else ["cargo", "test", "--lib", "--bins", "--test", "unit_*"]), None, "cargo"
+        if kind == "integration":
+            return ["cargo", "test", "--test", "integration_*"], None, "cargo"
+        has_unit = bool(root) and bool(glob.glob(os.path.join(root, "tests", "unit_*.rs")))
+        return (["cargo", "test", "--lib", "--bins", "--test", "unit_*"] if has_unit else ["cargo", "test", "--lib", "--bins"]), None, "cargo"
     if lang == "perl":
         return ["prove", "-v", *(["-r", "t/integration"] if kind == "integration" else ["t"])], None, "tap"
     if lang == "typescript" and root and _ts_framework(root) in ("nestjs", "angular-jest"):
@@ -117,7 +121,7 @@ def command(lang, kind, out, root=None):
     if lang == "go":
         return ["go", "test", "-json", *(["-tags", "integration"] if kind == "integration" else []), "./..."], None, "gojson"
     if lang == "php":
-        runner = "vendor/bin/phpunit" if os.path.exists("vendor/bin/phpunit") else "phpunit"
+        runner = "vendor/bin/phpunit" if root and os.path.exists(os.path.join(root, "vendor", "bin", "phpunit")) else "phpunit"
         return ["php", runner, *(["--group", "integration"] if kind == "integration" else ["--exclude-group", "integration"]), "--log-junit", out], out, "junit"
     if lang == "csharp":
         return ["dotnet", "test", "--filter", "Category=Integration" if kind == "integration" else "Category!=Integration", "--logger", f"trx;LogFileName={os.path.basename(out)}", "--results-directory", os.path.dirname(out)], out, "trx"
@@ -190,6 +194,12 @@ def run_tests(lang, kind, root, run=subprocess.run, which=shutil.which, timeout=
     out = os.path.join(tmp, "result.xml")
     argv, where, parser = command(lang, kind, out, root)
     try:
+        if lang == "python":  # src-layout projects need their own code importable
+            env = dict(env or os.environ)
+            env["PYTHONPATH"] = os.pathsep.join(x for x in (root, os.path.join(root, "src"), env.get("PYTHONPATH", "")) if x)
+        if lang == "php" and os.path.exists(os.path.join(root, "composer.json")) and not os.path.isdir(os.path.join(root, "vendor")) and which("composer"):
+            run(["composer", "install", "--no-interaction", "--no-progress", "--quiet"], cwd=root, capture_output=True, text=True, timeout=timeout)
+            argv, where, parser = command(lang, kind, out, root)
         p = run(argv, cwd=root, capture_output=True, text=True, timeout=timeout, **({"env": env} if env else {}))
         if parser == "gojson":
             tests = parse_go_json(p.stdout or "")

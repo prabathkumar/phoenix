@@ -1,0 +1,9 @@
+package demo
+
+import "testing"
+
+func TestAddUnit(t *testing.T) {
+	if Add(1, 2) != 3 {
+		t.Fatal("bad")
+	}
+}

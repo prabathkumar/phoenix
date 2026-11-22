@@ -1,4 +1,5 @@
 import json
+import pathlib
 import subprocess
 import sys
 
@@ -74,6 +75,6 @@ def test_missing_settings_say_what_to_set(monkeypatch):
 
 def test_stdio_round_trip():
     msgs = [{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}, {"jsonrpc": "2.0", "method": "notifications/initialized"}, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}]
-    p = subprocess.run([sys.executable, "-m", "phoenix_mcp.server"], input="\n".join(json.dumps(m) for m in msgs) + "\nnot json\n", capture_output=True, text=True, timeout=30)
+    p = subprocess.run([sys.executable, "-m", "phoenix_mcp.server"], input="\n".join(json.dumps(m) for m in msgs) + "\nnot json\n", capture_output=True, text=True, timeout=30, cwd=pathlib.Path(__file__).resolve().parents[1])
     lines = [json.loads(x) for x in p.stdout.splitlines()]
     assert len(lines) == 3 and lines[1]["result"]["tools"] and lines[2]["error"]["code"] == -32700

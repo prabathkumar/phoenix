@@ -434,3 +434,18 @@ def test_a_step_that_could_not_run_is_incomplete_not_passed(monkeypatch):
         r = c.post("/api/v1/events", json={"agent": "forge", "action": "write-unit-tests", "release": "R2026.11.3", "requirement": "Add numbers", "repo": {"provider": "github", "project": "org/app"}}, headers=H())
         out = wait(c, r.json()["id"], until=("passed", "failed", "incomplete", "needs-you"))
         assert out["status"] == "incomplete" and out["steps"][0]["status"] == "unavailable"
+
+
+def test_github_can_be_read_without_a_token_but_not_changed():
+    from phoenix_api import repo as R
+    seen = []
+
+    async def fetch(m, u, h, b=None):
+        seen.append(h)
+        return 200, '{"default_branch": "main"}'
+    r = R.Repo("github", "o/a", None, fetch=fetch)
+    assert asyncio.run(r.default_branch()) == "main" and "Authorization" not in seen[0]
+    with pytest.raises(ValueError, match="GITHUB_TOKEN"):
+        asyncio.run(r._call("POST", "/repos/o/a/pulls", {}))
+    with pytest.raises(ValueError, match="GITLAB_TOKEN"):
+        R.Repo("gitlab", "o/a", None)

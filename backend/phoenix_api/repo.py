@@ -15,14 +15,16 @@ class Repo:
             raise ValueError('provider must be "github" or "gitlab".')
         if not re.fullmatch(r"[\w.-]+(/[\w.-]+)+", str(project or "")):
             raise ValueError('project looks like "owner/name".')
-        if not token:
-            raise ValueError(f"Set {'GITHUB_TOKEN' if provider == 'github' else 'GITLAB_TOKEN'} to connect to {provider}.")
+        if not token and provider != "github":
+            raise ValueError("Set GITLAB_TOKEN to connect to gitlab.")  # GitHub may be read without a token (public repos only, rate-limited); writes need one
         self.provider, self.project, self.token, self.gh, self._fetch = provider, project, token, provider == "github", fetch
         self.root = (base_url or ("https://api.github.com" if self.gh else "https://gitlab.com/api/v4")).rstrip("/")
         self.id = quote(project, safe="")
 
     async def _call(self, method, path, body=None):
-        h = {"Authorization": f"Bearer {self.token}", "Accept": "application/vnd.github+json"} if self.gh else {"PRIVATE-TOKEN": self.token}
+        if not self.token and method != "GET":
+            raise ValueError("Set GITHUB_TOKEN to change anything on github (pull requests, branches). Without it Phoenix can only read public repos.")
+        h = ({"Authorization": f"Bearer {self.token}"} if self.token else {}) | {"Accept": "application/vnd.github+json"} if self.gh else {"PRIVATE-TOKEN": self.token}
         status, text = await self._fetch(method, self.root + path, {**h, "Content-Type": "application/json"}, json.dumps(body) if body is not None else None)
         if status >= 400:
             raise RuntimeError(f"{self.provider} {method} {path.split('?')[0]} failed ({status}).")

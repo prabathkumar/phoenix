@@ -17,3 +17,44 @@ def test_go_integration_uses_the_build_tag():
     assert len(T.run_tests("go", "unit", os.path.join(FX, "go"))["tests"]) == 1
     r = T.run_tests("go", "integration", os.path.join(FX, "go"))
     assert r["ok"] and any("Integration" in t["name"] for t in r["tests"])
+
+
+def test_a_test_that_fails_then_passes_is_flagged_flaky_and_a_double_failure_stays_failed(tmp_path):
+    import json
+    calls = []
+
+    def fake(argv, **kw):
+        calls.append(1)
+        ev = lambda i, n, r: [json.dumps({"type": "testStart", "test": {"id": i, "name": n}}), json.dumps({"type": "testDone", "testID": i, "result": r})]
+        lines = ev(1, "a", "error" if len(calls) == 1 else "success") + ev(2, "b", "error")
+        return type("P", (), {"returncode": 1, "stdout": "\n".join(lines), "stderr": ""})()
+
+    (tmp_path / "pubspec.yaml").write_text("name: x\n")
+    r = T.run_tests("dart", "unit", str(tmp_path), run=fake, which=lambda t: "/bin/" + t)
+    st = {t["name"]: t for t in r["tests"]}
+    assert st["a"]["status"] == "passed" and st["a"]["flaky"] and st["b"]["status"] == "failed"
+    assert r["summary"]["flaky"] == 1 and not r["ok"] and len(calls) == 2
+
+
+def test_model_picks_flaky_failure_it_is_rerun_and_the_pair_is_stored_as_a_training_example(tmp_path, monkeypatch):
+    import asyncio, json
+    from phoenix_api import handlers as H, logstore
+    stored, runs = [], []
+    monkeypatch.setattr(logstore, "record", lambda kind, row, env=None, a=None: stored.append((kind, row)) or True)
+
+    def fake_run_tests(lang, kind, root, **kw):
+        runs.append(kw.get("retry"))
+        t = [{"name": "a", "status": "passed", "ms": 1, "requirement": ""}]
+        return {"language": lang, "kind": kind, "ok": True, "available": True, "detail": "", "tests": t, "summary": T.summarize(t)}
+
+    monkeypatch.setattr(T, "run_tests", fake_run_tests)
+    tests = [{"name": "a", "status": "failed", "ms": 1, "requirement": ""}, {"name": "b", "status": "failed", "ms": 1, "requirement": ""}]
+    res = [{"language": "dart", "kind": "unit", "ok": False, "available": True, "detail": "x", "tests": tests, "summary": T.summarize(tests), "log": "timed out waiting"}]
+
+    async def model(prompt):
+        return {"failures": [{"name": "a", "verdict": "flaky", "rerun": True, "reason": "timing"}, {"name": "b", "verdict": "code_bug", "rerun": False, "reason": "wrong value"}]}
+
+    asyncio.run(H._triage_and_rerun(res, str(tmp_path), model, "p", {}, {}))
+    st = {t["name"]: t for t in res[0]["tests"]}
+    assert st["a"]["status"] == "passed" and st["a"]["flaky"] and st["b"]["status"] == "failed"
+    assert runs == [False] and [k for k, _ in stored] == ["training_example"] and stored[0][1]["outcome"] == "verified"

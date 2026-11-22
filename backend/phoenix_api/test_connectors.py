@@ -278,7 +278,27 @@ def _no_integration(lang, root):
     return None
 
 
-def run_tests(lang, kind, root, run=subprocess.run, which=shutil.which, timeout=900, env=None):
+def run_tests(lang, kind, root, run=subprocess.run, which=shutil.which, timeout=900, env=None, retry=True):
+    """Run one language and kind. If something fails, run once more: a test that fails then passes is reported as flaky (passed, flaky=True), a test that fails twice stays failed."""
+    r = _run_once(lang, kind, root, run, which, timeout, env)
+    if not retry or not r["summary"]["failed"]:
+        return r
+    first = {t["name"] for t in r["tests"] if t["status"] == "failed"}
+    r2 = _run_once(lang, kind, root, run, which, timeout, env)
+    if not r2["tests"]:
+        return r
+    flaky = 0
+    for t in r2["tests"]:
+        if t["name"] in first and t["status"] == "passed":
+            t["flaky"] = True
+            flaky += 1
+    if flaky:
+        r2["summary"]["flaky"] = flaky
+        r2["detail"] += f" ({flaky} flaky: failed once, passed on the rerun)"
+    return r2
+
+
+def _run_once(lang, kind, root, run=subprocess.run, which=shutil.which, timeout=900, env=None):
     """Run one language and kind in a checkout. Never raises: returns {ok, available, detail, tests, summary}."""
     if lang not in LANGUAGES or kind not in KINDS:
         raise ValueError(f"language is one of {', '.join(LANGUAGES)}; kind is unit or integration.")
@@ -329,10 +349,11 @@ def run_tests(lang, kind, root, run=subprocess.run, which=shutil.which, timeout=
             body = open(path, encoding="utf8").read() if path else ""
             tests = parse_trx(body) if parser == "trx" else parse_junit(body)
         s = summarize(tests)
+        log = ((p.stderr or "") + (p.stdout or ""))[-3000:] if s["failed"] else ""
         if not tests:
             tail = ((p.stderr or "") + (p.stdout or ""))[-300:].strip()
             return {"language": lang, "kind": kind, "ok": False, "available": True, "detail": f"no {kind} tests were found or the run produced no result: {tail}", "tests": [], "summary": s}
-        return {"language": lang, "kind": kind, "ok": s["failed"] == 0, "available": True, "detail": f"{s['passed']} passed, {s['failed']} failed, {s['skipped']} skipped", "tests": tests, "summary": s}
+        return {"language": lang, "kind": kind, "ok": s["failed"] == 0, "available": True, "detail": f"{s['passed']} passed, {s['failed']} failed, {s['skipped']} skipped", "tests": tests, "summary": s, "log": log}
     except subprocess.TimeoutExpired:
         return {"language": lang, "kind": kind, "ok": False, "available": True, "detail": f"timed out after {timeout}s", "tests": [], "summary": summarize([])}
     except (OSError, ValueError) as e:
@@ -341,11 +362,11 @@ def run_tests(lang, kind, root, run=subprocess.run, which=shutil.which, timeout=
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def run_all(root, languages=None, kinds=("unit", "integration"), run=subprocess.run, which=shutil.which, env=None):
+def run_all(root, languages=None, kinds=("unit", "integration"), run=subprocess.run, which=shutil.which, env=None, retry=True):
     langs = [l for l in (languages or detect_languages(root)) if l in LANGUAGES]
     if not langs:
         return []
-    return [run_tests(l, k, root, run, which, env=env) for l in langs for k in kinds]
+    return [run_tests(l, k, root, run, which, env=env, retry=retry) for l in langs for k in kinds]
 
 
 def clone(url, ref="", dest=None, run=subprocess.run):

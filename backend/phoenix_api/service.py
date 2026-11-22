@@ -182,7 +182,7 @@ async def run_pipeline_request(body, deps: Deps):
         "scenarios": H.scenarios_handler(call_json, get_prompt), "cases": H.cases_handler(call_json, get_prompt, project, jira_key or "", run_id, url, str(body.get("goal") or "")[:120]),
         "secrets": scan_repo("secrets"), "sast": scan_repo("sast"), "testdata": testdata_h, "execution": execution_h, "har": har_h, "performance": H.performance_handler(**run_kw), "dast": H.dast_handler(env=env, **run_kw),
         "traceability": H.traceability_handler(call_json, deps.connect_repo), "aieval": H.aieval_handler(env=env, run_id=run_id, **run_kw),
-        "unittests": H.unittests_handler(call_json, get_prompt, deps.connect_repo), "unitrun": H.unitrun_handler(project, run_id, env), "testspr": H.testspr_handler(deps.connect_repo),
+        "unittests": H.unittests_handler(call_json, get_prompt, deps.connect_repo), "unitrun": H.unitrun_handler(project, run_id, env, call_json=call_json), "testspr": H.testspr_handler(deps.connect_repo),
         "defects": defects_h, "signoff": H.signoff_handler(run_id, url, str(body.get("onBehalfOf") or "Phoenix AI")), "feedback": H.feedback_handler(env.get("PHOENIX_REPORTS_DIR", "logs/reports"), project or "", run_id), "measure": H.measure_handler(project or "", url, env),
         "apitests": H.apifunc_handler(deps.connect_repo, env=env), "repolink": H.repolink_handler(deps.connect_repo), "deployed": H.deployed_handler(), "evidence": H.evidence_handler(project or "", run_id, env), "revalidate": H.revalidate_handler(deps.connect_repo, env=env),
     }

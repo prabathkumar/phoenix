@@ -24,3 +24,5 @@ def fresh(tmp_path, monkeypatch):
 
 import os as _os
 _os.environ.setdefault("PHOENIX_PY_VENV", "0")  # tests use the machine python, not a fresh virtualenv
+
+collect_ignore_glob = ["fixtures/*"]  # tiny sample projects that the connectors run; they are not part of this suite

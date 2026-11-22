@@ -104,7 +104,7 @@ def command(lang, kind, out, root=None):
         if kind == "integration":
             return ["cargo", "test", "--test", "integration_*"], None, "cargo"
         has_unit = bool(root) and bool(glob.glob(os.path.join(root, "tests", "unit_*.rs")))
-        return (["cargo", "test", "--lib", "--bins", "--test", "unit_*"] if has_unit else ["cargo", "test", "--lib", "--bins"]), None, "cargo"
+        return (["cargo", "test", "--lib", "--bins", "--test", "unit_*"] if has_unit else ["cargo", "test"]), None, "cargo"
     if lang == "perl":
         return ["prove", "-v", *(["-r", "t/integration"] if kind == "integration" else ["t"])], None, "tap"
     if lang == "typescript" and root and _ts_framework(root) in ("nestjs", "angular-jest"):
@@ -186,6 +186,28 @@ def summarize(tests):
     return {"total": len(tests), **c, "passRate": round(c["passed"] / ran, 3) if ran else None, "requirements": sorted({t["requirement"] for t in tests if t["requirement"]})}
 
 
+def _python_env(root, tmp):
+    """A throwaway virtualenv with pytest and the project's own dependencies, so its tests can import them."""
+    venv = os.path.join(tmp, "venv")
+    py = os.path.join(venv, "bin", "python")
+    try:
+        if subprocess.run(["python3", "-m", "venv", venv], capture_output=True, timeout=120).returncode:
+            return None
+        pip = [py, "-m", "pip", "install", "-q", "--disable-pip-version-check"]
+        subprocess.run(pip + ["pytest"], capture_output=True, timeout=300)
+        for f in sorted(glob.glob(os.path.join(root, "requirements*.txt")))[:4]:
+            subprocess.run(pip + ["-r", f], capture_output=True, timeout=600)
+        if os.path.exists(os.path.join(root, "pyproject.toml")) or os.path.exists(os.path.join(root, "setup.py")):
+            for extra in (".[tests,test,dev]", ".[test]", ".[dev]", "."):
+                if subprocess.run(pip + ["-e", extra], cwd=root, capture_output=True, timeout=600).returncode == 0:
+                    break
+            for grp in ("dev", "tests", "test"):
+                subprocess.run(pip + ["--group", grp], cwd=root, capture_output=True, timeout=600)
+        return py
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
 def run_tests(lang, kind, root, run=subprocess.run, which=shutil.which, timeout=900, env=None):
     """Run one language and kind in a checkout. Never raises: returns {ok, available, detail, tests, summary}."""
     if lang not in LANGUAGES or kind not in KINDS:
@@ -197,10 +219,14 @@ def run_tests(lang, kind, root, run=subprocess.run, which=shutil.which, timeout=
     out = os.path.join(tmp, "result.xml")
     argv, where, parser = command(lang, kind, out, root)
     try:
+        if lang == "python" and run is subprocess.run and os.environ.get("PHOENIX_PY_VENV", "1") == "1":
+            py = _python_env(root, tmp)
+            if py:
+                argv[0] = py
         if lang == "python":  # src-layout projects need their own code importable
             env = dict(env or os.environ)
             env["PYTHONPATH"] = os.pathsep.join(x for x in (root, os.path.join(root, "src"), env.get("PYTHONPATH", "")) if x)
-        if lang == "php" and os.path.exists(os.path.join(root, "composer.json")) and not os.path.isdir(os.path.join(root, "vendor")) and which("composer"):
+        if lang == "php" and os.path.exists(os.path.join(root, "composer.json")) and not os.path.exists(os.path.join(root, "vendor", "bin", "phpunit")) and which("composer"):
             run(["composer", "install", "--no-interaction", "--no-progress", "--quiet"], cwd=root, capture_output=True, text=True, timeout=timeout)
             argv, where, parser = command(lang, kind, out, root)
         p = run(argv, cwd=root, capture_output=True, text=True, timeout=timeout, **({"env": env} if env else {}))

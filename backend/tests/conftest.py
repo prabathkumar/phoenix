@@ -21,3 +21,6 @@ def fresh(tmp_path, monkeypatch):
     analytics.reset(analytics.Analytics(env={}))
     yield url
     db._engines.clear()
+
+import os as _os
+_os.environ.setdefault("PHOENIX_PY_VENV", "0")  # tests use the machine python, not a fresh virtualenv

@@ -227,7 +227,9 @@ def run_tests(lang, kind, root, run=subprocess.run, which=shutil.which, timeout=
             env = dict(env or os.environ)
             env["PYTHONPATH"] = os.pathsep.join(x for x in (root, os.path.join(root, "src"), env.get("PYTHONPATH", "")) if x)
         if lang == "php" and os.path.exists(os.path.join(root, "composer.json")) and not os.path.exists(os.path.join(root, "vendor", "bin", "phpunit")) and which("composer"):
-            run(["composer", "install", "--no-interaction", "--no-progress", "--quiet"], cwd=root, capture_output=True, text=True, timeout=timeout)
+            c = run(["composer", "install", "--no-interaction", "--no-progress", "--quiet"], cwd=root, capture_output=True, text=True, timeout=timeout)
+            if getattr(c, "returncode", 0):  # often a PHP-version limit in the lock file: retry ignoring it
+                run(["composer", "install", "--no-interaction", "--no-progress", "--quiet", "--ignore-platform-reqs"], cwd=root, capture_output=True, text=True, timeout=timeout)
             argv, where, parser = command(lang, kind, out, root)
         p = run(argv, cwd=root, capture_output=True, text=True, timeout=timeout, **({"env": env} if env else {}))
         if parser == "gojson":

@@ -76,3 +76,6 @@ Every event must name a **registered release** (its project comes with it) or a 
 
 ## Limits
 Events run inside the API process: a restart marks running events `interrupted` (send again). Progress is per agent, not per stage. A caller sees only its own events. Not yet run against a real ILMU Code, Jira, GitHub or a customer system; tested with a fake model.
+
+## From ILMU Code
+An MCP server wraps this API for ILMU Code and other MCP clients: see `docs/MCP_ILMU_CODE.md`.

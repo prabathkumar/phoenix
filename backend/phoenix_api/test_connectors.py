@@ -16,10 +16,10 @@ import tempfile
 import xml.etree.ElementTree as ET
 
 KEY = re.compile(r"(?<![A-Z0-9])([A-Z][A-Z0-9]{1,9})[-_](\d+)(?!\d)")  # PROJ-12, REQ_7 and Go-style TestREQ_7 (Go names cannot hold a dash)
-LANGUAGES = ("javascript", "typescript", "python", "java", "go", "csharp", "php", "perl", "rust")
+LANGUAGES = ("javascript", "typescript", "python", "java", "go", "csharp", "php", "perl", "rust", "swift", "kotlin", "dart")
 KINDS = ("unit", "integration")
-TOOL = {"javascript": "node", "typescript": "npx", "python": "python3", "java": "mvn", "go": "go", "csharp": "dotnet", "php": "php", "perl": "prove", "rust": "cargo"}
-MARKERS = {"python": ("pyproject.toml", "requirements.txt", "setup.py", "pytest.ini"), "javascript": ("package.json",), "java": ("pom.xml", "build.gradle"), "rust": ("Cargo.toml",), "perl": ("cpanfile", "Makefile.PL", "Build.PL", "dist.ini"), "php": ("composer.json", "phpunit.xml", "phpunit.xml.dist"), "go": ("go.mod",)}
+TOOL = {"javascript": "node", "typescript": "npx", "python": "python3", "java": "mvn", "go": "go", "csharp": "dotnet", "php": "php", "perl": "prove", "rust": "cargo", "swift": "swift", "kotlin": "java", "dart": "dart"}
+MARKERS = {"python": ("pyproject.toml", "requirements.txt", "setup.py", "pytest.ini"), "javascript": ("package.json",), "java": ("pom.xml", "build.gradle"), "rust": ("Cargo.toml",), "perl": ("cpanfile", "Makefile.PL", "Build.PL", "dist.ini"), "php": ("composer.json", "phpunit.xml", "phpunit.xml.dist"), "go": ("go.mod",), "swift": ("Package.swift",), "dart": ("pubspec.yaml",)}
 CONVENTIONS = {
     "python": "pytest; integration tests are marked @pytest.mark.integration, unit tests are everything else",
     "javascript": "node:test; integration tests are files named *.integration.test.js",
@@ -29,6 +29,9 @@ CONVENTIONS = {
     "php": "PHPUnit (vendor/bin/phpunit); integration tests are in the `integration` testsuite or carry @group integration",
     "rust": "cargo test; AI-written unit tests are tests/unit_*.rs, integration tests are tests/integration_*.rs (in-source #[cfg(test)] tests run as unit too)",
     "perl": "Test::More run with prove; integration tests live in t/integration/, unit tests in t/ (only if Perl is installed)",
+    "swift": "XCTest via swift test (Swift Package Manager); integration tests have 'Integration' in the test name, unit tests are the rest. Xcode-only app projects need a scheme (xcodebuild) and a Mac",
+    "kotlin": "JUnit via Gradle (./gradlew test, Android unit tests included); integration tests are classes named *IntegrationTest",
+    "dart": "package:test, or flutter test for Flutter apps; integration tests are tagged @Tags(['integration'])",
     "csharp": "xUnit; integration tests have [Trait(\"Category\", \"Integration\")]",
 }
 
@@ -40,10 +43,11 @@ def detect_languages(root):
         found.remove("javascript")  # a TypeScript project is run once, as TypeScript
     for dp, dn, fn in os.walk(root):
         dn[:] = [d for d in dn if d not in ("node_modules", ".git", "vendor", "target", "bin", "obj")]
-        if any(f.endswith(".csproj") or f.endswith(".sln") for f in fn):
+        if any(f.endswith(".csproj") or f.endswith(".sln") for f in fn) and "csharp" not in found:
             found.append("csharp")
-            break
-        if dp.count(os.sep) - root.count(os.sep) > 3:
+        if any(f.endswith((".kt", ".kts")) for f in fn) and "kotlin" not in found and (os.path.exists(os.path.join(root, "build.gradle.kts")) or os.path.exists(os.path.join(root, "build.gradle")) or os.path.exists(os.path.join(root, "settings.gradle.kts")) or os.path.exists(os.path.join(root, "settings.gradle"))):
+            found.append("kotlin")
+        if dp.count(os.sep) - root.count(os.sep) > 4:
             dn[:] = []
     return list(dict.fromkeys(found))
 
@@ -93,6 +97,37 @@ def parse_tap(text):
 
 
 # ---- commands: (argv, where the result file is, parser name)
+def _dart_flutter(root):
+    try:
+        t = open(os.path.join(root, "pubspec.yaml"), encoding="utf8").read()
+    except (OSError, TypeError):
+        return False
+    return bool(re.search(r"^\s*sdk:\s*flutter\b|^\s*flutter:\s*$", t, re.M))
+
+
+def _tool(lang, root):
+    return "flutter" if lang == "dart" and _dart_flutter(root) else TOOL[lang]
+
+
+def parse_dart_json(text):
+    """dart/flutter test --reporter json: one JSON event per line."""
+    names, out = {}, []
+    for line in text.splitlines():
+        try:
+            e = json.loads(line)
+        except ValueError:
+            continue
+        if e.get("type") == "testStart" and isinstance(e.get("test"), dict):
+            names[e["test"].get("id")] = e["test"].get("name", "")
+        elif e.get("type") == "testDone" and not e.get("hidden"):
+            n = names.get(e.get("testID"), "")
+            if n.startswith("loading "):
+                if e.get("result") == "success":
+                    continue
+            out.append(_t(n, "skipped" if e.get("skipped") else "passed" if e.get("result") == "success" else "failed", int(e.get("time") or 0)))
+    return out
+
+
 def command(lang, kind, out, root=None):
     if lang == "python":
         return ["python3", "-m", "pytest", "-q", "-m", "integration" if kind == "integration" else "not integration", f"--junitxml={out}"], out, "junit"
@@ -126,6 +161,14 @@ def command(lang, kind, out, root=None):
     if lang == "php":
         runner = "vendor/bin/phpunit" if root and os.path.exists(os.path.join(root, "vendor", "bin", "phpunit")) else "phpunit"
         return ["php", runner, *(["--group", "integration"] if kind == "integration" else ["--exclude-group", "integration"]), "--log-junit", out], out, "junit"
+    if lang == "swift":
+        return ["swift", "test", *(["--filter", "Integration"] if kind == "integration" else ["--skip", "Integration"]), "--xunit-output", out], out, "junit"
+    if lang == "kotlin":
+        g = "./gradlew" if root and os.path.exists(os.path.join(root, "gradlew")) else "gradle"
+        return [g, "test", "--console=plain", "--continue", *(["--tests", "*IntegrationTest"] if kind == "integration" else [])], None, "junit-glob"
+    if lang == "dart":
+        t = "flutter" if _dart_flutter(root) else "dart"
+        return [t, "test", "--reporter", "json", *(["--tags", "integration"] if kind == "integration" else ["--exclude-tags", "integration"])], None, "dartjson"
     if lang == "csharp":
         return ["dotnet", "test", "--filter", "Category=Integration" if kind == "integration" else "Category!=Integration", "--logger", f"trx;LogFileName={os.path.basename(out)}", "--results-directory", os.path.dirname(out)], out, "trx"
     raise ValueError(f"Unknown language '{lang}'. Choose from {', '.join(LANGUAGES)}.")
@@ -212,7 +255,7 @@ def run_tests(lang, kind, root, run=subprocess.run, which=shutil.which, timeout=
     """Run one language and kind in a checkout. Never raises: returns {ok, available, detail, tests, summary}."""
     if lang not in LANGUAGES or kind not in KINDS:
         raise ValueError(f"language is one of {', '.join(LANGUAGES)}; kind is unit or integration.")
-    tool = TOOL[lang]
+    tool = _tool(lang, root)
     if not which(tool):
         return {"language": lang, "kind": kind, "ok": False, "available": False, "detail": f"{tool} is not installed here, so {lang} {kind} tests cannot run", "tests": [], "summary": summarize([])}
     tmp = tempfile.mkdtemp(prefix="phx-ut-")
@@ -236,6 +279,10 @@ def run_tests(lang, kind, root, run=subprocess.run, which=shutil.which, timeout=
             tests = parse_go_json(p.stdout or "")
         elif parser == "cargo":
             tests = parse_cargo(p.stdout or "")
+        elif parser == "dartjson":
+            tests = parse_dart_json(p.stdout or "")
+        elif parser == "junit-glob":
+            tests = [t for f in sorted(glob.glob(os.path.join(root, "**", "build", "test-results", "**", "*.xml"), recursive=True)) for t in parse_junit(open(f, encoding="utf8").read())]
         elif parser == "tap":
             tests = parse_tap(p.stdout or "")
         elif parser == "jestjson":

@@ -52,7 +52,7 @@ def test_nothing_changed_is_said_plainly():
 
 
 def test_a_php_file_gets_a_phpunit_test_path():
-    async def model(p): return "<?php\nclass FooTest { public function testIt() {} }\n"
+    async def model(p): return "<?php\nclass FooTest { public function testIt() { $this->assertSame(1, 1); } }\n"
     repo = FakeRepo()
     r = run(H.unittests_handler(model, prompt, lambda rq: repo)({"repoRequest": {"project": "o/r", "files": ["src/c.php"]}, "results": []}))
     assert r["data"]["tests"][0]["language"] == "php" and r["data"]["tests"][0]["path"] == "tests/cTest.php"

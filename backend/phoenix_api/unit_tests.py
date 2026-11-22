@@ -161,12 +161,12 @@ async def generate_tests(files, read_file, call_json, get_prompt, findings=None,
             if not re.search(SHAPE[lang], body):
                 skipped.append({"source": source, "why": f"the answer has no {L['framework']} test in it"})
                 continue
-            if not has_assertion(lang, body):
-                skipped.append({"source": source, "why": "the tests have no assertion, so they could never fail"})
-                continue
             sx = syntax(lang, body)
             if not sx["ok"]:
                 skipped.append({"source": source, "why": f"syntax error: {sx.get('why')}"})
+                continue
+            if not has_assertion(lang, body):
+                skipped.append({"source": source, "why": "the tests have no assertion, so they could never fail"})
                 continue
             out.append({"path": L["test"](source), "source": source, "language": lang, "content": body if body.endswith("\n") else body + "\n", "flagged": len(flagged), "requirement": requirement.get("key", ""), "changed": bool(changes.get(source)),
                         "checks": {"syntax": "not checked (no toolchain here)" if sx.get("unchecked") else "ok"}})

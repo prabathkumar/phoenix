@@ -171,7 +171,8 @@ async def _execute(rec, steps, deps, inp, start=0):
             art, flags = release_checks.check_output(out.get("artifacts", {}), deps.env)
             if flags:
                 rec["flags"] = list(dict.fromkeys(rec.get("flags", []) + [f"{name}: {f}" for f in flags]))[:50]
-            st.update(status="needs-you" if out["needsYou"] else "passed" if out["ok"] else "failed", needsYou=out["needsYou"], summary=out["summary"], artifacts=art, flags=flags,
+            missing = out["ok"] and out["summary"].get("unavailable", 0) > 0  # nothing failed, but something could not run: that is not a pass
+            st.update(status="needs-you" if out["needsYou"] else "unavailable" if missing else "passed" if out["ok"] else "failed", needsYou=out["needsYou"], summary=out["summary"], artifacts=art, flags=flags,
                       detail=", ".join(f"{s['id']}={s['status']}" for s in out["stages"] if s["status"] != "skipped")[:300])
             handoff = signoff.scenarios_of_run(req["_run_id"], url) or handoff
             if out["needsYou"]:  # a person has to decide: stop here, resume later with approvals
@@ -180,7 +181,8 @@ async def _execute(rec, steps, deps, inp, start=0):
             _save(rec, url)
         else:
             bad = [s for s in rec["steps"] if s["status"] in ("failed",)]
-            rec["status"] = "failed" if bad else "passed"
+            gaps = [s for s in rec["steps"] if s["status"] == "unavailable"]
+            rec["status"] = "failed" if bad else "incomplete" if gaps else "passed"
             rec.pop("needsYou", None)
         rec["finishedAt"] = _now() if rec["status"] != "needs-you" else rec.get("finishedAt")
         _save(rec, url)

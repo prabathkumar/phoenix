@@ -421,3 +421,16 @@ def test_one_bug_for_everything_and_unit_tests_go_to_testops_first_then_jira():
         assert any(x["title"].startswith("Unit tests: ") and x["requirement"] == "SHP-1" for x in cases)          # in TestOps either way
         assert len([m for m in made if m[0].endswith("/issue")]) == expect                                                # in Jira only with approval
         assert (reg or [{}])[0].get("jira", "") == ("SHP-201" if allowed else "")
+
+
+def test_a_step_that_could_not_run_is_incomplete_not_passed(monkeypatch):
+    async def fake(req, deps):
+        return 200, {"ok": True, "needsYou": [], "summary": {"passed": 1, "unavailable": 1}, "stages": [{"id": "unittests", "status": "unavailable"}], "artifacts": {}}
+    monkeypatch.setattr(RE, "run_pipeline_request", fake)
+    class Live:
+        async def default_branch(self): return "main"
+        async def list_files(self, ref): return ["a.py"]
+    with app(connect_repo=lambda rq: Live()) as c:
+        r = c.post("/api/v1/events", json={"agent": "forge", "action": "write-unit-tests", "release": "R2026.11.3", "requirement": "Add numbers", "repo": {"provider": "github", "project": "org/app"}}, headers=H())
+        out = wait(c, r.json()["id"], until=("passed", "failed", "incomplete", "needs-you"))
+        assert out["status"] == "incomplete" and out["steps"][0]["status"] == "unavailable"

@@ -21,7 +21,7 @@ import urllib.error
 import urllib.request
 
 PROTOCOL = "2024-11-05"
-DONE = ("passed", "failed", "needs-you", "interrupted")
+DONE = ("passed", "failed", "incomplete", "needs-you", "interrupted")
 
 UNIT_STEPS = [{"agent": "forge", "action": "link-repo"}, {"agent": "forge", "action": "write-unit-tests"}, {"agent": "forge", "action": "run-unit-tests"}]
 SCAN_STEPS = [{"agent": "warden", "action": "scan"}]

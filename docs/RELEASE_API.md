@@ -26,7 +26,7 @@ Returns `202 {id, status:"queued", statusUrl, artifactsUrl}` at once.
 |---|---|
 | `GET /api/v1/actions` | agents and the actions each one does |
 | `POST /api/v1/events` | send an event |
-| `GET /api/v1/events/{id}` | status: queued, running, needs-you, passed, failed, interrupted; each agent's result and run id |
+| `GET /api/v1/events/{id}` | status: queued, running, needs-you, passed, failed, incomplete (nothing failed but a step could not run, e.g. no model or tool: not a pass), interrupted; each agent's result and run id |
 | `GET /api/v1/events/{id}/artifacts` | what was created: scenarios, cases, test-data field names (never values), unit-test files, API cases, pull request |
 | `POST /api/v1/events/{id}/approve` | `{"approvals": {"dast": true}}` continues an event that stopped at needs-you |
 

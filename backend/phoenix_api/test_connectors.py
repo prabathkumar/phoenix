@@ -7,6 +7,7 @@ Kinds: unit | integration. How a test is told apart is a convention per language
 A test is tied to a requirement when its name (or class) carries a requirement key such as PROJ-123 or REQ-7; that is how a requirement is followed from
 the case down to the code that proves it (lifecycle.py). Nothing here installs a toolchain: a missing one is reported as unavailable, never as a pass."""
 import json
+import fnmatch
 import glob
 import os
 import re
@@ -254,6 +255,29 @@ def _python_env(root, tmp):
         return None
 
 
+def _no_integration(lang, root):
+    """Plain-English reason when a repo has nothing following the integration convention (so the runner is not called and does not print confusing errors)."""
+    def files(pat):
+        for d, ds, fs in os.walk(root):
+            ds[:] = [x for x in ds if x not in ("node_modules", ".git", "target", "dist", "build")]
+            if any(fnmatch.fnmatch(f, pat) for f in fs):
+                return True
+        return False
+    if lang == "perl" and not os.path.isdir(os.path.join(root, "t", "integration")):
+        return "no t/integration folder"
+    if lang == "rust" and not glob.glob(os.path.join(root, "tests", "integration_*.rs")):
+        return "no tests/integration_*.rs files"
+    if lang == "typescript":
+        fw = _ts_framework(root)
+        if fw == "nestjs":
+            return None if os.path.exists(os.path.join(root, "test", "jest-e2e.json")) else "no test/jest-e2e.json"
+        if not files("*.integration.*"):
+            return "no *.integration.* test files"
+    if lang == "javascript" and not files("*.integration.test.js"):
+        return "no *.integration.test.js files"
+    return None
+
+
 def run_tests(lang, kind, root, run=subprocess.run, which=shutil.which, timeout=900, env=None):
     """Run one language and kind in a checkout. Never raises: returns {ok, available, detail, tests, summary}."""
     if lang not in LANGUAGES or kind not in KINDS:
@@ -261,6 +285,10 @@ def run_tests(lang, kind, root, run=subprocess.run, which=shutil.which, timeout=
     tool = _tool(lang, root)
     if not which(tool):
         return {"language": lang, "kind": kind, "ok": False, "available": False, "detail": f"{tool} is not installed here, so {lang} {kind} tests cannot run", "tests": [], "summary": summarize([])}
+    if kind == "integration" and root and os.path.isdir(root):
+        why = _no_integration(lang, root)
+        if why:
+            return {"language": lang, "kind": kind, "ok": False, "available": True, "detail": f"no integration tests were found: {why} (see the convention for {lang})", "tests": [], "summary": summarize([])}
     tmp = tempfile.mkdtemp(prefix="phx-ut-")
     out = os.path.join(tmp, "result.xml")
     argv, where, parser = command(lang, kind, out, root)

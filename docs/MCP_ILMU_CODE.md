@@ -28,3 +28,9 @@ For Claude Code: `claude mcp add testops-ai -e PHOENIX_URL=http://localhost:8000
 
 ## Not tested yet
 Against real Jira, GitLab or GitHub, and ILMU Code itself. Tests cover the protocol and the Release API with fakes (`backend/tests/test_mcp_server.py`).
+
+## Order of a full check, and the test-data question
+`testops_validate_code_and_run_tests`: link the repo; Semgrep code quality (TestOps name `sast`) and Gitleaks secrets (`secrets`); the AI checks the code against the requirement; it writes unit and integration tests, loaded in TestOps and shown; then the run **stops and asks who creates the test data**: `dataMode generate` (the AI makes mock data) or `dataMode file` (a person loads NAME,VALUE lines or JSON). Values the AI cannot make up (existing accounts, passwords, tokens) always need a file. Only then are the tests loaded into a fresh checkout and run. Answer with `testops_choose_test_data` (API: `POST /api/v1/events/{id}/data`). Pass `dataMode: generate` up front to skip the question.
+
+## Languages and frameworks
+JavaScript, TypeScript (Angular with Jasmine/Karma or Jest; NestJS with Jest and @nestjs/testing), Python (pytest, with Django, FastAPI or Flask helpers), Java, Go, C#, PHP, Rust (cargo test; Axum or Actix Web helpers), and Perl (Test::More via prove, only if installed). Frameworks are found from `package.json`, `requirements.txt`/`pyproject.toml` and `Cargo.toml`; a missing toolchain is reported as unavailable, never as a pass. Angular on Karma needs `karma-junit-reporter` for results.

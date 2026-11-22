@@ -60,9 +60,9 @@ def test_each_tool_sends_the_steps_it_promises():
     assert tool(srv, "testops_run_unit_tests", {"release": "1", "jiraKey": "SHP-1", "repo": repo})[1]["id"] == "e1"
     assert [s["action"] for s in sent[-1]["steps"]] == ["link-repo", "write-unit-tests", "run-unit-tests"] and sent[-1]["jiraKey"] == "SHP-1"
     tool(srv, "testops_run_unit_and_integration_tests", {"release": "1", "requirement": "x", "repo": repo})
-    assert [s["action"] for s in sent[-1]["steps"]] == ["link-repo", "write-unit-tests", "api-tests", "run-unit-tests"]
+    assert [s["action"] for s in sent[-1]["steps"]] == ["link-repo", "write-unit-tests", "run-unit-tests"]
     tool(srv, "testops_validate_code_and_run_tests", {"release": "1", "requirement": "x", "repo": repo})
-    assert [(s["agent"], s["action"]) for s in sent[-1]["steps"]] == [("forge", "link-repo"), ("warden", "scan"), ("warden", "trace-requirements"), ("forge", "write-unit-tests"), ("forge", "api-tests"), ("forge", "run-unit-tests")]
+    assert [(s["agent"], s["action"]) for s in sent[-1]["steps"]] == [("forge", "link-repo"), ("warden", "scan"), ("warden", "trace-requirements"), ("forge", "write-unit-tests"), ("forge", "run-unit-tests")]
     tool(srv, "testops_run_scans", {"release": "1", "repo": repo})
     assert sent[-1]["steps"] == [{"agent": "warden", "action": "scan"}]
     tool(srv, "testops_start_release", {"release": "1", "requirement": "x"})

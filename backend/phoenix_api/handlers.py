@@ -2,6 +2,7 @@
 import asyncio
 import json
 import os
+import posixpath
 import re
 import shutil
 import subprocess
@@ -306,7 +307,8 @@ class _CachedRepo:
 
 async def _finish_unit(rq, ref, allf, files, findings, changes, requirement, call_json, get_prompt, repo):
     if True:  # (kept at this indent)
-        r = await unit_tests.generate_tests(files, lambda f: repo.read_file(f, ref), call_json, get_prompt, findings, requirement=requirement, changes=changes)
+        fw = await unit_tests.detect_frameworks(allf, lambda f: repo.read_file(f, ref))
+        r = await unit_tests.generate_tests(files, lambda f: repo.read_file(f, ref), call_json, get_prompt, findings, requirement=requirement, changes=changes, frameworks=fw)
         for t in r["files"]:
             t["kind"], t["layer"] = "unit", "code"
         api = {"endpoints": [], "specFiles": []}
@@ -419,14 +421,28 @@ def unitrun_handler(project="", run_id="", env=None, run=None, which=None):
                 if host not in [x.strip().lower() for x in e.get("PHOENIX_UNIT_CLONE_HOSTS", "").split(",") if x.strip()]:
                     return {"unavailable": True, "detail": f"cloning from '{host or rq['cloneUrl']}' is not allowed: list trusted hosts in PHOENIX_UNIT_CLONE_HOSTS (running tests runs the repo's code)"}
                 root, cleanup = tcx.clone(rq["cloneUrl"], rq.get("ref", "")), True
+                for tf in rq.get("testFiles") or []:  # the tests the AI wrote are loaded into the checkout before anything runs
+                    rel = posixpath.normpath(str(tf.get("path") or ""))
+                    if not rel or rel.startswith(("/", "..")) or "\\" in rel or ".git/" in rel + "/":
+                        return {"unavailable": True, "detail": f"a test file has an unsafe path: {rel[:80]}"}
+                    dest = os.path.join(root, *rel.split("/"))
+                    os.makedirs(os.path.dirname(dest), exist_ok=True)
+                    with open(dest, "w", encoding="utf8") as fh:
+                        fh.write(str(tf.get("content") or ""))
             if not root or not os.path.isdir(root):
                 return {"unavailable": True, "detail": "give a checkout to run: repoRequest.dir (a folder on the server) or repoRequest.cloneUrl (https)"}
             kw = {k: v for k, v in (("run", run), ("which", which)) if v}
-            if rq.get("apiBaseUrl"):
-                bad = safe_target(rq["apiBaseUrl"])
-                if bad:
-                    return {"unavailable": True, "detail": f"apiBaseUrl not allowed: {bad}"}
-                kw["env"] = {**os.environ, "API_BASE_URL": str(rq["apiBaseUrl"])}
+            if rq.get("apiBaseUrl") or rq.get("dataEnv"):
+                extra = {}
+                if rq.get("apiBaseUrl"):
+                    bad = safe_target(rq["apiBaseUrl"])
+                    if bad:
+                        return {"unavailable": True, "detail": f"apiBaseUrl not allowed: {bad}"}
+                    extra["API_BASE_URL"] = str(rq["apiBaseUrl"])
+                for k, v in (rq.get("dataEnv") or {}).items():  # test data reaches the tests as environment variables; values are never stored or returned
+                    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", str(k)):
+                        extra[str(k)] = str(v)[:500]
+                kw["env"] = {**os.environ, **extra}
             results = tcx.run_all(root, rq.get("languages"), tuple(rq.get("kinds") or ("unit", "integration")), **kw)
         except (ValueError, OSError) as e:
             return {"unavailable": True, "detail": str(e)}

@@ -15,10 +15,10 @@ import tempfile
 import xml.etree.ElementTree as ET
 
 KEY = re.compile(r"(?<![A-Z0-9])([A-Z][A-Z0-9]{1,9})[-_](\d+)(?!\d)")  # PROJ-12, REQ_7 and Go-style TestREQ_7 (Go names cannot hold a dash)
-LANGUAGES = ("javascript", "typescript", "python", "java", "go", "csharp", "php")
+LANGUAGES = ("javascript", "typescript", "python", "java", "go", "csharp", "php", "perl", "rust")
 KINDS = ("unit", "integration")
-TOOL = {"javascript": "node", "typescript": "npx", "python": "python3", "java": "mvn", "go": "go", "csharp": "dotnet", "php": "php"}
-MARKERS = {"python": ("pyproject.toml", "requirements.txt", "setup.py", "pytest.ini"), "javascript": ("package.json",), "java": ("pom.xml", "build.gradle"), "php": ("composer.json", "phpunit.xml", "phpunit.xml.dist"), "go": ("go.mod",)}
+TOOL = {"javascript": "node", "typescript": "npx", "python": "python3", "java": "mvn", "go": "go", "csharp": "dotnet", "php": "php", "perl": "prove", "rust": "cargo"}
+MARKERS = {"python": ("pyproject.toml", "requirements.txt", "setup.py", "pytest.ini"), "javascript": ("package.json",), "java": ("pom.xml", "build.gradle"), "rust": ("Cargo.toml",), "perl": ("cpanfile", "Makefile.PL", "Build.PL", "dist.ini"), "php": ("composer.json", "phpunit.xml", "phpunit.xml.dist"), "go": ("go.mod",)}
 CONVENTIONS = {
     "python": "pytest; integration tests are marked @pytest.mark.integration, unit tests are everything else",
     "javascript": "node:test; integration tests are files named *.integration.test.js",
@@ -26,6 +26,8 @@ CONVENTIONS = {
     "java": "Maven; unit = surefire (mvn test), integration = failsafe (mvn verify, *IT.java)",
     "go": "go test; integration tests carry the build tag `integration`",
     "php": "PHPUnit (vendor/bin/phpunit); integration tests are in the `integration` testsuite or carry @group integration",
+    "rust": "cargo test; AI-written unit tests are tests/unit_*.rs, integration tests are tests/integration_*.rs (in-source #[cfg(test)] tests run as unit too)",
+    "perl": "Test::More run with prove; integration tests live in t/integration/, unit tests in t/ (only if Perl is installed)",
     "csharp": "xUnit; integration tests have [Trait(\"Category\", \"Integration\")]",
 }
 
@@ -48,14 +50,65 @@ def availability(which=shutil.which):
     return {lang: {"tool": TOOL[lang], "available": bool(which(TOOL[lang])), "convention": CONVENTIONS[lang]} for lang in LANGUAGES}
 
 
+def _ts_framework(root):
+    """nestjs | angular-jest | angular (Karma) | None, from the checkout's package.json."""
+    try:
+        j = json.load(open(os.path.join(root, "package.json"), encoding="utf8"))
+    except (OSError, ValueError):
+        return None
+    d = {**(j.get("dependencies") or {}), **(j.get("devDependencies") or {})}
+    if "@nestjs/core" in d:
+        return "nestjs"
+    if "@angular/core" in d:
+        return "angular-jest" if ("jest" in d or "jest-preset-angular" in d) else "angular"
+    return None
+
+
+def parse_jest_json(text):
+    try:
+        j = json.loads(text)
+    except ValueError:
+        return []
+    return [_t(a.get("fullName") or a.get("title"), {"passed": "passed", "failed": "failed"}.get(a.get("status"), "skipped"), int(a.get("duration") or 0)) for r in j.get("testResults", []) for a in r.get("assertionResults", [])]
+
+
+def parse_cargo(text):
+    return [_t(m.group(1), {"ok": "passed", "FAILED": "failed"}.get(m.group(2), "skipped")) for m in re.finditer(r"^test (\S+) \.\.\. (ok|FAILED|ignored)", text, re.M)]
+
+
+def parse_tap(text):
+    out = []
+    for line in text.splitlines():
+        m = re.match(r"^(not ok|ok)\s+\d+\s*(?:-\s*)?(.*)$", line)
+        if not m:
+            continue
+        name, skip = m.group(2), bool(re.search(r"#\s*skip", m.group(2), re.I))
+        name = re.sub(r"\s*#\s*(skip|todo).*$", "", name, flags=re.I).strip() or "test"
+        out.append(_t(name, "skipped" if skip else "passed" if m.group(1) == "ok" else "failed"))
+    return out
+
+
 # ---- commands: (argv, where the result file is, parser name)
-def command(lang, kind, out):
+def command(lang, kind, out, root=None):
     if lang == "python":
         return ["python3", "-m", "pytest", "-q", "-m", "integration" if kind == "integration" else "not integration", f"--junitxml={out}"], out, "junit"
     if lang == "javascript":
         pat = "**/*.integration.test.js" if kind == "integration" else "**/*.test.js"
         args = ["node", "--test", "--test-reporter=junit", f"--test-reporter-destination={out}"]
         return args + ([pat] if kind == "integration" else [pat, "--test-skip-pattern=__none__"]), out, "junit"
+    if lang == "rust":
+        return (["cargo", "test", "--test", "integration_*"] if kind == "integration" else ["cargo", "test", "--lib", "--bins", "--test", "unit_*"]), None, "cargo"
+    if lang == "perl":
+        return ["prove", "-v", *(["-r", "t/integration"] if kind == "integration" else ["t"])], None, "tap"
+    if lang == "typescript" and root and _ts_framework(root) in ("nestjs", "angular-jest"):
+        if _ts_framework(root) == "nestjs":
+            a = ["--config", "test/jest-e2e.json"] if kind == "integration" else ["--testPathIgnorePatterns", "e2e"]
+        else:
+            a = ["--testPathPattern", "integration"] if kind == "integration" else ["--testPathIgnorePatterns", "integration"]
+        return ["npx", "jest", "--ci", *a, "--json", f"--outputFile={out}"], out, "jestjson"
+    if lang == "typescript" and root and _ts_framework(root) == "angular":
+        sel = ["--include=**/*.integration.spec.ts"] if kind == "integration" else ["--exclude=**/*.integration.spec.ts"]
+        return ["npx", "ng", "test", "--watch=false", "--browsers=ChromeHeadless", "--reporters=junit", *sel], out, "junit"
     if lang == "typescript":
         flt = ["integration"] if kind == "integration" else ["--exclude", "**/*.integration.*"]
         return ["npx", "vitest", "run", "--reporter=junit", f"--outputFile={out}", *flt], out, "junit"
@@ -135,11 +188,17 @@ def run_tests(lang, kind, root, run=subprocess.run, which=shutil.which, timeout=
         return {"language": lang, "kind": kind, "ok": False, "available": False, "detail": f"{tool} is not installed here, so {lang} {kind} tests cannot run", "tests": [], "summary": summarize([])}
     tmp = tempfile.mkdtemp(prefix="phx-ut-")
     out = os.path.join(tmp, "result.xml")
-    argv, where, parser = command(lang, kind, out)
+    argv, where, parser = command(lang, kind, out, root)
     try:
         p = run(argv, cwd=root, capture_output=True, text=True, timeout=timeout, **({"env": env} if env else {}))
         if parser == "gojson":
             tests = parse_go_json(p.stdout or "")
+        elif parser == "cargo":
+            tests = parse_cargo(p.stdout or "")
+        elif parser == "tap":
+            tests = parse_tap(p.stdout or "")
+        elif parser == "jestjson":
+            tests = parse_jest_json(open(out, encoding="utf8").read()) if os.path.exists(out) else []
         elif parser == "junit-dir":
             d = os.path.join(root, where)
             tests = [t for f in sorted(os.listdir(d)) if f.endswith(".xml") for t in parse_junit(open(os.path.join(d, f), encoding="utf8").read())] if os.path.isdir(d) else []

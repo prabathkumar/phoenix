@@ -3,6 +3,7 @@ Languages: JavaScript, TypeScript, Python, Java, Go, C#, PHP. Semgrep findings s
 Checks: not empty, right test shape, real syntax check where a toolchain exists (node, python). The generated tests are NOT run here; the repo's CI runs them on the pull request."""
 import ast
 import json
+import os
 import posixpath
 import re
 import subprocess
@@ -14,11 +15,13 @@ LANGS = {
     "java": {"ext": (".java",), "framework": "JUnit 5 (org.junit.jupiter)", "test": lambda f: re.sub(r"\.java$", "Test.java", re.sub(r"(^|/)src/main/", r"\1src/test/", f))},
     "go": {"ext": (".go",), "framework": "the standard testing package", "test": lambda f: re.sub(r"\.go$", "_test.go", f)},
     "php": {"ext": (".php",), "framework": "PHPUnit (PHPUnit\\Framework\\TestCase)", "test": lambda f: re.sub(r"\.php$", "Test.php", re.sub(r"(^|/)(src|app|lib)/", r"\1tests/", f))},
+    "rust": {"ext": (".rs",), "framework": "Rust's built-in test harness run by cargo test (#[test], assert_eq!); tokio::test for async", "test": lambda f: posixpath.join("tests", ("unit_" + re.sub(r"\W+", "_", re.sub(r"^(src)/", "", posixpath.splitext(f)[0])).strip("_").lower()) + ".rs")},
+    "perl": {"ext": (".pl", ".pm"), "framework": "Test::More (use Test::More; run with prove)", "test": lambda f: posixpath.join("t", re.sub(r"\W+", "_", re.sub(r"^(lib|src)/", "", posixpath.splitext(f)[0])).strip("_").lower() + ".t")},
     "csharp": {"ext": (".cs",), "framework": "xUnit", "test": lambda f: re.sub(r"\.cs$", "Tests.cs", f)},
 }
 IGNORE = re.compile(r"(^|/)(node_modules|vendor|dist|build|target|bin|obj|\.git|generated)/")
-IS_TEST = re.compile(r"(Test\.php$|\.test\.|\.spec\.|_test\.|(^|/)test_|Tests?\.(java|cs)$|(^|/)(tests?|__tests__)/)", re.I)
-SHAPE = {"javascript": r"\b(test|it|describe)\s*\(", "typescript": r"\b(test|it|describe)\s*\(", "python": r"\bdef test_", "java": r"@Test\b", "go": r"func Test\w+\(t \*testing\.T\)", "csharp": r"\[(Fact|Theory)\]", "php": r"function test\w+\(|@test\b|#\[Test\]"}
+IS_TEST = re.compile(r"(\.t$|(^|/)t/.+\.t$|Test\.php$|\.test\.|\.spec\.|_test\.|(^|/)test_|Tests?\.(java|cs)$|(^|/)(tests?|__tests__)/)", re.I)
+SHAPE = {"javascript": r"\b(test|it|describe)\s*\(", "typescript": r"\b(test|it|describe)\s*\(", "python": r"\bdef test_", "java": r"@Test\b", "go": r"func Test\w+\(t \*testing\.T\)", "csharp": r"\[(Fact|Theory)\]", "rust": r"#\[(tokio::|actix_web::|actix_rt::)?test\]", "perl": r"use Test::More|\b(ok|is|is_deeply|like|cmp_ok)\s*\(", "php": r"function test\w+\(|@test\b|#\[Test\]"}
 
 
 def language_of(f):
@@ -55,6 +58,13 @@ def syntax_check(lang, code, run=subprocess.run):
         if lang == "php":
             r = run(["php", "-l"], input=code, capture_output=True, text=True, timeout=20)
             return {"ok": True} if r.returncode == 0 else {"ok": False, "why": (r.stdout or r.stderr).splitlines()[0] if (r.stdout or r.stderr) else "syntax error"}
+        if lang == "perl":
+            import tempfile
+            with tempfile.NamedTemporaryFile("w", suffix=".pl", delete=False) as fh:
+                fh.write(code)
+            r = run(["perl", "-c", fh.name], capture_output=True, text=True, timeout=20)
+            os.unlink(fh.name)
+            return {"ok": True} if r.returncode == 0 else {"ok": False, "why": (r.stderr.splitlines() or ["syntax error"])[0][:200]}
         if lang == "javascript":
             r = run(["node", "--check", "--input-type=module", "-"], input=code, capture_output=True, text=True, timeout=20)
             return {"ok": True} if r.returncode == 0 or re.search(r"require is not defined|Cannot use import", r.stderr) else {"ok": False, "why": r.stderr.splitlines()[0] if r.stderr else "syntax error"}
@@ -69,7 +79,46 @@ def _strip_fence(s):
     return re.sub(r"\n?```\s*$", "", re.sub(r"^\s*```[\w+-]*\n?", "", str(s or "")))
 
 
-async def generate_tests(files, read_file, call_json, get_prompt, findings=None, syntax=syntax_check, requirement=None, changes=None):
+FRAMEWORKS = {  # a framework inside a language: how its tests are written. Found from the repo's own files, never guessed by the model.
+    "angular": ("typescript", "Angular TestBed with Jasmine (describe/it/expect, TestBed.configureTestingModule). If the repo uses Jest, use Jest's expect and jest.fn()"),
+    "nestjs": ("typescript", "Jest with @nestjs/testing (Test.createTestingModule), providers mocked with jest.fn()"),
+    "axum": ("rust", "cargo test; test Axum handlers with tower::ServiceExt::oneshot on the Router and axum::body, #[tokio::test] for async"),
+    "actix": ("rust", "cargo test; test Actix Web handlers with actix_web::test (init_service, TestRequest), #[actix_web::test] for async"),
+    "django": ("python", "pytest with pytest-django (client fixture, @pytest.mark.django_db for database access)"),
+    "fastapi": ("python", "pytest with fastapi.testclient.TestClient"),
+    "flask": ("python", "pytest with app.test_client()"),
+}
+
+
+async def detect_frameworks(all_files, read_file):
+    """-> {language: framework name} for Angular and NestJS (package.json), Django, FastAPI and Flask (requirements.txt, pyproject.toml, Pipfile)."""
+    found = {}
+    try:
+        if "package.json" in all_files:
+            deps = json.loads(await read_file("package.json"))
+            d = {**(deps.get("dependencies") or {}), **(deps.get("devDependencies") or {})}
+            if "@angular/core" in d:
+                found["typescript"] = "angular"
+            elif "@nestjs/core" in d:
+                found["typescript"] = "nestjs"
+        if "Cargo.toml" in all_files:
+            t = (await read_file("Cargo.toml")).lower()
+            found["rust"] = "axum" if re.search(r"^\s*axum\s*=", t, re.M) else "actix" if re.search(r"^\s*actix-web\s*=", t, re.M) else "rust"
+        for f in ("requirements.txt", "pyproject.toml", "Pipfile"):
+            if f in all_files:
+                t = (await read_file(f)).lower()
+                for name in ("django", "fastapi", "flask"):
+                    if re.search(rf"(^|[\s\"'=<>~!]){name}([\s\"'=<>~!\[,;]|$)", t):
+                        found["python"] = name
+                        break
+                if "python" in found:
+                    break
+    except Exception:
+        pass
+    return found
+
+
+async def generate_tests(files, read_file, call_json, get_prompt, findings=None, syntax=syntax_check, requirement=None, changes=None, frameworks=None):
     """requirement = {key, text}: every test is named with the key so the requirement can be followed to the code that proves it.
     changes = {path: diff text}: the model is told what changed and asked to cover that behaviour first."""
     out, skipped, findings = [], [], findings or {}
@@ -77,6 +126,9 @@ async def generate_tests(files, read_file, call_json, get_prompt, findings=None,
     for source in files:
         lang = language_of(source)
         L = LANGS[lang]
+        fw = (frameworks or {}).get(lang)
+        if fw in FRAMEWORKS:
+            L = {**L, "framework": FRAMEWORKS[fw][1], **({"test": lambda f: re.sub(r"\.tsx?$", ".spec.ts", f)} if fw in ("angular", "nestjs") else {})}
         try:
             code = await read_file(source)
             if len(code) > 40000:

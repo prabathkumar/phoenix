@@ -19,7 +19,7 @@ from fastapi.responses import JSONResponse
 
 import copy
 
-from . import agents, api_keys, db, registry, release_checks, requirements_loader, run_record, signoff
+from . import agents, api_keys, db, registry, release_checks, requirements_loader, run_record, signoff, testdata
 from .service import run_pipeline_request
 
 KIND = "event"
@@ -41,8 +41,42 @@ ACTIONS = {
     "measure": {"measure": ["measure"], "confirm": ["confirm"]},
 }
 TEAM = ["scout", "scribe", "mint", "forge", "runner", "tracer", "pacer", "warden", "prowler", "judge", "herald", "mentor", "measure"]
-INPUT = ("requirement", "requirementUrl", "jiraKey", "jira", "web", "mobile", "testData", "cases", "scenarios", "allowPartial", "repo", "evaluate", "ruleset", "approvals", "task", "appUrl", "project", "retest", "defectMode")
+INPUT = ("dataMode", "requirement", "requirementUrl", "jiraKey", "jira", "web", "mobile", "testData", "cases", "scenarios", "allowPartial", "repo", "evaluate", "ruleset", "approvals", "task", "appUrl", "project", "retest", "defectMode")
 _tasks, _sem = set(), {}
+_INPUT_SECRET = {}  # event id -> the testData the caller sent (may hold passwords): memory only, never in a record
+_DATA = {}  # event id -> test data values a person loaded from a file. Kept in memory only: values are never written to a record
+
+
+def _test_files(rec, upto):
+    """The test files earlier steps wrote (unit and integration), by path."""
+    out = {}
+    for s in rec["steps"][:upto]:
+        a = s.get("artifacts") or {}
+        for t in list(a.get("unitTests") or []):
+            if isinstance(t, dict) and t.get("path") and t.get("content"):
+                out[t["path"]] = t["content"]
+    return out
+
+
+def parse_data_file(text):
+    """A file of NAME,VALUE lines (or a JSON object) -> {name: value}. Up to 50 short pairs."""
+    text = str(text or "").strip()
+    if not text:
+        raise ValueError("The data file is empty.")
+    try:
+        d = json.loads(text)
+        if not isinstance(d, dict):
+            raise ValueError("A JSON data file must be an object of NAME: value pairs.")
+    except json.JSONDecodeError:
+        d = {}
+        for line in text.splitlines():
+            if line.strip() and not line.lstrip().startswith("#"):
+                k, _, v = line.partition(",")
+                if k.strip().upper() != "NAME":
+                    d[k.strip()] = v.strip().strip('"')
+    if not d or len(d) > 50 or any(not re.fullmatch(r"[A-Za-z_][\w.-]{0,63}", str(k)) or not isinstance(v, (str, int, float, bool)) or len(str(v)) > 500 for k, v in d.items()):
+        raise ValueError("The data file needs 1 to 50 NAME,VALUE lines (names are letters, digits, _ . -; values are short).")
+    return {str(k): v for k, v in d.items()}
 
 
 def _now():
@@ -131,11 +165,12 @@ def _save(rec, url):
 
 
 def _summary(rec):
-    return {k: rec[k] for k in ("id", "release", "project", "jiraProject", "agent", "action", "caller", "status", "createdAt", "finishedAt", "steps", "needsYou", "callback", "detail", "flags", "warnings") if k in rec}
+    return {k: rec[k] for k in ("id", "release", "project", "jiraProject", "agent", "action", "caller", "status", "createdAt", "finishedAt", "steps", "needsYou", "callback", "detail", "flags", "warnings", "question", "tests", "dataMode") if k in rec}
 
 
 async def _execute(rec, steps, deps, inp, start=0):
     url = deps.db
+    inp = {**(rec.get("input") or {}), **({"testData": _INPUT_SECRET[rec["id"]]} if rec["id"] in _INPUT_SECRET else {}), **inp}  # a resumed event keeps what it was started with
     handoff = next((h for h in (signoff.scenarios_of_run(x['runId'], url) for x in reversed(rec['steps'][:start]) if x.get('runId')) if h), [])
     async with _sem.setdefault("s", asyncio.Semaphore(int(deps.env.get("PHOENIX_API_MAX_RUNS", "2") or 2))):
         rec["status"] = "running"
@@ -154,6 +189,28 @@ async def _execute(rec, steps, deps, inp, start=0):
                 continue
             if stages:
                 req["stages"] = [s for s in req["stages"] if s in stages]
+            if stages and "unitrun" in stages and _test_files(rec, n):
+                files = _test_files(rec, n)
+                mode = inp.get("dataMode") or rec.get("dataMode")
+                if mode not in ("generate", "file"):  # the tests are written and loaded in TestOps; now ask who supplies the data
+                    rec.update(status="needs-you", needsYou=["test-data"], resumeAt=n, tests=sorted(files),
+                               question="The unit and integration tests are written and loaded in TestOps (see tests). Who creates the test data? Send dataMode \"generate\" (the AI makes mock data) or dataMode \"file\" with your own data file.")
+                    st.update(status="needs-you", needsYou=["test-data"])
+                    break
+                plan = testdata.plan_test_data(testdata.required_names(list(files.values())), _DATA.get(rec["id"]) if mode == "file" else {}, rec["id"], deps.env)
+                if plan["needs_you"]:
+                    rec.update(status="needs-you", needsYou=["test-data"], resumeAt=n, dataMode=None, tests=sorted(files),
+                               question=f"These values cannot be made up (accounts and secrets that already exist): {', '.join(plan['needs_you'])}. Load a data file with them (dataMode \"file\").")
+                    st.update(status="needs-you", needsYou=["test-data"])
+                    break
+                r0 = given.get("repo") or {}
+                host = "gitlab.com" if r0.get("provider") == "gitlab" else "github.com"
+                req["repo"] = {**r0, "cloneUrl": f"https://{host}/{r0.get('project')}.git", "ref": r0.get("head") or r0.get("ref") or "",
+                               "testFiles": [{"path": k, "content": v} for k, v in files.items()], "dataEnv": plan["values"], "apiBaseUrl": given.get("appUrl") or ""}
+                if not req["repo"]["ref"]:
+                    req["repo"].pop("ref")
+                if not req["repo"]["apiBaseUrl"]:
+                    req["repo"].pop("apiBaseUrl")
             if handoff and not req.get("cases") and not req.get("scenarios"):
                 req["scenarios"] = handoff
             req.pop("_platform", None)
@@ -289,6 +346,9 @@ def mount(app, D):
         eid = f"evt-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{secrets.token_hex(3)}"
         rec = {"id": eid, "release": release, "project": reg["project"]["id"], "jiraProject": reg["project"]["jiraProjectKey"], "agent": "custom" if "steps" in body else str(body["agent"]).lower(), "action": "steps" if "steps" in body else str(body["action"]).lower(), "caller": c, "warnings": warnings, "status": "queued", "createdAt": _now(),
                "callbackUrl": body.get("callbackUrl") or None, "steps": [{"agent": a, "stages": s, "status": "waiting"} for a, s in steps]}
+        rec["input"] = {k: body[k] for k in INPUT if k in body and k != "testData"}
+        if body.get("testData"):
+            _INPUT_SECRET[eid] = body["testData"]
         _save(rec, url)
         _spawn(_execute(rec, steps, _deps_for(D, rec["jiraProject"]), {k: body[k] for k in INPUT if k in body}))
         return {**_summary(rec), "statusUrl": f"/api/v1/events/{eid}", "artifactsUrl": f"/api/v1/events/{eid}/artifacts"}
@@ -301,6 +361,28 @@ def mount(app, D):
     def artifacts(eid: str, authorization: str = Header(default=""), x_api_key: str = Header(default="")):
         rec = mine(eid, who(authorization, x_api_key))
         return {"id": eid, "release": rec["release"], "status": rec["status"], "flags": rec.get("flags", []), "agents": {s["agent"]: s.get("artifacts", {}) for s in rec["steps"]}}
+
+    @app.post("/api/v1/events/{eid}/data", status_code=202)
+    async def choose_data(eid: str, body: dict = Body(default={}), authorization: str = Header(default=""), x_api_key: str = Header(default="")):
+        """Answers the test-data question: the AI makes mock data (dataMode "generate"), or a person loads a file (dataMode "file" + dataFile)."""
+        c = who(authorization, x_api_key)
+        rec = mine(eid, c)
+        if rec["status"] != "needs-you" or "test-data" not in (rec.get("needsYou") or []):
+            raise HTTPException(409, "This event is not waiting for test data.")
+        mode = body.get("dataMode")
+        if mode not in ("generate", "file"):
+            raise HTTPException(400, 'dataMode is "generate" (the AI makes mock data) or "file" (send the file as dataFile).')
+        if mode == "file":
+            try:
+                _DATA[eid] = parse_data_file(body.get("dataFile"))
+            except ValueError as e:
+                raise HTTPException(400, str(e))
+        rec.update(status="queued", dataMode=mode)
+        rec.pop("question", None)
+        _save(rec, url)
+        steps = [(s["agent"], s.get("stages")) for s in rec["steps"]]
+        _spawn(_execute(rec, steps, _deps_for(D, rec.get("jiraProject")), {"dataMode": mode, **{k: rec[k] for k in ()}}, rec.get("resumeAt", 0)))
+        return _summary(rec)
 
     @app.post("/api/v1/events/{eid}/approve", status_code=202)
     async def approve(eid: str, body: dict = Body(default={}), authorization: str = Header(default=""), x_api_key: str = Header(default="")):

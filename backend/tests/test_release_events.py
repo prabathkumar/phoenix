@@ -1,3 +1,4 @@
+import json
 import asyncio
 import hashlib
 import time
@@ -449,3 +450,67 @@ def test_github_can_be_read_without_a_token_but_not_changed():
         asyncio.run(r._call("POST", "/repos/o/a/pulls", {}))
     with pytest.raises(ValueError, match="GITLAB_TOKEN"):
         R.Repo("gitlab", "o/a", None)
+
+
+def _unit_steps_app(monkeypatch, content):
+    seen = []
+
+    async def fake(req, deps):
+        if "unittests" in req["stages"]:
+            return 200, {"ok": True, "needsYou": [], "summary": {"passed": 1}, "stages": [{"id": "unittests", "status": "passed"}], "artifacts": {"unitTests": [{"path": "tests/test_a.py", "content": content, "language": "python", "kind": "unit"}]}}
+        seen.append(req)
+        return 200, {"ok": True, "needsYou": [], "summary": {"passed": 1}, "stages": [{"id": "unitrun", "status": "passed"}], "artifacts": {}}
+    monkeypatch.setattr(RE, "run_pipeline_request", fake)
+
+    class Live:
+        async def default_branch(self): return "main"
+        async def list_files(self, ref): return ["a.py"]
+    return seen, app(connect_repo=lambda rq: Live())
+
+
+BODY = {"steps": [{"agent": "forge", "action": "write-unit-tests"}, {"agent": "forge", "action": "run-unit-tests"}], "release": "R2026.11.3", "requirement": "Add numbers",
+        "repo": {"provider": "github", "project": "org/app", "head": "main"}}
+
+
+def test_tests_are_written_then_the_data_question_is_asked_before_anything_runs(monkeypatch):
+    seen, a = _unit_steps_app(monkeypatch, "def test_x():\n    assert '${CUSTOMER_NAME}'\n")
+    with a as c:
+        r = c.post("/api/v1/events", json=BODY, headers=H())
+        out = wait(c, r.json()["id"])
+        assert out["status"] == "needs-you" and out["needsYou"] == ["test-data"] and out["tests"] == ["tests/test_a.py"] and "dataMode" in out["question"] and not seen
+        assert c.post(f"/api/v1/events/{out['id']}/data", json={"dataMode": "nope"}, headers=H()).status_code == 400
+        assert c.post(f"/api/v1/events/{out['id']}/data", json={"dataMode": "generate"}, headers=H()).status_code == 202
+        done = wait(c, out["id"], until=("passed", "failed", "incomplete", "needs-you"))
+        assert done["status"] == "passed" and seen
+        rq = seen[0]["repo"]
+        assert rq["cloneUrl"] == "https://github.com/org/app.git" and rq["testFiles"][0]["path"] == "tests/test_a.py" and "CUSTOMER_NAME" in rq["dataEnv"]  # mock values were made for what can be made up
+
+
+def test_a_person_loads_a_file_for_what_cannot_be_made_up_and_the_values_are_never_returned(monkeypatch):
+    seen, a = _unit_steps_app(monkeypatch, "def test_x():\n    login('${LOGIN_PASSWORD}')\n")
+    with a as c:
+        out = wait(c, c.post("/api/v1/events", json=BODY, headers=H()).json()["id"])
+        eid = out["id"]
+        c.post(f"/api/v1/events/{eid}/data", json={"dataMode": "generate"}, headers=H())
+        again = wait(c, eid)
+        assert again["status"] == "needs-you" and "LOGIN_PASSWORD" in again["question"] and not seen  # an existing account's password cannot be invented
+        assert c.post(f"/api/v1/events/{eid}/data", json={"dataMode": "file", "dataFile": "not a valid line"}, headers=H()).status_code == 400
+        assert c.post(f"/api/v1/events/{eid}/data", json={"dataMode": "file", "dataFile": "NAME,VALUE\nLOGIN_PASSWORD,Zx9-secret\n"}, headers=H()).status_code == 202
+        done = wait(c, eid, until=("passed", "failed", "incomplete", "needs-you"))
+        assert done["status"] == "passed" and seen[0]["repo"]["dataEnv"] == {"LOGIN_PASSWORD": "Zx9-secret"}
+        assert "Zx9-secret" not in json.dumps(c.get(f"/api/v1/events/{eid}", headers=H()).json()) + json.dumps(c.get(f"/api/v1/events/{eid}/artifacts", headers=H()).json())
+
+
+def test_the_caller_can_choose_mock_data_up_front(monkeypatch):
+    seen, a = _unit_steps_app(monkeypatch, "def test_x():\n    assert '${CUSTOMER_NAME}'\n")
+    with a as c:
+        out = wait(c, c.post("/api/v1/events", json={**BODY, "dataMode": "generate"}, headers=H()).json()["id"], until=("passed", "failed", "incomplete", "needs-you"))
+        assert out["status"] == "passed" and seen
+
+
+def test_data_file_parsing():
+    assert RE.parse_data_file("# c\nNAME,VALUE\nA,1\nB,\"x y\"\n") == {"A": "1", "B": "x y"}
+    assert RE.parse_data_file('{"A": "1"}') == {"A": "1"}
+    for bad in ("", "[1]", "1bad,x"):
+        with pytest.raises(ValueError):
+            RE.parse_data_file(bad)

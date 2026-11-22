@@ -24,9 +24,9 @@ PROTOCOL = "2024-11-05"
 DONE = ("passed", "failed", "incomplete", "needs-you", "interrupted")
 
 UNIT_STEPS = [{"agent": "forge", "action": "link-repo"}, {"agent": "forge", "action": "write-unit-tests"}, {"agent": "forge", "action": "run-unit-tests"}]
-BOTH_STEPS = [{"agent": "forge", "action": "link-repo"}, {"agent": "forge", "action": "write-unit-tests"}, {"agent": "forge", "action": "api-tests"}, {"agent": "forge", "action": "run-unit-tests"}]
+BOTH_STEPS = [{"agent": "forge", "action": "link-repo"}, {"agent": "forge", "action": "write-unit-tests"}, {"agent": "forge", "action": "run-unit-tests"}]
 FULL_STEPS = [{"agent": "forge", "action": "link-repo"}, {"agent": "warden", "action": "scan"}, {"agent": "warden", "action": "trace-requirements"},
-              {"agent": "forge", "action": "write-unit-tests"}, {"agent": "forge", "action": "api-tests"}, {"agent": "forge", "action": "run-unit-tests"}]
+              {"agent": "forge", "action": "write-unit-tests"}, {"agent": "forge", "action": "run-unit-tests"}]
 SCAN_STEPS = [{"agent": "warden", "action": "scan"}]
 
 COMMON = {
@@ -36,6 +36,7 @@ COMMON = {
     "requirement": {"type": "string", "description": "The requirement text, if there is no Jira id."},
     "repo": {"type": "object", "description": "{provider: github|gitlab, project: 'org/app', base: ref, head: ref}"},
     "appUrl": {"type": "string", "description": "Test target; must be on the server's allowlist."},
+    "dataMode": {"type": "string", "enum": ["generate"], "description": "Set generate to let the AI make mock test data without asking. Leave it out to be asked before the tests run."},
     "wait": {"type": "boolean", "description": "Wait for the result (up to waitSeconds) instead of returning the run id at once."},
     "waitSeconds": {"type": "integer", "description": "How long to wait, default 120."},
 }
@@ -58,6 +59,9 @@ TOOLS = [
      "inputSchema": _schema(COMMON)},
     {"name": "testops_send_event", "description": "Advanced: send any agent and action, or your own list of steps [{agent, action}], exactly as the Release API takes them.",
      "inputSchema": _schema({**COMMON, "agent": {"type": "string"}, "action": {"type": "string"}, "steps": {"type": "array", "items": {"type": "object"}}})},
+    {"name": "testops_choose_test_data", "description": "Answer the test-data question when a run stops at needs-you (needsYou includes test-data): mode generate = the AI makes mock data; mode file = a person's own data file, sent as text of NAME,VALUE lines or a JSON object. The tests were already written and loaded in TestOps; they run after this.",
+     "inputSchema": _schema({"id": {"type": "string"}, "mode": {"type": "string", "enum": ["generate", "file"]}, "file": {"type": "string", "description": "NAME,VALUE lines or a JSON object; only for mode file."},
+                             "wait": COMMON["wait"], "waitSeconds": COMMON["waitSeconds"]}, ["id", "mode"])},
     {"name": "testops_get_status", "description": "Status of a run: queued, running, needs-you, passed, failed or interrupted, with each agent's result.",
      "inputSchema": _schema({"id": {"type": "string"}, "wait": COMMON["wait"], "waitSeconds": COMMON["waitSeconds"]}, ["id"])},
     {"name": "testops_get_evidence", "description": "What the run created: scenarios, cases, unit-test files, findings and the pull request. Secrets are redacted.",
@@ -96,7 +100,7 @@ class Server:
 
     # -- tool bodies -------------------------------------------------------
     def _event(self, a: dict, base: dict) -> dict:
-        body = {k: a[k] for k in ("release", "project", "jiraKey", "requirement", "repo", "appUrl", "task") if a.get(k)}
+        body = {k: a[k] for k in ("release", "project", "jiraKey", "requirement", "repo", "appUrl", "task", "dataMode") if a.get(k)}
         body.update(base)
         ev = self.call("POST", "/api/v1/events", body)
         out = {"id": ev["id"], "status": ev.get("status", "queued")}
@@ -126,6 +130,9 @@ class Server:
         if name == "testops_send_event":
             base = {k: a[k] for k in ("agent", "action", "steps") if a.get(k)}
             return self._event(a, base)
+        if name == "testops_choose_test_data":
+            self.call("POST", f"/api/v1/events/{a['id']}/data", {"dataMode": a["mode"], **({"dataFile": a["file"]} if a.get("file") else {})})
+            return self._wait(a["id"], a.get("waitSeconds")) if a.get("wait") else {"id": a["id"], "status": "queued"}
         if name == "testops_get_status":
             return self._wait(a["id"], a.get("waitSeconds")) if a.get("wait") else self.call("GET", f"/api/v1/events/{a['id']}")
         if name == "testops_get_evidence":

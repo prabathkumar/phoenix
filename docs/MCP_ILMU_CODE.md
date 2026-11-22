@@ -34,3 +34,6 @@ Against real Jira, GitLab or GitHub, and ILMU Code itself. Tests cover the proto
 
 ## Languages and frameworks
 JavaScript, TypeScript (Angular with Jasmine/Karma or Jest; NestJS with Jest and @nestjs/testing), Python (pytest, with Django, FastAPI or Flask helpers), Java, Go, C#, PHP, Rust (cargo test; Axum or Actix Web helpers), and Perl (Test::More via prove, only if installed). Frameworks are found from `package.json`, `requirements.txt`/`pyproject.toml` and `Cargo.toml`; a missing toolchain is reported as unavailable, never as a pass. Angular on Karma needs `karma-junit-reporter` for results.
+
+## Proven tests (our difference)
+A test that only runs the code proves nothing, and high coverage can hide that. So an AI-written test must first contain an assertion, and after it passes Phoenix makes small deliberate changes to the code under test (`==` to `!=`, `and` to `or`, `+` to `-`, `true` to `false`), one at a time, and runs the tests again (`backend/phoenix_api/proof.py`). Changes the tests notice are **caught**; changes nobody notices **survived**. If fewer than half are caught (`PHOENIX_PROOF_MIN`, default 0.5) the unit run is reported as **failed: tests too weak**, with the surviving changes listed. The result is in the run's `proof` data. Needs at least 3 changes to judge; the original files are always restored.

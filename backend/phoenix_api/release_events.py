@@ -58,6 +58,11 @@ def _test_files(rec, upto):
     return out
 
 
+def _test_sources(rec, upto):
+    """test file path -> the source file it tests, so the proof knows which code to change."""
+    return {t["path"]: t.get("source") for s in rec["steps"][:upto] for t in ((s.get("artifacts") or {}).get("unitTests") or []) if isinstance(t, dict) and t.get("path")}
+
+
 def parse_data_file(text):
     """A file of NAME,VALUE lines (or a JSON object) -> {name: value}. Up to 50 short pairs."""
     text = str(text or "").strip()
@@ -203,10 +208,11 @@ async def _execute(rec, steps, deps, inp, start=0):
                                question=f"These values cannot be made up (accounts and secrets that already exist): {', '.join(plan['needs_you'])}. Load a data file with them (dataMode \"file\").")
                     st.update(status="needs-you", needsYou=["test-data"])
                     break
+                srcmap = _test_sources(rec, n)
                 r0 = given.get("repo") or {}
                 host = "gitlab.com" if r0.get("provider") == "gitlab" else "github.com"
                 req["repo"] = {**r0, "cloneUrl": f"https://{host}/{r0.get('project')}.git", "ref": r0.get("head") or r0.get("ref") or "",
-                               "testFiles": [{"path": k, "content": v} for k, v in files.items()], "dataEnv": plan["values"], "apiBaseUrl": given.get("appUrl") or ""}
+                               "testFiles": [{"path": k, "content": v, "source": srcmap.get(k)} for k, v in files.items()], "dataEnv": plan["values"], "apiBaseUrl": given.get("appUrl") or ""}
                 if not req["repo"]["ref"]:
                     req["repo"].pop("ref")
                 if not req["repo"]["apiBaseUrl"]:

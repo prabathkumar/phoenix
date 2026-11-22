@@ -24,6 +24,16 @@ IS_TEST = re.compile(r"(\.t$|(^|/)t/.+\.t$|Test\.php$|\.test\.|\.spec\.|_test\.|
 SHAPE = {"javascript": r"\b(test|it|describe)\s*\(", "typescript": r"\b(test|it|describe)\s*\(", "python": r"\bdef test_", "java": r"@Test\b", "go": r"func Test\w+\(t \*testing\.T\)", "csharp": r"\[(Fact|Theory)\]", "rust": r"#\[(tokio::|actix_web::|actix_rt::)?test\]", "perl": r"use Test::More|\b(ok|is|is_deeply|like|cmp_ok)\s*\(", "php": r"function test\w+\(|@test\b|#\[Test\]"}
 
 
+ASSERT = {"javascript": r"\bexpect\(|assert[.(]", "typescript": r"\bexpect\(|assert[.(]", "python": r"\bassert\b|self\.assert|pytest\.raises", "java": r"\bassert\w*\(|assertThrows",
+          "go": r"\bt\.(Error|Errorf|Fatal|Fatalf|Fail)\b|assert\.|require\.", "csharp": r"Assert\.", "php": r"->assert|\$this->expect", "perl": r"\b(is|ok|is_deeply|like|cmp_ok)\s*\(",
+          "rust": r"assert(_eq|_ne)?!|should_panic"}
+
+
+def has_assertion(lang, body):
+    """A test with nothing that can fail proves nothing. (A trivial `assert True` is caught later by the proof run.)"""
+    return bool(re.search(ASSERT.get(lang, r"."), body))
+
+
 def language_of(f):
     e = posixpath.splitext(f)[1].lower()
     return next((k for k, v in LANGS.items() if e in v["ext"]), None)
@@ -150,6 +160,9 @@ async def generate_tests(files, read_file, call_json, get_prompt, findings=None,
                 continue
             if not re.search(SHAPE[lang], body):
                 skipped.append({"source": source, "why": f"the answer has no {L['framework']} test in it"})
+                continue
+            if not has_assertion(lang, body):
+                skipped.append({"source": source, "why": "the tests have no assertion, so they could never fail"})
                 continue
             sx = syntax(lang, body)
             if not sx["ok"]:

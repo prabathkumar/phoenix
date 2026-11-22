@@ -444,6 +444,13 @@ def unitrun_handler(project="", run_id="", env=None, run=None, which=None):
                         extra[str(k)] = str(v)[:500]
                 kw["env"] = {**os.environ, **extra}
             results = tcx.run_all(root, rq.get("languages"), tuple(rq.get("kinds") or ("unit", "integration")), **kw)
+            proof = None
+            srcs = [(t["source"], unit_tests.language_of(t["source"])) for t in (rq.get("testFiles") or []) if t.get("source") and unit_tests.language_of(t.get("source"))]
+            ran0 = [r for r in results if r["tests"]]
+            if srcs and ran0 and all(r["summary"]["failed"] == 0 for r in ran0) and rq.get("prove", True):  # the tests pass: now show they can fail
+                from . import proof as _proof
+                run_unit = lambda lang: tcx.run_tests(lang, "unit", root, **{k: v for k, v in (("run", run), ("which", which)) if v}, **({"env": kw["env"]} if kw.get("env") else {}))  # noqa: E731
+                proof = _proof.prove(root, list(dict.fromkeys(srcs)), run_unit, minimum=float(e.get("PHOENIX_PROOF_MIN", 0.5)))
         except (ValueError, OSError) as e:
             return {"unavailable": True, "detail": str(e)}
         finally:
@@ -458,8 +465,10 @@ def unitrun_handler(project="", run_id="", env=None, run=None, which=None):
         failed = sum(r["summary"]["failed"] for r in ran)
         passed = sum(r["summary"]["passed"] for r in ran)
         missing = [f"{r['language']} {r['kind']}: {r['detail']}" for r in results if not r["tests"]]
-        return {"ok": bool(ran) and failed == 0, "detail": f"{passed} passed, {failed} failed across {len(ran)} run(s)" + (f"; no result for {len(missing)}: {missing[0]}" if missing else ""),
-                "data": {"runs": [{k: r[k] for k in ("language", "kind", "ok", "available", "detail", "summary")} for r in results],
+        weak = bool(proof and proof["weak"])
+        pf = (f"; proof: {proof['caught']} of {proof['mutants']} deliberate code changes were caught" + (" (TOO WEAK: the tests pass but would not notice most bugs)" if weak else "")) if proof and proof["enough"] else ""
+        return {"ok": bool(ran) and failed == 0 and not weak, "detail": f"{passed} passed, {failed} failed across {len(ran)} run(s)" + pf + (f"; no result for {len(missing)}: {missing[0]}" if missing else ""),
+                "data": {"proof": proof, "runs": [{k: r[k] for k in ("language", "kind", "ok", "available", "detail", "summary")} for r in results],
                          "failures": [{"language": r["language"], "kind": r["kind"], "name": str(t["name"])[:200], "requirement": t.get("requirement")} for r in ran for t in r["tests"] if t["status"] == "failed"][:50]}}
     return h
 

@@ -62,6 +62,8 @@ def _ts_framework(root):
     if "@nestjs/core" in d:
         return None if ("vitest" in d and "jest" not in d) else "nestjs"  # newer NestJS starters use Vitest
     if "@angular/core" in d:
+        if "vitest" in d and "jest" not in d and "karma" not in d:
+            return None  # newer Angular projects use Vitest
         return "angular-jest" if ("jest" in d or "jest-preset-angular" in d) else "angular"
     return None
 

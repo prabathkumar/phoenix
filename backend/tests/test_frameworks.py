@@ -68,3 +68,17 @@ def test_the_run_step_loads_the_written_tests_and_the_data_into_the_checkout(mon
     assert seen["files"] == ["test_x.py"] and seen["env"]["CUSTOMER_NAME"] == "Aisha" and "bad name" not in seen["env"]
     out = asyncio.run(h({"repoRequest": {**rq, "testFiles": [{"path": "../evil.py", "content": "x"}]}}))
     assert out["unavailable"] and "unsafe path" in out["detail"]
+
+
+def test_angular_ng_test_with_vitest_is_run_through_ng_and_read_from_its_junit_output(tmp_path):
+    import json
+    from phoenix_api import test_connectors as T
+    (tmp_path / "package.json").write_text(json.dumps({"scripts": {"test": "ng test --no-watch"}, "dependencies": {"@angular/core": "21.0.0"}, "devDependencies": {"vitest": "4.0.0"}}))
+    assert T._ts_framework(str(tmp_path)) == "angular-ng"
+    argv, _, parser = T.command("typescript", "unit", "/o.xml", str(tmp_path))
+    assert argv[:3] == ["npx", "ng", "test"] and "--reporters=junit" in argv and parser == "junit-stdout"
+    xml = '<?xml version="1.0"?><testsuites><testsuite name="a.spec.ts"><testcase classname="a.spec.ts" name="A &gt; works" time="0.1"></testcase><testcase classname="a.spec.ts" name="A &gt; breaks" time="0.1"><failure message="x"/></testcase></testsuite></testsuites>'
+    class P:
+        stdout, stderr, returncode = "noise\n" + xml + "\ntail", "", 1
+    r = T.run_tests("typescript", "unit", str(tmp_path), run=lambda *a, **k: P(), which=lambda t: "/bin/" + t)
+    assert r["summary"]["passed"] == 1 and r["summary"]["failed"] == 1

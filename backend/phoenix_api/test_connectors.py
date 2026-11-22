@@ -57,7 +57,7 @@ def availability(which=shutil.which):
 
 
 def _ts_framework(root):
-    """nestjs | angular-jest | angular (Karma) | None, from the checkout's package.json."""
+    """nestjs | angular-jest | angular-ng (ng test with Vitest) | angular (Karma) | None, from the checkout's package.json."""
     try:
         j = json.load(open(os.path.join(root, "package.json"), encoding="utf8"))
     except (OSError, ValueError):
@@ -67,7 +67,8 @@ def _ts_framework(root):
         return None if ("vitest" in d and "jest" not in d) else "nestjs"  # newer NestJS starters use Vitest
     if "@angular/core" in d:
         if "vitest" in d and "jest" not in d and "karma" not in d:
-            return None  # newer Angular projects use Vitest
+            scripts = j.get("scripts") or {}
+            return "angular-ng" if re.search(r"\bng\s+test\b", str(scripts.get("test", ""))) else None  # newer Angular: Vitest through `ng test`, or plain Vitest
         return "angular-jest" if ("jest" in d or "jest-preset-angular" in d) else "angular"
     return None
 
@@ -148,6 +149,8 @@ def command(lang, kind, out, root=None):
         else:
             a = ["--testPathPattern", "integration"] if kind == "integration" else ["--testPathIgnorePatterns", "integration"]
         return ["npx", "jest", "--ci", *a, "--json", f"--outputFile={out}"], out, "jestjson"
+    if lang == "typescript" and root and _ts_framework(root) == "angular-ng":
+        return ["npx", "ng", "test", "--no-watch", "--reporters=junit", *(["--include=**/*.integration.spec.ts"] if kind == "integration" else ["--exclude=**/*.integration.spec.ts"])], None, "junit-stdout"
     if lang == "typescript" and root and _ts_framework(root) == "angular":
         sel = ["--include=**/*.integration.spec.ts"] if kind == "integration" else ["--exclude=**/*.integration.spec.ts"]
         return ["npx", "ng", "test", "--watch=false", "--browsers=ChromeHeadless", "--reporters=junit", *sel], out, "junit"
@@ -279,6 +282,9 @@ def run_tests(lang, kind, root, run=subprocess.run, which=shutil.which, timeout=
             tests = parse_go_json(p.stdout or "")
         elif parser == "cargo":
             tests = parse_cargo(p.stdout or "")
+        elif parser == "junit-stdout":
+            m = re.search(r"<\?xml.*?</testsuites>", p.stdout or "", re.S)
+            tests = parse_junit(m.group(0)) if m else []
         elif parser == "dartjson":
             tests = parse_dart_json(p.stdout or "")
         elif parser == "junit-glob":

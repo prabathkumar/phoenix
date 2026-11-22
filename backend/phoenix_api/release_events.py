@@ -173,7 +173,7 @@ async def _execute(rec, steps, deps, inp, start=0):
                 rec["flags"] = list(dict.fromkeys(rec.get("flags", []) + [f"{name}: {f}" for f in flags]))[:50]
             missing = out["ok"] and out["summary"].get("unavailable", 0) > 0  # nothing failed, but something could not run: that is not a pass
             st.update(status="needs-you" if out["needsYou"] else "unavailable" if missing else "passed" if out["ok"] else "failed", needsYou=out["needsYou"], summary=out["summary"], artifacts=art, flags=flags,
-                      detail=", ".join(f"{s['id']}={s['status']}" for s in out["stages"] if s["status"] != "skipped")[:300])
+                      detail="; ".join(f"{s['id']}={s['status']}" + (f" ({str(s.get('detail', ''))[:200]})" if s["status"] in ("failed", "unavailable", "needs-you") and s.get("detail") else "") for s in out["stages"] if s["status"] != "skipped")[:600])
             handoff = signoff.scenarios_of_run(req["_run_id"], url) or handoff
             if out["needsYou"]:  # a person has to decide: stop here, resume later with approvals
                 rec.update(status="needs-you", needsYou=out["needsYou"], resumeAt=n)

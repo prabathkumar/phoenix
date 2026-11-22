@@ -6,6 +6,7 @@ Lets ILMU Code (or any MCP client) start the AI team, unit tests and scans throu
 | Tool | What it does |
 |---|---|
 | `testops_start_release` | whole team on a release |
+| `testops_run_unit_and_integration_tests` | unit tests plus API-layer integration tests, kept apart when run; integration needs `appUrl` |
 | `testops_run_unit_tests` | link repo, write unit tests, run them; created in TestOps first, then pushed to Jira |
 | `testops_run_scans` | secrets and code-quality scans on a temporary copy of the repo |
 | `testops_send_event` | any agent and action, or your own `steps` |

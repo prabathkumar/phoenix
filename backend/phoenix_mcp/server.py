@@ -24,6 +24,7 @@ PROTOCOL = "2024-11-05"
 DONE = ("passed", "failed", "incomplete", "needs-you", "interrupted")
 
 UNIT_STEPS = [{"agent": "forge", "action": "link-repo"}, {"agent": "forge", "action": "write-unit-tests"}, {"agent": "forge", "action": "run-unit-tests"}]
+BOTH_STEPS = [{"agent": "forge", "action": "link-repo"}, {"agent": "forge", "action": "write-unit-tests"}, {"agent": "forge", "action": "api-tests"}, {"agent": "forge", "action": "run-unit-tests"}]
 SCAN_STEPS = [{"agent": "warden", "action": "scan"}]
 
 COMMON = {
@@ -45,7 +46,9 @@ def _schema(props, required=()):
 TOOLS = [
     {"name": "testops_start_release", "description": "Start the whole AI team on a release: scenarios, cases, test data, unit tests, runs, scans, defects, evidence and the release gate. Returns a run id.",
      "inputSchema": _schema({**COMMON, "task": {"type": "string", "description": "Extra instruction for the AI."}})},
-    {"name": "testops_run_unit_tests", "description": "Write unit tests for the requirement against the repo, create them in TestOps, run them and push them to Jira. Needs a requirement or Jira id, and a repo.",
+    {"name": "testops_run_unit_and_integration_tests", "description": "Write unit tests AND integration tests (API layer, data built from the schema) for the requirement against the repo, create them in TestOps, run them (unit and integration kept apart) and push them to Jira. Needs a requirement or Jira id, and a repo. Integration tests need the service's base URL (appUrl) to run.",
+     "inputSchema": _schema(COMMON)},
+    {"name": "testops_run_unit_tests", "description": "Unit tests only: write unit tests for the requirement against the repo, create them in TestOps, run them and push them to Jira. Needs a requirement or Jira id, and a repo.",
      "inputSchema": _schema(COMMON)},
     {"name": "testops_run_scans", "description": "Run the secrets scan and the code-quality (SAST) scan on a temporary copy of the repo.",
      "inputSchema": _schema(COMMON)},
@@ -108,6 +111,8 @@ class Server:
     def run_tool(self, name: str, a: dict):
         if name == "testops_start_release":
             return self._event(a, {"agent": "team", "action": "release"})
+        if name == "testops_run_unit_and_integration_tests":
+            return self._event(a, {"steps": BOTH_STEPS})
         if name == "testops_run_unit_tests":
             return self._event(a, {"steps": UNIT_STEPS})
         if name == "testops_run_scans":

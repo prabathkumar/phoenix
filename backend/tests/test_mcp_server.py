@@ -56,11 +56,13 @@ def test_unit_tests_use_the_forge_steps_and_scans_use_the_warden():
     sent = []
     srv = S.Server(call=lambda m, p, b=None: sent.append(b) or {"id": "e1", "status": "queued"})
     assert tool(srv, "testops_run_unit_tests", {"release": "1", "jiraKey": "SHP-1", "repo": {"provider": "github", "project": "o/a"}})[1]["id"] == "e1"
+    tool(srv, "testops_run_unit_and_integration_tests", {"release": "1", "requirement": "x", "repo": {"provider": "github", "project": "o/a"}})
+    assert [x["action"] for x in sent[-1]["steps"]] == ["link-repo", "write-unit-tests", "api-tests", "run-unit-tests"]
     tool(srv, "testops_run_scans", {"release": "1", "repo": {"provider": "github", "project": "o/a"}})
     tool(srv, "testops_start_release", {"release": "1", "requirement": "x"})
     assert [s["action"] for s in sent[0]["steps"]] == ["link-repo", "write-unit-tests", "run-unit-tests"] and sent[0]["jiraKey"] == "SHP-1"
-    assert sent[1]["steps"] == [{"agent": "warden", "action": "scan"}]
-    assert sent[2]["agent"] == "team" and sent[2]["action"] == "release"
+    assert sent[2]["steps"] == [{"agent": "warden", "action": "scan"}]
+    assert sent[3]["agent"] == "team" and sent[3]["action"] == "release"
 
 
 def test_missing_settings_say_what_to_set(monkeypatch):

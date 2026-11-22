@@ -141,7 +141,7 @@ def command(lang, kind, out, root=None):
         has_unit = bool(root) and bool(glob.glob(os.path.join(root, "tests", "unit_*.rs")))
         return (["cargo", "test", "--lib", "--bins", "--test", "unit_*"] if has_unit else ["cargo", "test"]), None, "cargo"
     if lang == "perl":
-        return ["prove", "-v", *(["-r", "t/integration"] if kind == "integration" else ["t"])], None, "tap"
+        return ["prove", "-l", "-v", *(["-r", "t/integration"] if kind == "integration" else ["t"])], None, "tap"
     if lang == "typescript" and root and _ts_framework(root) in ("nestjs", "angular-jest"):
         if _ts_framework(root) == "nestjs":
             a = ["--config", "test/jest-e2e.json"] if kind == "integration" else ["--testPathIgnorePatterns", "e2e"]

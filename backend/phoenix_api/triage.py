@@ -37,3 +37,29 @@ def example(project, failure, log, call, actual):
     fixed = {"verdict": "flaky" if actual == "passed" else "code_bug", "rerun": actual == "passed"}
     return {"project": project, "source": "triage", "prompt": f"{failure['name']} ({failure['language']} {failure['kind']})\n{(log or '')[-1500:]}", "response": ans,
             "outcome": "verified" if agreed else "corrected", "preferred": "" if agreed else json.dumps(fixed)}
+
+
+async def triage_and_rerun(results, root, call_json, project, kw, record=None):
+    """The model reads each failing run's log, picks the flaky/environment failures, and they are run again (results are updated in place).
+    record(kind, row) stores each call and its proof as a training example (opt-in capture, see logstore)."""
+    from . import test_connectors as tcx
+    for r in results:
+        fails = [{"language": r["language"], "kind": r["kind"], "name": t["name"]} for t in r["tests"] if t["status"] == "failed"]
+        if not fails:
+            continue
+        calls = await triage(fails, r.get("log", ""), call_json)
+        r["triage"] = [{"name": n, **c} for n, c in calls.items()]
+        again = [f for f in fails if calls.get(f["name"], {}).get("rerun")]
+        if not again:
+            continue
+        r2 = tcx.run_tests(r["language"], r["kind"], root, retry=False, **kw)
+        after = {t["name"]: t["status"] for t in r2["tests"]}
+        for t in r["tests"]:
+            if t["name"] in {f["name"] for f in again} and after.get(t["name"]) == "passed":
+                t["status"], t["flaky"] = "passed", True
+        r["summary"] = tcx.summarize(r["tests"])
+        r["ok"] = r["summary"]["failed"] == 0
+        r["detail"] += f" (model re-ran {len(again)} failure(s); {sum(1 for f in again if after.get(f['name']) == 'passed')} passed the second time)"
+        for f in again:
+            if record:
+                record("training_example", example(project, f, r.get("log", ""), calls[f["name"]], after.get(f["name"], "failed")))

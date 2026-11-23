@@ -38,9 +38,8 @@ def test_a_test_that_fails_then_passes_is_flagged_flaky_and_a_double_failure_sta
 
 def test_model_picks_flaky_failure_it_is_rerun_and_the_pair_is_stored_as_a_training_example(tmp_path, monkeypatch):
     import asyncio, json
-    from phoenix_api import handlers as H, logstore
+    from phoenix_api import triage as H
     stored, runs = [], []
-    monkeypatch.setattr(logstore, "record", lambda kind, row, env=None, a=None: stored.append((kind, row)) or True)
 
     def fake_run_tests(lang, kind, root, **kw):
         runs.append(kw.get("retry"))
@@ -54,7 +53,7 @@ def test_model_picks_flaky_failure_it_is_rerun_and_the_pair_is_stored_as_a_train
     async def model(prompt):
         return {"failures": [{"name": "a", "verdict": "flaky", "rerun": True, "reason": "timing"}, {"name": "b", "verdict": "code_bug", "rerun": False, "reason": "wrong value"}]}
 
-    asyncio.run(H._triage_and_rerun(res, str(tmp_path), model, "p", {}, {}))
+    asyncio.run(H.triage_and_rerun(res, str(tmp_path), model, "p", {}, record=lambda k, r: stored.append((k, r))))
     st = {t["name"]: t for t in res[0]["tests"]}
     assert st["a"]["status"] == "passed" and st["a"]["flaky"] and st["b"]["status"] == "failed"
     assert runs == [False] and [k for k, _ in stored] == ["training_example"] and stored[0][1]["outcome"] == "verified"

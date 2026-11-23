@@ -399,36 +399,12 @@ def repolink_handler(connect_repo):
     return h
 
 
-async def _triage_and_rerun(results, root, call_json, project, kw, env):
-    """The model reads each failing run's log, picks the flaky/environment failures, and they are run again (in place). Every call and its proof go to the training store."""
-    from . import logstore, test_connectors as tcx, triage
-    for r in results:
-        fails = [{"language": r["language"], "kind": r["kind"], "name": t["name"]} for t in r["tests"] if t["status"] == "failed"]
-        if not fails:
-            continue
-        calls = await triage.triage(fails, r.get("log", ""), call_json)
-        r["triage"] = [{"name": n, **c} for n, c in calls.items()]
-        again = [f for f in fails if calls.get(f["name"], {}).get("rerun")]
-        if not again:
-            continue
-        r2 = tcx.run_tests(r["language"], r["kind"], root, retry=False, **kw)
-        after = {t["name"]: t["status"] for t in r2["tests"]}
-        for t in r["tests"]:
-            if t["name"] in {f["name"] for f in again} and after.get(t["name"]) == "passed":
-                t["status"], t["flaky"] = "passed", True
-        r["summary"] = tcx.summarize(r["tests"])
-        r["ok"] = r["summary"]["failed"] == 0
-        r["detail"] += f" (model re-ran {len(again)} failure(s); {sum(1 for f in again if after.get(f['name']) == 'passed')} passed the second time)"
-        for f in again:
-            logstore.record("training_example", triage.example(project, f, r.get("log", ""), calls[f["name"]], after.get(f["name"], "failed")), env)
-
-
 def unitrun_handler(project="", run_id="", env=None, run=None, which=None, call_json=None):
     """Runs the repo's unit and integration tests per language with the language's own toolchain, and logs every test against its requirement key.
     Request: repoRequest {dir | cloneUrl(+ref), languages?, kinds?}. May be run again and again: each run is stored under its own run id."""
     async def h(ctx):
         import shutil
-        from . import logstore, test_connectors as tcx
+        from . import logstore, test_connectors as tcx, triage as triage_mod
         rq = ctx.get("repoRequest") or {}
         root, cleanup = rq.get("dir"), False
         e = env if env is not None else os.environ
@@ -476,7 +452,7 @@ def unitrun_handler(project="", run_id="", env=None, run=None, which=None, call_
                 run_unit = lambda lang: tcx.run_tests(lang, "unit", root, **{k: v for k, v in (("run", run), ("which", which)) if v}, **({"env": kw["env"]} if kw.get("env") else {}))  # noqa: E731
                 proof = _proof.prove(root, list(dict.fromkeys(srcs)), run_unit, minimum=float(e.get("PHOENIX_PROOF_MIN", 0.5)))
             if call_json:
-                await _triage_and_rerun(results, root, call_json, project, kw, env)
+                await triage_mod.triage_and_rerun(results, root, call_json, project, kw, record=lambda kind, row: logstore.record(kind, row, env))
         except (ValueError, OSError) as e:
             return {"unavailable": True, "detail": str(e)}
         finally:

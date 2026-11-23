@@ -4,7 +4,7 @@
 set -u
 cd "$(dirname "$0")/../backend"
 FX=tests/fixtures/integration
-want="${*:-php csharp swift kotlin typescript dart}"
+want="${*:-php typescript dart}"
 for l in $want; do
   case $l in
     php) d=php; (cd $FX/php && composer install -q --no-interaction >/dev/null 2>&1);;

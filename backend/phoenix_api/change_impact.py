@@ -20,7 +20,9 @@ HUMAN = [
     ("biometric", re.compile(r"\b(biometric|face id|fingerprint|touch id)\b", re.I)),
     ("approval on another device", re.compile(r"\b(approve (on|in) (the |your )?(phone|app|device)|push notification approval|confirm on (your )?phone)\b", re.I)),
 ]
-STOP = {"this", "that", "with", "from", "have", "return", "returns", "self", "none", "true", "false", "const", "class", "function", "import", "export", "default", "string", "number", "value", "data", "item", "items", "list", "name", "test", "tests", "else", "elif", "while", "print", "args", "kwargs", "async", "await", "public", "private", "static", "void", "null", "undefined"}
+STOP = {"this", "that", "with", "from", "have", "return", "returns", "self", "none", "true", "false", "const", "class", "function", "import", "export", "default", "string", "number", "value", "data", "item", "items", "list", "name", "test", "tests", "else", "elif", "while", "print", "args", "kwargs", "async", "await", "public", "private", "static", "void", "null", "undefined",
+        # words so common in a code base that matching on them would call every change covered
+        "order", "orders", "user", "users", "account", "service", "manager", "handler", "model", "models", "view", "views", "form", "page", "request", "response", "result", "results", "check", "create", "update", "delete", "apply", "base", "util", "utils", "helper", "helpers", "common", "main", "index"}
 DEF = re.compile(r"^\+\s*(?:async\s+)?(?:def|function|func|fn|class|public|private|protected)?\s*(?:static\s+)?(?:[\w<>\[\]]+\s+)?(\w{4,})\s*\(", re.M)
 ROUTE = re.compile(r"[\"'`](/[A-Za-z0-9_\-/{}:]{2,})[\"'`]")
 PROMPT = ("You check test coverage of a code change. For each changed area say which test cases cover it (by id) or that none does. For an area with no case, draft the missing "
@@ -32,10 +34,17 @@ def human_waits(text):
     return [label for label, rx in HUMAN if rx.search(t)]
 
 
+def _words(name):
+    """apply_discount / applyDiscount -> the whole name and its parts, so 'discount' in a test case matches the function."""
+    parts = [w.lower() for w in re.split(r"_+|(?<=[a-z0-9])(?=[A-Z])", name) if len(w) >= 4]
+    return {name.lower(), *parts}
+
+
 def _tokens(path, patch):
     stem = re.sub(r"\.[A-Za-z0-9]+$", "", path.rsplit("/", 1)[-1])
     toks = {w.lower() for w in re.split(r"[^A-Za-z0-9]+|(?<=[a-z])(?=[A-Z])", stem) if len(w) >= 4 and w.lower() not in STOP}
-    toks |= {m.lower() for m in DEF.findall(patch or "") if m.lower() not in STOP}
+    for m in DEF.findall(patch or ""):
+        toks |= {w for w in _words(m) if w not in STOP}
     for r in ROUTE.findall(patch or ""):
         toks |= {s.lower() for s in re.split(r"[^A-Za-z0-9]+", r) if len(s) >= 4 and s.lower() not in STOP}
     return sorted(toks)[:25]

@@ -19,7 +19,7 @@ LANGS = {
     "perl": {"ext": (".pl", ".pm"), "framework": "Test::More (use Test::More; run with prove)", "test": lambda f: posixpath.join("t", re.sub(r"\W+", "_", re.sub(r"^(lib|src)/", "", posixpath.splitext(f)[0])).strip("_").lower() + ".t")},
     "csharp": {"ext": (".cs",), "framework": "xUnit", "test": lambda f: re.sub(r"\.cs$", "Tests.cs", f)},
 }
-IGNORE = re.compile(r"(^|/)(node_modules|vendor|dist|build|target|bin|obj|\.git|generated)/")
+IGNORE = re.compile(r"(^|/)(node_modules|vendor|dist|build|target|bin|obj|\.git|generated|docs?|examples?|scripts?|migrations)/|(^|/)(conf|setup|__init__|__main__|conftest|index|manage|noxfile|tasks)\.(py|js|ts)$")
 IS_TEST = re.compile(r"(\.t$|(^|/)t/.+\.t$|Test\.php$|\.test\.|\.spec\.|_test\.|(^|/)test_|Tests?\.(java|cs)$|(^|/)(tests?|__tests__)/)", re.I)
 SHAPE = {"javascript": r"\b(test|it|describe)\s*\(", "typescript": r"\b(test|it|describe)\s*\(", "python": r"\bdef test_", "java": r"@Test\b", "go": r"func Test\w+\(t \*testing\.T\)", "csharp": r"\[(Fact|Theory)\]", "rust": r"#\[(tokio::|actix_web::|actix_rt::)?test\]", "perl": r"use Test::More|\b(ok|is|is_deeply|like|cmp_ok)\s*\(", "php": r"function test\w+\(|@test\b|#\[Test\]"}
 
@@ -171,7 +171,7 @@ async def generate_tests(files, read_file, call_json, get_prompt, findings=None,
             out.append({"path": L["test"](source), "source": source, "language": lang, "content": body if body.endswith("\n") else body + "\n", "flagged": len(flagged), "requirement": requirement.get("key", ""), "changed": bool(changes.get(source)),
                         "checks": {"syntax": "not checked (no toolchain here)" if sx.get("unchecked") else "ok"}})
         except Exception as e:
-            skipped.append({"source": source, "why": str(e)})
+            skipped.append({"source": source, "why": str(e) or f"{type(e).__name__} (the model took too long or the file is too big for its window)"})
     return {"files": out, "skipped": skipped}
 
 

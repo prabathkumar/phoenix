@@ -29,6 +29,10 @@ async def main(url, n):
         os.makedirs(os.path.dirname(p), exist_ok=True)
         open(p, "w", encoding="utf8").write(f["content"])
         print("written", f["path"])
+    gen_py = [f["path"] for f in g["files"] if f["language"] == "python"]
+    if gen_py:  # the model's own tests, run by themselves so they cannot hide among the repo's tests
+        p = subprocess.run([sys.executable, "-m", "pytest", "-q", "--no-header", "-p", "no:cacheprovider", *gen_py], cwd=root, capture_output=True, text=True, timeout=300, env={**os.environ, "PYTHONPATH": os.pathsep.join([root, os.path.join(root, "src")])})
+        print("\nMODEL-WRITTEN TESTS (python):\n" + (p.stdout or p.stderr)[-1500:])
     langs = sorted({f["language"] for f in g["files"]}) or None
     results = tcx.run_all(root, langs, ("unit",), retry=False)
     await handlers._triage_and_rerun(results, root, call, "ai-unit-run", {}, os.environ)

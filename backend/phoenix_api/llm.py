@@ -33,11 +33,11 @@ def ollama_call_json(env=None):
     if not host.startswith("http"):
         host = "http://" + host
     model = _env(env, "TESTOPS_MOBILE_OLLAMA_MODEL", "OLLAMA_MODEL", default="llama3")
-    timeout = float(env.get("TESTOPS_MOBILE_LLM_TIMEOUT_MS", 120000)) / 1000
+    timeout = float(env.get("TESTOPS_MOBILE_LLM_TIMEOUT_MS", 300000)) / 1000
 
     async def call(prompt):
         async with httpx.AsyncClient(timeout=timeout) as c:
-            r = await c.post(host.rstrip("/") + "/api/generate", json={"model": model, "prompt": prompt, "stream": False, "format": "json"})
+            r = await c.post(host.rstrip("/") + "/api/generate", json={"model": model, "prompt": prompt, "stream": False, "format": "json", **({"think": False} if "qwen3" in model.lower() and env.get("OLLAMA_THINK", "") not in ("1", "true") else {})})  # Qwen3 "thinks" first by default: minutes of hidden reasoning for a JSON answer
         if r.status_code != 200:
             raise RuntimeError(f"Ollama answered {r.status_code}")
         return parse_json(r.json().get("response", ""))
